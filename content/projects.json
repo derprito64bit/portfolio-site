@@ -1,0 +1,13 @@
+{
+  "owner": "derprito64bit",
+  "projects": [
+    { "slug": "project-01", "title": "Project One", "role": "Your role", "year": "2026", "blurb": "Placeholder: replace with a two-line summary of what it is and what you built.", "url": "https://github.com/derprito64bit", "accent": "#7A1F2B", "featured": true, "placeholder": true },
+    { "slug": "project-02", "title": "Project Two", "role": "Your role", "year": "2026", "blurb": "Placeholder: replace with a two-line summary of what it is and what you built.", "url": "https://github.com/derprito64bit", "accent": "#1F2F55", "featured": true, "placeholder": true },
+    { "slug": "project-03", "title": "Project Three", "role": "Your role", "year": "2025", "blurb": "Placeholder: replace with a two-line summary of what it is and what you built.", "url": "https://github.com/derprito64bit", "accent": "#1F4D3A", "featured": true, "placeholder": true },
+    { "slug": "project-04", "title": "Project Four", "role": "Your role", "year": "2025", "blurb": "Placeholder: replace with a two-line summary of what it is and what you built.", "url": "https://github.com/derprito64bit", "accent": "#8A6420", "featured": true, "placeholder": true },
+    { "slug": "project-05", "title": "Project Five", "role": "Your role", "year": "2025", "blurb": "Placeholder: replace with a two-line summary of what it is and what you built.", "url": "https://github.com/derprito64bit", "accent": "#4B2348", "featured": true, "placeholder": true },
+    { "slug": "project-06", "title": "Project Six", "role": "Your role", "year": "2024", "blurb": "Placeholder: replace with a two-line summary of what it is and what you built.", "url": "https://github.com/derprito64bit", "accent": "#1E4C55", "featured": true, "placeholder": true },
+    { "slug": "project-07", "title": "Project Seven", "role": "Your role", "year": "2024", "blurb": "Placeholder: replace with a two-line summary of what it is and what you built.", "url": "https://github.com/derprito64bit", "accent": "#5A3A22", "featured": true, "placeholder": true },
+    { "slug": "project-08", "title": "Project Eight", "role": "Your role", "year": "2024", "blurb": "Placeholder: replace with a two-line summary of what it is and what you built.", "url": "https://github.com/derprito64bit", "accent": "#3A3F4F", "featured": true, "placeholder": true }
+  ]
+}

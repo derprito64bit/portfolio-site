@@ -1,0 +1,71 @@
+name: Crew brief
+description: One crew's work order. Filed by the dispatcher; see docs/agents/PROTOCOL.md.
+title: "[crew <id>] "
+labels: ["status:ready"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        One issue = one crew = one branch (`crew/<id>`) = one PR. Add the `track:`, `wave:`, `type:` and `role:` labels and the wave milestone after filing.
+  - type: input
+    id: crew
+    attributes:
+      label: Crew id
+      description: Used in the branch name crew/<id> and in ownership.json.
+      placeholder: w-c3
+    validations:
+      required: true
+  - type: dropdown
+    id: track
+    attributes:
+      label: Track
+      options:
+        - W (2D site)
+        - M (Manor)
+        - G (Painting Worlds)
+        - S (shared)
+    validations:
+      required: true
+  - type: textarea
+    id: mission
+    attributes:
+      label: Mission
+      description: "Your job is not X. Your job is Y. Plus the target and the story beat it serves."
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Checkable statements, each one verifiable in the browser or by a command.
+      value: "- [ ] "
+    validations:
+      required: true
+  - type: textarea
+    id: globs
+    attributes:
+      label: Owned globs
+      description: The paths this crew may edit. Must match docs/agents/ownership.json.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: gate
+    attributes:
+      label: Gate
+      description: The commands that must pass, the viewports and the evidence the gate agent will re-create at the SHA.
+    validations:
+      required: true
+  - type: input
+    id: after
+    attributes:
+      label: After
+      description: Issues that must be status:done before this one starts. "none" if there are none.
+      placeholder: "#12, #14"
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Decisions and context
+      description: Locked decisions (D-0xx) that apply, references and anything to cut.

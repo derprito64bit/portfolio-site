@@ -1,0 +1,50 @@
+name: Request
+description: Ask another crew or the orchestrator for a change outside your globs, a decision or a dependency.
+title: "[request] "
+labels: ["type:request", "status:ready"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        File this instead of editing outside your globs, then keep working on something else (docs/agents/PROTOCOL.md section 5). Add a `needs:<crew id>` or `needs:orchestrator` label.
+  - type: input
+    id: from
+    attributes:
+      label: From crew
+      placeholder: w-c3 (issue #12)
+    validations:
+      required: true
+  - type: input
+    id: needs
+    attributes:
+      label: Needs
+      description: The crew that owns the paths, or "orchestrator" for decisions and dependencies.
+      placeholder: w-f
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What you need
+      description: The change, with file paths or the decision to make.
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why, and what it blocks
+      description: The beat or acceptance criterion it serves, and whether you are blocked or working around it.
+    validations:
+      required: true
+  - type: textarea
+    id: dep
+    attributes:
+      label: Dependency request (if any)
+      description: One depRequests entry per package. The orchestrator approves it in decisions.md and deps.md.
+      render: json
+      placeholder: '{ "package": "", "version": "", "licence": "", "gzipKb": 0, "why": "" }'
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: Paths, URLs or screenshots, labelled measured, documented or estimate.

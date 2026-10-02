@@ -1,0 +1,4 @@
+{
+  "$comment": "Which crew may edit which paths. Keys of 'crews' are crew ids (as in crew/<id>); values are arrays of globs relative to the repo root. A path matched by no crew belongs to the orchestrator. The ownership check (added to CI by the foundation crew) fails a PR that edits outside its crew's globs. Filled in Wave 2; only the orchestrator edits this file.",
+  "crews": {}
+}
