@@ -48,8 +48,14 @@ An issue has exactly one `status:` label. Whoever changes the state swaps the la
 
 ## 3. Branch and draft PR from the first commit
 
-- Branch `crew/<id>` from `main`. W crews work in their own worktree, `..\portfolio-site.wt\<id>`
-  (`node scripts/crew.mjs open <id>` once the foundation crew has added it).
+- Branch `crew/<id>` from `main`. W crews work in their own worktree, `..\portfolio-site.wt\<id>`.
+  - Use `node scripts/crew.mjs open <id>` once the foundation crew has added it.
+  - Until then, create it by hand:
+    - `git -C C:\Users\Aaron\Documents\GitHub\portfolio-site fetch origin`;
+    - `git -C C:\Users\Aaron\Documents\GitHub\portfolio-site worktree add ..\portfolio-site.wt\<id> -b crew/<id> --no-track origin/main`.
+
+    `--no-track` matters: without it the branch tracks `main`, and a careless push could target `main`. The first
+    push is `git push -u origin crew/<id>`.
 - After the first commit, push and open a **draft** PR to `main` with the
   [PR template](../../.github/pull_request_template.md), body starting `Closes #<n>`.
 - Push after every meaningful step. Never push to `main`, never force-push, no Git LFS.
