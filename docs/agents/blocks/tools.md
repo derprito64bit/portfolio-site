@@ -1,7 +1,8 @@
 # Skills and tools
 
-Load the skills for a task **before** making its decisions, not after. List the available skills first; if one
-named here is missing, do not install it: report it in `toolGaps` and continue.
+Load the skills for a task **before** making its decisions, not after. List the available skills first. If one named here is
+missing, or another skill would materially help, you may install it after vetting
+([`rules.web.md`](rules.web.md) rule 7). Report what you added in `skillsAdded`.
 
 ## By kind of task
 
@@ -16,18 +17,21 @@ named here is missing, do not install it: report it in `toolGaps` and continue.
 | Performance | `web-quality-skills`, `debug-optimize-lcp`, `memory-leak-debugging`; `npx lighthouse@13`, `npx size-limit` |
 | Design tokens | `design-system` |
 | Seeing the page (every gate) | `playwright-cli` in your own session, or `node scripts/crew.mjs shoot` once it exists |
+| 3D models and animation | **Blender MCP** (take the `blender` lane): model, rig, animate, export GLB. `npx @gltf-transform/cli optimize` (meshopt or Draco, KTX2/WebP textures). three.js `GLTFLoader` and `AnimationMixer`, with Context7 for the current API. GSAP ScrollTrigger for scroll-driven 3D. Poly Haven, Sketchfab and Poly Pizza through Blender MCP, CC0 or CC-BY only, credited |
+| References | Awwwards (SOTD, nominees, Developer Awards), Codrops, studio sites, through WebFetch, WebSearch or `playwright-cli`. Start with `refs/references.md`, where the owner-named references come first |
 | Images, models, fonts | `npx sharp-cli`, `npx @gltf-transform/cli`, `pyftsubset` (via `uvx --from fonttools`) |
 | TypeScript code | the `typescript-lsp` plugin |
 | GitHub | the `gh` CLI (no GitHub MCP) |
 
-`ui-ux-pro-max` is reference only, never direction. `find-skills` is for discovering a skill, not installing one
-mid-task.
+`ui-ux-pro-max` is reference only, never direction. `find-skills` (or `npx skills find <query>`) discovers skills;
+install only after vetting.
 
-## Reserved: do not use
+## Shared instances: take the lane
 
-The Playwright MCP, Chrome DevTools MCP, Unity MCP and Blender MCP are single shared instances. Only the
-orchestrator or one agent named in its brief may use them. The DevTools *skills* above are fine; their MCP
-steps are not, so run the same checks in your own browser session.
+The Playwright, Chrome DevTools, Unity and Blender MCP servers each drive one app instance shared by every agent.
+Claim the lane first with `powershell -File scripts/fleet/lane.ps1 acquire <lane> -Agent <id>`, `renew` it during
+long work, and `release` it after. `status` shows the holders. Prefer lane-free tools (`playwright-cli` in your own
+session) when they do the job.
 
 ## Deliberately not used
 

@@ -2,6 +2,17 @@
 > whose verdict was `fix`. **The corrections at the end override the text above them.** Claims are labelled
 > measured, documented or estimate.
 
+## Owner-named references (2026-10-02, these outrank the survey below)
+
+| Site | Award | Credited tech | What the owner means by it |
+|---|---|---|---|
+| [PORTFOLIO ZXC](https://www.awwwards.com/sites/portfolio-zxc) (portfolio-zxc.com) | Honorable Mention, 2026-08-03 | Three.js, Blender, Vite; 3D, Unusual Navigation, Gallery, Interaction Design | A 2D site that uses **3D models heavily**: a tactile keyboard that morphs into project spaces, a "clockwork iris" loading screen, a desktop-room interface. Models are built in Blender and rendered in three.js |
+| [Jesper Landberg](https://www.awwwards.com/sites/jesper-landberg-4) (jesperlandberg.com) | SOTD + Developer Award, 2026-09-29 (7.73 / DEV 8.17) | GSAP, Three.js, Nuxt.js; Animation, Infinite Scroll | A 2D, black-and-white editorial site whose **3D-driven effects and transitions** (home to project, project to project, home to profile) are mesmerising |
+
+Takeaway: the Front Door is a 2D layout with **real 3D** at its heart: models and scenes made in Blender and
+rendered with three.js, and WebGL transitions choreographed with GSAP. Study the techniques; never copy them.
+
+
 # Web references fact pack (Track W), 2026-10-02
 
 Method: Awwwards pages fetched (documented: award, date, credited tech, description, palette). Live sites loaded in Chromium via playwright-cli, 1440x900 and 390x844, 6 s after navigation; DOM probe for canvas count, computed fonts, background, horizontal overflow. **Not measured:** easing, durations, hover and page-transition feel, reduced-motion behaviour (no scroll or pointer scripting, no frame traces). Motion fields below are limited to Awwwards-documented features and what is visible in the hero frame; anything beyond is labelled estimate. Library detection is an HTML-string heuristic and can false-positive.

@@ -39,6 +39,14 @@ Owner: **derprito64bit**. Collected 2026-10-01 → 2026-10-02.
 - **Front door:** "2D site first, Manor as 3D option".
 - **Hosting:** "New repo, composed at root".
 
+> "also when i mean by 2d website i dont mean fully 2d as well there should be a mix of 3d skills for example
+> https://www.awwwards.com/sites/portfolio-zxc is a 2d site but uses 3d models heavily or this
+> https://www.awwwards.com/sites/jesper-landberg-4 which makes some of the most mezmerizing effects using 3d but the
+> website itself in general is 2d"
+
+> "remember that you can also get agents to use blender mcp and any tools for 3d animations or even ask them to
+> reference websites from awwwards or anywhere else or even have them get skills from other places"
+
 ## Content
 
 - **Content:** "Placeholders only for now". No fact about the owner may be invented.
