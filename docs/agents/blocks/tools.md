@@ -12,10 +12,13 @@
   - Never run two Blender renders at once (the `blender` lane).
   - The PC has no NVIDIA GPU (a stale RTX 3070 driver entry exists): never select CUDA or OptiX.
 - **Close every browser you open, every time.**
-  - `playwright-cli`: always open with `--idle-timeout 600000`, which closes it after 10 idle minutes. Close
+  - `playwright-cli`: always open with
+    `--config C:\Users\Aaron\AppData\Local\ion\pwcli\agent.config.json --idle-timeout 600000`. The config
+    **mutes all audio** (the owner's rule: music volume is 0 for agents). It also renders on the GPU, and the
+    timeout closes the session after 10 idle minutes. Close
     your session with `playwright-cli -s=<id> close` as soon as you are done and before you return your result.
     Run `playwright-cli list` and close anything of yours still open.
-  - Lighthouse: let it exit; never leave it running.
+  - Lighthouse: always pass `--chrome-flags="--headless=new --mute-audio"`, and let it exit; never leave it running.
   - Claude in Chrome tools: close every tab you opened with `tabs_close_mcp`.
   - Leftover automation browsers are killed by `scripts/fork/reap-browsers.ps1 -Kill`.
 - **Fujifilm X-T5 fidelity (owner):** the camera is modelled on the Fujifilm X-T5 essentially 1:1. Gather
