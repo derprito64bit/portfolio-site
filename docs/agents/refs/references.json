@@ -1,0 +1,370 @@
+{
+ "pack": "web-refs",
+ "verdict": "fix",
+ "items": [
+  {
+   "slug": "jesper-landberg",
+   "url": "https://jesperlandberg.com",
+   "award": "Site of the Day",
+   "date": "2026-09-29",
+   "tech": [
+    "GSAP",
+    "Three.js",
+    "Nuxt.js",
+    "Infinite Scroll",
+    "Animation"
+   ],
+   "signature": "The project list is a curved 3D card gallery floating over a grid floor with no page scroll.",
+   "motion": "Not measured. Documented: Awwwards Animation and Interaction Design categories; creativity 8.04. Estimate: gallery movement driven by wheel/drag in WebGL.",
+   "effects": "Curved card geometry (WebGL, 1 canvas, measured). Trigger not measured.",
+   "type": "Single sans (generic 'sans' stack), tiny uppercase UI, 26.88px base heading (measured)",
+   "colour": "Pure black rgb(0,0,0) with white UI; colour comes from project cards (measured)",
+   "layout": "No card grid; one spatial carousel; featured/full toggle, scrollHeight equals viewport (measured)",
+   "mobile": "Measured: cards stack vertically, no horizontal overflow, 1 canvas retained, scrollHeight 844.",
+   "borrow": "One spatial metaphor replaces the grid.",
+   "avoid": "Custom no-scroll model with no verified reduced-motion path.",
+   "screenshots": [
+    "jesper-landberg-1440.png",
+    "jesper-landberg-390.png"
+   ],
+   "source": "https://www.awwwards.com/sites/jesper-landberg-4"
+  },
+  {
+   "slug": "meer-mohsin",
+   "url": "https://www.meermohsin.me/",
+   "award": "Site of the Day",
+   "date": "2026-09-26",
+   "tech": [
+    "HTML5",
+    "GSAP",
+    "Three.js",
+    "Animation",
+    "3D",
+    "Storytelling"
+   ],
+   "signature": "A red chrome butterfly-wing emblem hero with giant clipped type, blurred secondary copy and a cinematic scroll.",
+   "motion": "Not measured. Documented: cinematic hero scroll, case-study scroll gallery, cinematic footer; animations/transitions dev score 8.0.",
+   "effects": "3 to 4 canvases (measured); Lenis detected (heuristic). Trigger not measured.",
+   "type": "Custom 'regular-font' / 'light-font' plus 'ruthie' script (measured); large uppercase clipped wordmark; 60px headline desktop, 48.7px mobile",
+   "colour": "#990000 deep red on #090909 near-black (documented)",
+   "layout": "28172px linear scroll story, no card grid (measured)",
+   "mobile": "Measured: works, no horizontal overflow, 23294px tall, 4 canvases.",
+   "borrow": "One iconic object and one accent colour.",
+   "avoid": "Low-contrast blurred hero copy and 28k px of scroll.",
+   "screenshots": [
+    "meer-mohsin-1440.png",
+    "meer-mohsin-390.png"
+   ],
+   "source": "https://www.awwwards.com/sites/meer-mohsin"
+  },
+  {
+   "slug": "gil-huybrecht",
+   "url": "https://gilhuybrecht.com/",
+   "award": "Site of the Day",
+   "date": "2026-09-21",
+   "tech": [
+    "Next.js",
+    "DatoCMS",
+    "WebGL",
+    "Typography",
+    "Gallery",
+    "Microinteractions",
+    "Infinite Scroll"
+   ],
+   "signature": "The homepage is a text index of services and awards above numbered project thumbnail strips with a Grid/Gallery toggle.",
+   "motion": "Not measured. Documented categories: Microinteractions, Infinite Scroll. Dev score 7.4.",
+   "effects": "1 canvas on desktop (measured), 0 on mobile; Lenis detected (heuristic).",
+   "type": "Single neutral grotesque, uniform small sizes (16 to 17px), no scale contrast (measured)",
+   "colour": "#0D0D0F and #FFFFFF (documented)",
+   "layout": "Index list plus numbered 2 to 5 thumbnail rows per project; no cards (seen in screenshot)",
+   "mobile": "Measured: canvas dropped to 0, thumbnails 2-up, no overflow, 5174px tall.",
+   "borrow": "Numbered, toggleable index; drop WebGL on mobile.",
+   "avoid": "Plainness without a distinctive motion identity.",
+   "screenshots": [
+    "gil-huybrecht-1440.png",
+    "gil-huybrecht-390.png"
+   ],
+   "source": "https://www.awwwards.com/sites/gil-huybrecht"
+  },
+  {
+   "slug": "michael-gatt",
+   "url": "https://michaelgatt.com/",
+   "award": "Site of the Day",
+   "date": "2026-08-18",
+   "tech": [
+    "WebGL",
+    "Vue.js",
+    "Nuxt.js"
+   ],
+   "signature": "A sound-gate loader with words staggered on a diagonal, then 'enter without sound'.",
+   "motion": "Not measured. Documented: interactive loader, player equalizer, scroll storytelling on About; dev score 7.87.",
+   "effects": "1 canvas (measured); trigger not measured.",
+   "type": "Zapf Humanist Demi, small tracked uppercase (13.5px desktop, 21.9px mobile) (measured)",
+   "colour": "#0F0F0F and #CFCFCF (documented)",
+   "layout": "Gate screen then selected-work collection; no grid observed in hero",
+   "mobile": "Measured: identical gate, no overflow.",
+   "borrow": "Opt-in sound with a visible silent path.",
+   "avoid": "A blank gate that hides all content.",
+   "screenshots": [
+    "michael-gatt-1440.png",
+    "michael-gatt-390.png"
+   ],
+   "source": "https://www.awwwards.com/sites/michael-gatt"
+  },
+  {
+   "slug": "haoqi-design",
+   "url": "https://haoqi.design",
+   "award": "Site of the Day",
+   "date": "2026-08-14",
+   "tech": [
+    "Next.js",
+    "WebGL",
+    "Figma",
+    "3D design",
+    "UI design"
+   ],
+   "signature": "A glossy 3D 'hello' script and 3D cursor arrow on a sky-blue crosshair grid with mono HUD readouts.",
+   "motion": "Not measured. Documented: animations/transitions dev score 8.8; theme and sound toggles in nav.",
+   "effects": "1 canvas (measured) rendering 3D glass-like script; trigger not measured.",
+   "type": "Custom 'tiktok' grotesque for headline (heavy uppercase) plus mono 'tronica-mono' (measured)",
+   "colour": "Sky blue field with warm cream light, black text; page bg rgb(251,250,244) (measured)",
+   "layout": "4-column hairline grid with crosshair markers; no cards",
+   "mobile": "Measured: canvas retained, grid kept, headline moves to top, no overflow.",
+   "borrow": "Mono HUD micro-text as texture.",
+   "avoid": "Too many type treatments in one hero.",
+   "screenshots": [
+    "haoqi-design-1440.png",
+    "haoqi-design-390.png"
+   ],
+   "source": "https://www.awwwards.com/sites/haoqi-design"
+  },
+  {
+   "slug": "pensatori-irrazionali",
+   "url": "https://pensatori-irrazionali.com",
+   "award": "Site of the Day",
+   "date": "2026-09-20",
+   "tech": [
+    "WebGL",
+    "GSAP",
+    "Three.js",
+    "Navigation Menu"
+   ],
+   "signature": "A 3D ribbon of client logos sweeps across a light grey page.",
+   "motion": "Not measured. Documented: loader animation, smooth transitions, menu with video, Universe WebGL gallery, custom 404.",
+   "effects": "4 canvases desktop, 1 mobile (measured). Trigger not measured.",
+   "type": "helveticaNow body, PP Editorial, Some Type Mono, Ballet (measured); tight-tracked large grotesque statement",
+   "colour": "#4c4c4c and #f5f5f5 (documented) plus multicolour 3D ribbons",
+   "layout": "13453px scroll; hero statement bottom-left; no card grid observed",
+   "mobile": "Measured: canvases 4 to 1, 9004px, no overflow.",
+   "borrow": "Reduce canvas count on phones.",
+   "avoid": "Client-logo wall as hero proof.",
+   "screenshots": [
+    "pensatori-irrazionali-1440.png",
+    "pensatori-irrazionali-390.png"
+   ],
+   "source": "https://www.awwwards.com/sites/pensatori-irrazionali"
+  },
+  {
+   "slug": "leo-parpeix",
+   "url": "https://leoparpeix.com/",
+   "award": "Site of the Day",
+   "date": "2026-09-14",
+   "tech": [
+    "WebGL",
+    "After Effects",
+    "Blender",
+    "Animation",
+    "Microinteractions",
+    "Transitions",
+    "3D"
+   ],
+   "signature": "A clay-toned rendered studio scene with a soft flower sculpture as hero and grain overlay.",
+   "motion": "Not measured. Documented: Transitions, Microinteractions, creativity 8.04, dev 7.47.",
+   "effects": "2 canvases (measured); Webflow detected (heuristic). Trigger not measured.",
+   "type": "Custom 'text' grotesque, small (14px) with title face; tall quiet headline (measured)",
+   "colour": "Warm cream, wood and sky blue; text dark green rgb(2,32,22) (measured)",
+   "layout": "13231px scroll; nav Work/About/Playground; no grid in hero",
+   "mobile": "Measured: scene re-cropped, menu pills, 8320px, no overflow.",
+   "borrow": "Single-palette Blender-baked scene as the brand.",
+   "avoid": "Heavy prerendered scene without a lite fallback (estimate).",
+   "screenshots": [
+    "leo-parpeix-1440.png",
+    "leo-parpeix-390.png"
+   ],
+   "source": "https://www.awwwards.com/sites/leo-parpeix-portfolio-2026"
+  },
+  {
+   "slug": "gionatan-nese",
+   "url": "https://www.gionatannese.com/",
+   "award": "Site of the Day",
+   "date": "2026-09-05",
+   "tech": [
+    "WebGL",
+    "Three.js",
+    "GSAP",
+    "3D",
+    "Infinite Scroll",
+    "Sound/Audio"
+   ],
+   "signature": "A floating radial cloud of tiny project thumbnails with a numbered Creative Space switcher.",
+   "motion": "Not measured. Documented: animations/transitions 7.6, WPO 7.8, sound.",
+   "effects": "1 canvas (measured). Trigger not measured.",
+   "type": "Lay Grotesk plus Teodor serif (measured); 16px base, minimal",
+   "colour": "#000000 and #FFFFFF (documented), white page in screenshot",
+   "layout": "No grid; radial cloud, 1/2/3 space toggles",
+   "mobile": "Measured: identical layout, no overflow, no scroll; thumbnails tiny.",
+   "borrow": "Thumbnails as navigation.",
+   "avoid": "30px thumbnails with small touch targets.",
+   "screenshots": [
+    "gionatan-nese-1440.png",
+    "gionatan-nese-390.png"
+   ],
+   "source": "https://www.awwwards.com/sites/gionatan-nese-26"
+  },
+  {
+   "slug": "g-colombel",
+   "url": "https://guillaumecolombel.fr/",
+   "award": "Nominee",
+   "date": "2026-09-24",
+   "tech": [
+    "WebGL",
+    "Three.js",
+    "JavaScript",
+    "3D",
+    "Sound-Audio"
+   ],
+   "signature": "Each project is a 3D world; the hero is a glowing monolith in a foggy desert.",
+   "motion": "Not measured. Documented categories: Animation, Experimental, Sound-Audio.",
+   "effects": "2 canvases (measured); extruded outline type curves around the horizon. Trigger not measured.",
+   "type": "Neue Montreal, heavy extruded display plus outlined type (32px base) (measured)",
+   "colour": "Rust-red and amber fog palette, near-white headline (seen)",
+   "layout": "No page scroll (scrollHeight 900); no grid",
+   "mobile": "Measured: same scene, 2 canvases, no overflow.",
+   "borrow": "Project as environment, not thumbnail.",
+   "avoid": "Heavy scene and audio on first load.",
+   "screenshots": [
+    "g-colombel-1440.png",
+    "g-colombel-390.png"
+   ],
+   "source": "https://www.awwwards.com/sites/g-colombel-portfolio-2026"
+  },
+  {
+   "slug": "alejandro-ha",
+   "url": "https://alejandroha.com/",
+   "award": "Nominee",
+   "date": "2026-09-23",
+   "tech": [
+    "GSAP",
+    "Barba.js",
+    "Webflow"
+   ],
+   "signature": "A wide 72px 'ALEJANDRO [HA]' wordmark over a monochrome portrait, built with no WebGL.",
+   "motion": "Not measured. Documented: scroll-driven services transition, Transitions, Microinteractions.",
+   "effects": "None observed: 0 canvases (measured).",
+   "type": "atyp-bl-variable (measured), 72px desktop / 38px mobile uppercase",
+   "colour": "Light grey rgb(226,225,225), ink rgb(8,9,18), one blue pill CTA",
+   "layout": "10026px mobile scroll; no card grid observed in hero",
+   "mobile": "Measured: heading wraps, no overflow, language switch and badges overlay portrait.",
+   "borrow": "GSAP + Barba without WebGL is Awwwards-grade.",
+   "avoid": "Stacked pills crowding the phone hero.",
+   "screenshots": [
+    "alejandro-ha-1440.png",
+    "alejandro-ha-390.png"
+   ],
+   "source": "https://www.awwwards.com/sites/alejandro-ha-web-developer"
+  },
+  {
+   "slug": "kstoimenov",
+   "url": "https://kstoimenov.com/",
+   "award": "Nominee",
+   "date": "2026-09-28",
+   "tech": [
+    "GSAP",
+    "Figma"
+   ],
+   "signature": "A vertical-ribbed green shader gradient behind a headline alternating sans and italic serif lines.",
+   "motion": "Not measured. Documented: custom cursor, follow menu, page transitions, scroll-triggered testimonials.",
+   "effects": "2 canvases (measured) for the gradient. Trigger not measured.",
+   "type": "lausanne (sans) plus manier (italic serif) (measured); 24px desktop headline",
+   "colour": "Saturated green gradient on #121212",
+   "layout": "14179px; floating bottom pill nav; gallery list/grid interactions (documented)",
+   "mobile": "Measured: nav docks as bottom pill, CTA full width, no overflow.",
+   "borrow": "Sans/italic-serif alternation and thumb-reachable bottom nav.",
+   "avoid": "Neon gradient as the only identity.",
+   "screenshots": [
+    "kstoimenov-1440.png",
+    "kstoimenov-390.png"
+   ],
+   "source": "https://www.awwwards.com/sites/portfolio-26-1"
+  },
+  {
+   "slug": "john-gearhart",
+   "url": "https://johngearhart.me/",
+   "award": "Nominee",
+   "date": "2026-09-28",
+   "tech": [
+    "CSS",
+    "HTML5",
+    "JavaScript"
+   ],
+   "signature": "A full-screen swipe-to-browse case-study carousel with colour-swapped backgrounds and rounded image frame.",
+   "motion": "Not measured. Documented: intro animation, project transitions, frosted page transitions, 3D icon navigation, gesture overlays.",
+   "effects": "1 canvas (measured). GSAP/Barba/Three detected by heuristic only; Awwwards credits only CSS, HTML5, JavaScript.",
+   "type": "Bebas Neue condensed display, Roboto, Neue Haas Grotesk, Heathergreen, Japanese Kozuka (measured)",
+   "colour": "Per-project flat background (tan in screenshot)",
+   "layout": "One project per screen; catalog view toggle; no card grid",
+   "mobile": "Measured: works, image reflows, no overflow.",
+   "borrow": "One project per screen with a swipe affordance.",
+   "avoid": "Placeholder stock content.",
+   "screenshots": [
+    "john-gearhart-1440.png",
+    "john-gearhart-390.png"
+   ],
+   "source": "https://www.awwwards.com/sites/john-gearhart-portfolio-2026"
+  }
+ ],
+ "sources": [
+  "https://www.awwwards.com/sites/jesper-landberg-4",
+  "https://www.awwwards.com/sites/meer-mohsin",
+  "https://www.awwwards.com/sites/gil-huybrecht",
+  "https://www.awwwards.com/sites/michael-gatt",
+  "https://www.awwwards.com/sites/haoqi-design",
+  "https://www.awwwards.com/sites/pensatori-irrazionali",
+  "https://www.awwwards.com/sites/leo-parpeix-portfolio-2026",
+  "https://www.awwwards.com/sites/gionatan-nese-26",
+  "https://www.awwwards.com/sites/g-colombel-portfolio-2026",
+  "https://www.awwwards.com/sites/alejandro-ha-web-developer",
+  "https://www.awwwards.com/sites/portfolio-26-1",
+  "https://www.awwwards.com/sites/john-gearhart-portfolio-2026",
+  "https://www.awwwards.com/sites/studio-k95",
+  "https://www.awwwards.com/sites/minh-pham",
+  "https://www.awwwards.com/websites/sites_of_the_day/",
+  "https://www.awwwards.com/websites/portfolio/"
+ ],
+ "corrections": [
+  {
+   "claim": "Patterns: Awwwards-credited tech (documented, n=12): WebGL or Three.js 10, GSAP 7, Nuxt/Next 5, Webflow 2.",
+   "correction": "The pack's own per-item Awwwards tech fields give WebGL or Three.js on 9 sites (Alejandro HA, kstoimenov and Gearhart have none). They give GSAP on 6 sites, because Gearhart has no GSAP credit. Nuxt or Next is credited on 4 sites (Jesper, Gil, Gatt, Haoqi); kstoimenov's Next.js is only a probe result. Webflow is credited on 1 site (Alejandro); Leo's Webflow is a heuristic detection. The headline counts mix documented and measured data and overstate the documented totals.",
+   "source": "Pack items[].tech vs awwwards.com/sites/* (fetched: jesper-landberg-4, gil-huybrecht, michael-gatt, haoqi-design, alejandro-ha-web-developer, portfolio-26-1, john-gearhart-portfolio-2026)"
+  },
+  {
+   "claim": "Lenis detected on 9 sites (measured heuristic).",
+   "correction": "Only Meer Mohsin, Gil Huybrecht and Alejandro HA are named as Lenis sites anywhere in the pack. The per-site items support 3 at most, not 9. I could not re-run the probe, so the figure is unsupported.",
+   "source": "Pack items[].effects and docMarkdown; no probe output is attached"
+  },
+  {
+   "claim": "John Gearhart: 'Awwwards credits CSS, HTML5, JavaScript'.",
+   "correction": "The Awwwards page lists CSS3, HTML5 and JavaScript, plus 3D, Gestures/Interaction and Microinteractions. This is minor.",
+   "source": "https://www.awwwards.com/sites/john-gearhart-portfolio-2026"
+  }
+ ],
+ "unsupported": [
+  "HAOQI.DESIGN 'Documented: theme and sound toggles in nav'. The Awwwards page text I fetched does not mention theme or sound toggles. They may be visible only on the live site, so this is a measured or seen claim, not a documented one.",
+  "'6 of 12 are black or white with one accent'. No per-site data supports this, and the pack does not say how sites were counted.",
+  "Gearhart 'demo project is Ana Deufont, April 2022'. The live site shows 'COMPLETED April 2022' but a text fetch did not show 'Ana Deufont'. The name could be in an image, or it could be wrong.",
+  "Probe-based measurements (canvas counts, scrollHeights such as 28172, 23294, 13453 and 14107, computed fonts, mobile overflow). I did not re-run the probe, so they are unverified. The screenshots exist for all 24 captures, but I did not open them.",
+  "Internal inconsistency: kstoimenov scrollHeight is 14179 in the item and 14107 in the markdown (the markdown figure is labelled mobile, so this may be a desktop vs mobile difference).",
+  "The Awwwards pages carry no palette for Haoqi, Leo or Alejandro. The pack marks these as measured, which is acceptable, but Alejandro's 'blue pill CTA' and the Leo and Haoqi colours are unverifiable here.",
+  "'Produx (Honorable Mention, 13 Jun 2026)' was not checked."
+ ]
+}
