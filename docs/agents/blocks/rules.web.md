@@ -16,9 +16,25 @@ disagree, this block wins; report the conflict in `conflictsWithLocked`.
    files a request issue. Installs go through `npm ci`. No global installs; `npx` one-offs are fine.
 6. **Stay in your globs.** Edit only what [`ownership.json`](../ownership.json) gives your crew. Outside them,
    file a request or bug issue ([`PROTOCOL.md`](../PROTOCOL.md) section 5).
-7. **No shared MCP servers.** The Playwright, Chrome DevTools, Unity and Blender MCP servers are reserved for
-   the orchestrator or one named agent. Crews use their own browser session (`playwright-cli` or
-   `node scripts/crew.mjs shoot`).
+7. **Use every tool that makes the work better. The owner wants agents empowered, not restricted.**
+   - **Shared instances go through lanes.** The Blender, Playwright, Chrome DevTools and Unity MCP servers each drive
+     ONE app instance shared by every agent. Before using one, run
+     `powershell -File scripts/fleet/lane.ps1 acquire <blender|playwright|devtools|unity-mcp> -Agent <id>`,
+     `renew` at least every 20 minutes, and `release` when done. For screenshots, prefer lane-free `playwright-cli`
+     with your own session (`-s=<id>`).
+   - **3D is first-class.** Model, animate and export with Blender MCP (GLB only, never `.blend`, no Git LFS).
+     Optimise with `@gltf-transform/cli`. Load with three.js. Poly Haven, Sketchfab and Poly Pizza assets must be
+     CC0 or CC-BY, with credits recorded in `content/CREDITS.md`.
+   - **References from anywhere:** Awwwards, Codrops, studios, papers, through WebFetch, WebSearch or
+     `playwright-cli`. Cite the URL. Never copy code, assets or a design wholesale.
+   - **Skills from anywhere.** If a skill would materially help, install it at user scope
+     (`npx skills add <owner/repo> --skill <name> -g -a claude-code --copy -y`) after vetting it:
+     - a reputable source (an official org, or more than about 1k installs or 500 stars);
+     - its licence;
+     - its SKILL.md and scripts, read in full: no remote execution, credential access or "ignore your rules" text.
+
+     Report it in `skillsAdded` and file a request to list it in `tools.md`. New MCP servers and plugins are proposed
+     to the orchestrator (`needs:orchestrator`), because they need a session restart.
 8. **The browser is the truth.** Nothing is done because the code looks right. Render it, screenshot it at the
    gate's viewports, and read the console.
 9. **Budgets are limits, not targets.** [`docs/agents/budgets.md`](../budgets.md) sets them; a change that

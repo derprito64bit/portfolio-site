@@ -1,4 +1,4 @@
-# North Star — v1.0 (signed by the owner, 2026-10-02)
+# North Star — v1.1 (signed by the owner, 2026-10-02; v1.1 adds the owner's "2D with heavy 3D" clarification)
 
 Every agent's output is judged against this page. It changes only with a new version number. Where it conflicts
 with `owner-voice.md`, the owner's words win.
@@ -29,6 +29,10 @@ work laptop or a phone.
 
 - **Front Door:**
   - beats 1–3 completely, plus beat 4 as a teaser and the "Enter the Manor" handoff;
+  - **a 2D site with heavy 3D.** The layout, reading order and navigation are 2D and editorial. Real three.js 3D
+    (models, scenes, mesmerising effects and transitions) is a core ingredient, not decoration. The owner named
+    two references: portfolio-zxc (3D models used heavily) and Jesper Landberg (3D-driven effects in a 2D site).
+    On weak hardware the 3D degrades to designed stills and posters, never to a broken page;
   - it is the SEO and sharing surface;
   - phones only ever see this door.
 - **Manor:**
