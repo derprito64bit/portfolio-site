@@ -1,0 +1,50 @@
+name: Bug
+description: A defect, especially one outside your crew's globs.
+title: "[bug] "
+labels: ["type:bug", "status:ready"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Add a `needs:<crew id>` label for the crew that owns the path (docs/agents/ownership.json), or `needs:orchestrator` if no crew owns it.
+  - type: input
+    id: where
+    attributes:
+      label: Where
+      description: URL or route, and the file path if known.
+      placeholder: /work/project-01/ at 390x844
+    validations:
+      required: true
+  - type: input
+    id: sha
+    attributes:
+      label: SHA or branch
+      placeholder: abc1234 on main
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Include the viewport, browser, and whether WebGL and reduced motion were on.
+      value: "1. "
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected and actual
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: Screenshot paths or attachments, console output, the command and its output.
+    validations:
+      required: true
+  - type: input
+    id: found-by
+    attributes:
+      label: Found by
+      placeholder: w-c3 (issue #12)
