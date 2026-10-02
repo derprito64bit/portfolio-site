@@ -50,7 +50,7 @@ function Get-Claim([string]$name) {
 }
 
 function Write-Owner([string]$file) {
-    [IO.File]::WriteAllText($file, "$Agent | pid $PID | $((Get-Date).ToString('yyyy-MM-dd HH:mm:ss'))", $utf8)
+    [IO.File]::WriteAllText($file, "$Agent | $((Get-Date).ToString('yyyy-MM-dd HH:mm:ss'))", $utf8)
 }
 
 if ($Command -eq 'status') {
