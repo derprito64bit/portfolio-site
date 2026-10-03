@@ -6,6 +6,8 @@ export const stats = {
   ticks: 0,
   /** Frames that rendered. */
   draws: 0,
+  /** Active frames that skipped the render: nothing to draw and the canvas already clear. */
+  renderSkips: 0,
   /** WebGL draw calls issued by those frames (renderer.info.render.calls, summed). */
   drawCalls: 0,
   /** Slot re-measures, and how many of them ran inside a ticker frame. */

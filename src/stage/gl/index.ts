@@ -85,6 +85,8 @@ const views = new Set<StageViewImpl>();
 let lost = false;
 let dead = false;
 let represent = 0;
+/** The last presented frame drew nothing, so the canvas shows only the clear colour. */
+let presentedClear = false;
 const lossTimes: number[] = [];
 
 class StageViewImpl implements StageView {
@@ -115,6 +117,7 @@ function resize(): void {
   if (kind === 'realloc') {
     renderer.setPixelRatio(view.dpr);
     renderer.setSize(view.W, view.Hc, false);
+    presentedClear = false;
     markDirty();
   } else if (kind === 'height') {
     // On a coarse pointer a height-only change is the toolbar: layouts use svh and lvh, so slots stay put and are
@@ -149,6 +152,12 @@ function hasContent(): boolean {
 // ---------------------------------------------------------------- the frame
 function render(sy: number): void {
   if (!renderer || lost || dead) return;
+  // Nothing to draw and the canvas already clear (a page without GL content scrolling under Lenis): skip the clear,
+  // the placement and the present. The first frame with content re-anchors and draws as usual.
+  if (presentedClear && represent === 0 && !hasContent() && !pageScene.children.some((c: any) => c.visible)) {
+    stats.renderSkips++;
+    return;
+  }
   const before = view.anchor;
   const anchor = place(sy, scrollState.dir);
   // A re-anchor moves the canvas and redraws it in one frame. WebKit (measured on its Windows build) can present the
@@ -187,6 +196,7 @@ function render(sy: number): void {
     renderer.render(v.scene, v.camera);
   }
   renderer.setScissorTest(false);
+  presentedClear = renderer.info.render.calls === 0;
   stats.draws++;
   stats.drawCalls += renderer.info.render.calls;
 }
@@ -230,6 +240,7 @@ function onLost(e: Event): void {
 function onRestored(): void {
   if (dead || getTier() === 'static') return;
   lost = false;
+  presentedClear = false;
   stats.restores++;
   for (const e of entities.values()) e.restore?.();
   resize();

@@ -8,17 +8,19 @@ const html = document.documentElement;
 const media = matchMedia('(prefers-reduced-motion: reduce)');
 const listeners = new Set<(m: Motion) => void>();
 
-function stored(): string | null {
+const parse = (v: string | null): Motion | null => (v === 'reduced' || v === 'full' ? v : null);
+function stored(): Motion | null {
   try {
-    return localStorage.getItem(MOTION_KEY);
+    return parse(localStorage.getItem(MOTION_KEY));
   } catch {
     return null;
   }
 }
+// The choice lives in memory; storage only carries it across pages and tabs. So the switch still works for this page
+// where storage throws (blocked site data, some private modes).
+let choice: Motion | null = stored();
 function compute(): Motion {
-  const s = stored();
-  if (s === 'reduced' || s === 'full') return s;
-  return media.matches ? 'reduced' : 'full';
+  return choice ?? (media.matches ? 'reduced' : 'full');
 }
 
 let current: Motion = compute();
@@ -33,7 +35,10 @@ function apply(): void {
 }
 media.addEventListener('change', apply);
 addEventListener('storage', (e) => {
-  if (e.key === MOTION_KEY) apply();
+  // Another tab changed the switch (key null: storage was cleared).
+  if (e.key !== MOTION_KEY && e.key !== null) return;
+  choice = e.key === null ? null : parse(e.newValue);
+  apply();
 });
 
 export function getMotion(): Motion {
@@ -44,11 +49,12 @@ export function isReduced(): boolean {
 }
 /** The Motion switch (W-C9) calls this. null clears the stored choice, so the OS setting applies again. */
 export function setMotion(value: Motion | null): void {
+  choice = value;
   try {
     if (value) localStorage.setItem(MOTION_KEY, value);
     else localStorage.removeItem(MOTION_KEY);
   } catch {
-    /* private mode: the change still applies for this page */
+    /* storage blocked: the in-memory choice still applies for this page */
   }
   apply();
 }
