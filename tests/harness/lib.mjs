@@ -153,6 +153,31 @@ export async function stageState(page) {
 }
 export const SOFTWARE_RENDERER = /SwiftShader|llvmpipe|softpipe|Basic Render|Software/i;
 
+// ---------------------------------------------------------------- the LCP element (W-D030, budgets.md)
+/**
+ * The LCP element of a Lighthouse report. Lighthouse 13 reports it as the node item of lcp-breakdown-insight; the
+ * largest-contentful-paint-element audit (Lighthouse 12 and older) is the fallback. Null when neither has a node.
+ */
+export function lcpElementOf(lhr) {
+  const insight = lhr?.audits?.['lcp-breakdown-insight']?.details?.items?.find((x) => x?.type === 'node');
+  const legacy = lhr?.audits?.['largest-contentful-paint-element']?.details?.items?.[0]?.items?.[0]?.node;
+  const node = insight ?? (legacy?.type === 'node' || legacy?.snippet ? legacy : null);
+  if (!node) return null;
+  return { source: insight ? 'lcp-breakdown-insight' : 'largest-contentful-paint-element', selector: node.selector ?? null, snippet: node.snippet ?? null, nodeLabel: node.nodeLabel ?? null };
+}
+const isH1 = (e) => /^<h1[\s>]/i.test(e.snippet ?? '') || /(^|[\s>])h1(?=[#.[:]|$)/i.test(String(e.selector ?? '').split('>').pop().trim());
+/** Print 1's DOM still carries data-lcp="print-1" (the marker W-S1's hero puts on it); Lighthouse's snippet shows it. */
+const isPrint1Still = (e) => /\bdata-lcp="print-1"/.test(e.snippet ?? '');
+/**
+ * budgets.md: the LCP element is the h1 on mouse profiles (Lighthouse desktop), or the h1 or print 1's still on touch
+ * profiles (Lighthouse mobile). Returns { ok, why }.
+ */
+export function lcpElementVerdict(el, formFactor) {
+  if (!el) return { ok: false, why: 'no LCP element in the report' };
+  const ok = formFactor === 'desktop' ? isH1(el) : isH1(el) || isPrint1Still(el);
+  return ok ? { ok: true, why: null } : { ok: false, why: `LCP element ${el.selector ?? el.snippet} is not ${formFactor === 'desktop' ? 'the h1' : "the h1 or print 1's still"}` };
+}
+
 // ---------------------------------------------------------------- evidence
 export function sha256(buf) {
   return createHash('sha256').update(buf).digest('hex');

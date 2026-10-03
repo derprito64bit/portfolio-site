@@ -7,6 +7,8 @@
 //   detach    a ticker kept awake (__stage.invalidate every 250 ms) must fail the counters' after-scroll idle window
 //   resize    ResizeObserver callbacks deferred by a task (GL re-measures a frame after the layout moved, the round-2
 //             defect) must fail the drift harness's resize probe at a toolbar collapse and expand
+//   lcp       a wrong or missing Lighthouse LCP element (budgets.md: the h1 on desktop; the h1 or print 1's still on
+//             mobile) must make the run invalid
 // (The console gate's 5 injected faults live in tests/harness/console.)
 // Usage: node tests/w-f/negatives.mjs [--out negatives.json]
 import { spawnSync } from 'node:child_process';
@@ -15,7 +17,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { validateContent } from '../../src/lib/content/validate.js';
 import { scanInPage } from '../../scripts/check/stacking.mjs';
-import { ROOT, cliMain, newContext, serve, sleep, waitSettled } from '../harness/lib.mjs';
+import { ROOT, cliMain, lcpElementOf, lcpElementVerdict, newContext, serve, sleep, waitSettled } from '../harness/lib.mjs';
 import { INIT as COUNTERS_INIT, idleAfterScroll } from '../harness/counters/run.mjs';
 import { resizeProbeOnly } from '../harness/drift/run.mjs';
 
@@ -106,6 +108,35 @@ async function detachControl() {
   }
 }
 
+/**
+ * The Lighthouse LCP element rule (crew.mjs lighthouse, budgets.md) on report fragments shaped like Lighthouse 13.5's
+ * lcp-breakdown-insight and Lighthouse 12's largest-contentful-paint-element: a wrong or missing element must make the
+ * run invalid.
+ */
+function lcpControl() {
+  const insight = (node) => ({ audits: { 'lcp-breakdown-insight': { details: { type: 'list', items: [{ type: 'table', items: [] }, ...(node ? [{ type: 'node', ...node }] : [])] } } } });
+  const legacy = (node) => ({ audits: { 'largest-contentful-paint-element': { details: { type: 'list', items: [{ type: 'table', items: [{ node: { type: 'node', ...node } }] }] } } } });
+  const h1 = { selector: 'main#main > section.hero > div.wordmark-fit > h1#hero-title', snippet: '<h1 id="hero-title" class="wordmark">' };
+  const img = { selector: 'main#main > section.hero > figure > img', snippet: '<img src="/a.webp" alt="">' };
+  const print1 = { selector: 'main#main > section.hero > figure > img', snippet: '<img src="/p1.webp" alt="" data-lcp="print-1">' };
+  const cases = [
+    ['h1, desktop', insight(h1), 'desktop', true],
+    ['h1, mobile', insight(h1), 'mobile', true],
+    ['print 1 still, mobile', insight(print1), 'mobile', true],
+    ['print 1 still, desktop', insight(print1), 'desktop', false],
+    ['other image, mobile', insight(img), 'mobile', false],
+    ['other image, desktop', insight(img), 'desktop', false],
+    ['no element', insight(null), 'mobile', false],
+    ['h1 from the Lighthouse 12 audit', legacy(h1), 'desktop', true],
+  ];
+  const rows = cases.map(([name, lhr, ff, expect]) => {
+    const el = lcpElementOf(lhr);
+    const v = lcpElementVerdict(el, ff);
+    return { name, formFactor: ff, element: el?.selector ?? null, source: el?.source ?? null, ok: v.ok, why: v.why, expect, correct: v.ok === expect };
+  });
+  return { rows, pass: rows.every((r) => r.correct) };
+}
+
 /** A one-frame GL lag at a layout change: ResizeObserver callbacks deferred a task must fail the drift resize probe. */
 async function resizeControl() {
   const srv = await serve();
@@ -121,7 +152,7 @@ async function resizeControl() {
 }
 
 export async function run() {
-  const out = { content: contentControl(), phGate: phGateControl(), stacking: await stackingControl(), lint: lintControl(), detach: await detachControl(), resize: await resizeControl() };
+  const out = { content: contentControl(), phGate: phGateControl(), stacking: await stackingControl(), lint: lintControl(), detach: await detachControl(), resize: await resizeControl(), lcp: lcpControl() };
   const parts = Object.entries(out);
   return { schema: 1, suite: 'w-f/negatives', pass: parts.every(([, v]) => v.pass), ...out, summary: parts.map(([k, v]) => `${k} ${v.pass ? 'caught' : 'MISSED'}`).join(', ') };
 }

@@ -108,7 +108,11 @@ The item kinds are:
 
 - **shoot:** `shot`, `shot-full`, `console` and `page`. A `page` item covers the tier assertion, settled and overflow.
 - **a11y:** `axe`, `a11y-tree`, `text-over-gl`, `keyboard-walk`, `text-spacing`, `forced-colors` and `dark`.
-- **lighthouse:** `lighthouse-run` and `lighthouse`. The `lighthouse` item is the median by score, valid only when
-  `stage:renderer` is a real GPU and `stage:tier` is lite (mobile) or full (desktop).
+- **lighthouse:** `lighthouse-run` and `lighthouse`. The `lighthouse` item is the median by score. A run is valid only
+  when `stage:renderer` is a real GPU, `stage:tier` is lite (mobile) or full (desktop), and the LCP element is the one
+  `budgets.md` names: the h1 on desktop; the h1 or print 1's still on mobile. The element comes from Lighthouse 13's
+  `lcp-breakdown-insight` (fallback: the older `largest-contentful-paint-element` audit); print 1's still is the
+  element carrying `data-lcp="print-1"`. `lcpElementOf()` and `lcpElementVerdict()` in `lib.mjs` hold the rule, and
+  each run records `invalid[]` with the reasons.
 
 Any failed item makes the command exit 1. The gate re-runs the same command with `--role gate`.
