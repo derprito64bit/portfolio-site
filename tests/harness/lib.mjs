@@ -118,9 +118,13 @@ export function consoleGate(page, { expectStatus = [] } = {}) {
     events,
     verdict() {
       const failures = [];
+      const expectedStatuses = new Set(events.filter((e) => e.channel === 'response' && e.expected).map((e) => Number(e.text.split(' ')[0])));
       for (const e of events) {
         const allowed = allow.find((a) => a.re.test(e.text));
         if (e.channel === 'response' && e.expected) continue;
+        // Chrome echoes every 4xx response to the console; an expected status covers its echo.
+        const echo = e.channel === 'console' && e.text.match(/Failed to load resource: the server responded with a status of (\d+)/);
+        if (echo && expectedStatuses.has(Number(echo[1]))) continue;
         if (e.channel !== 'console') failures.push(e);
         else if (e.level === 'error') failures.push(e);
         else if (CONSOLE_RE.test(e.text) && !allowed) failures.push(e);
@@ -238,6 +242,28 @@ export async function writeManifest(dir, items, extra = {}) {
     items,
   };
   return writeJson(join(dir, extra.name ?? 'manifest.json'), manifest);
+}
+
+/**
+ * Standard instrument entry point: `node tests/harness/<name>/run.mjs [--out file.json] [...]`.
+ * Runs `fn(opts)`, which returns { pass, ... }; writes the JSON when --out is given; exits 1 on FAIL.
+ */
+export async function cliMain(metaUrl, fn) {
+  if (!process.argv[1] || resolve(process.argv[1]) !== fileURLToPath(metaUrl)) return;
+  const opts = cliOpts();
+  let result;
+  try {
+    result = await fn(opts);
+  } catch (e) {
+    result = { pass: false, error: String(e?.stack || e) };
+  } finally {
+    await closeBrowsers();
+  }
+  if (opts.out) writeJson(resolve(opts.out), result);
+  const name = fileURLToPath(metaUrl).split(/[\\/]/).slice(-2, -1)[0];
+  console.log(`${name}: ${result.pass ? 'PASS' : 'FAIL'}${result.summary ? `  ${result.summary}` : ''}${result.error ? `\n${result.error}` : ''}`);
+  if (opts.verbose) console.log(JSON.stringify(result, null, 2));
+  process.exitCode = result.pass ? 0 : 1;
 }
 
 /** One manifest item for a file on disk. */

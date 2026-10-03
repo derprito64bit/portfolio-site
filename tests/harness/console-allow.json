@@ -1,0 +1,4 @@
+{
+  "$comment": "Dated console-warning allowlist (W-D030). Every entry needs a regex, a reason, who added it and an expiry (YYYY-MM-DD); expired entries stop matching. Errors are never allowlisted.",
+  "allow": []
+}
