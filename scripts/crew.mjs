@@ -9,7 +9,9 @@
 //                                               ring coverage, text spacing, forced colours, dark scheme, an
 //                                               accessibility-tree snapshot per route and the text-over-GL check
 //   node scripts/crew.mjs lighthouse [opts]     Lighthouse 13.5.0, 5 runs per form factor, median by score, valid
-//                                               only on a real renderer at the expected tier
+//                                               only on a real renderer at the expected tier; every run must request
+//                                               GL after the observed FCP (D-005), and the medians must meet the LCP,
+//                                               TBT and CLS budgets (budgets.md)
 // Options: --routes /,/work/project-01/,/404.html  --profiles D1,D2,...  --modes auto,static,reduced
 //          --crew W-F  --wave wave3a  --role crew|gate  --out <dir>
 // Evidence goes to ../portfolio-evidence/<wave>/<crew>/<sha7>/<role>/<command>/ with manifest.json. Any failed item
@@ -269,6 +271,7 @@ function runAsync(cmd, args) {
   });
 }
 
+const GL_CHUNK = /\/_astro\/(gl|three\.[a-z]+)\.[\w-]+\.js$/;
 async function lighthouse() {
   const lib = await harness();
   const { startServer } = await import('./serve-dist.mjs');
@@ -295,8 +298,15 @@ async function lighthouse() {
           const renderer = timings.find((n) => n.startsWith('stage:renderer='))?.slice(15) ?? null;
           const tier = timings.find((n) => n.startsWith('stage:tier='))?.slice(11).split(':')[0] ?? null;
           const valid = Boolean(renderer) && !lib.SOFTWARE_RENDERER.test(renderer) && tier === (ff === 'mobile' ? 'lite' : 'full');
+          // D-005: the GL chunk loads after first paint. Observed FCP and the user-timing mark share the navigation
+          // clock; network-requests times start at the document request, which is at or after navigation start.
+          const observedFcp = lhr.audits.metrics?.details?.items?.[0]?.observedFirstContentfulPaint ?? null;
+          const glMarkMs = lhr.audits['user-timings']?.details?.items?.find((x) => x.name === 'stage:gl-start')?.startTime ?? null;
+          const glReqs = (lhr.audits['network-requests']?.details?.items ?? []).filter((x) => GL_CHUNK.test(new URL(x.url).pathname));
+          const glRequestMs = glReqs.length ? Math.min(...glReqs.map((x) => x.networkRequestTime ?? x.rendererStartTime)) : null;
+          const glAfterFcp = observedFcp !== null && glMarkMs !== null && glRequestMs !== null && glMarkMs > observedFcp && glRequestMs > observedFcp;
           reports.push({
-            run: i + 1, file: `${slug(route)}-${ff}-${i + 1}.json`, valid, renderer, tier,
+            run: i + 1, file: `${slug(route)}-${ff}-${i + 1}.json`, valid, renderer, tier, observedFcp, glMarkMs, glRequestMs, glAfterFcp,
             performance: lhr.categories.performance.score, accessibility: lhr.categories.accessibility.score, bestPractices: lhr.categories['best-practices'].score, seo: lhr.categories.seo?.score ?? null,
             lcp: lhr.audits['largest-contentful-paint'].numericValue, cls: lhr.audits['cumulative-layout-shift'].numericValue, tbt: lhr.audits['total-blocking-time'].numericValue, fcp: lhr.audits['first-contentful-paint'].numericValue,
             lcpElement: JSON.stringify(lhr.audits['largest-contentful-paint-element']?.details?.items?.[0]?.items?.[0]?.node?.snippet ?? null),
@@ -305,10 +315,16 @@ async function lighthouse() {
         const sorted = [...reports].sort((a, b) => a.performance - b.performance);
         const median = sorted[Math.floor(sorted.length / 2)];
         const need = ff === 'mobile' ? 0.9 : 0.95;
+        // budgets.md: LCP <= 2.5 s mobile and <= 2.0 s desktop, TBT <= 150 ms, CLS <= 0.02; each a median over the runs.
+        const med = (k) => [...reports].map((r) => r[k]).sort((a, b) => a - b)[Math.floor(reports.length / 2)];
+        const budget = { lcp: ff === 'mobile' ? 2500 : 2000, tbt: 150, cls: 0.02 };
+        const medians = { lcp: med('lcp'), tbt: med('tbt'), cls: med('cls'), fcp: med('fcp') };
+        const budgetPass = medians.lcp <= budget.lcp && medians.tbt <= budget.tbt && medians.cls <= budget.cls;
+        const glOrderPass = reports.every((r) => r.glAfterFcp);
         const summaryFile = `${slug(route)}-${ff}-summary.json`;
-        lib.writeJson(join(dir, summaryFile), { route, formFactor: ff, runs: reports, median });
-        for (const r of reports) items.push(lib.item(dir, r.file, { kind: 'lighthouse-run', route, profile: ff, mode: 'auto', tier: r.tier, pass: r.valid, metrics: { performance: r.performance, accessibility: r.accessibility, cls: r.cls, renderer: r.renderer } }));
-        items.push(lib.item(dir, summaryFile, { kind: 'lighthouse', route, profile: ff, mode: 'auto', tier: median.tier, pass: reports.every((r) => r.valid) && median.performance >= need && median.accessibility === 1 && median.cls === 0, metrics: { medianPerformance: median.performance, accessibility: median.accessibility, bestPractices: median.bestPractices, cls: median.cls, lcp: Math.round(median.lcp), tbt: Math.round(median.tbt), fcp: Math.round(median.fcp), renderer: median.renderer, lcpElement: median.lcpElement } }));
+        lib.writeJson(join(dir, summaryFile), { route, formFactor: ff, runs: reports, median, medians, budget, budgetPass, glOrderPass });
+        for (const r of reports) items.push(lib.item(dir, r.file, { kind: 'lighthouse-run', route, profile: ff, mode: 'auto', tier: r.tier, pass: r.valid && r.glAfterFcp, metrics: { performance: r.performance, accessibility: r.accessibility, cls: r.cls, lcp: Math.round(r.lcp), renderer: r.renderer, observedFcp: r.observedFcp, glMarkMs: r.glMarkMs === null ? null : Math.round(r.glMarkMs), glRequestMs: r.glRequestMs === null ? null : Math.round(r.glRequestMs), glAfterFcp: r.glAfterFcp } }));
+        items.push(lib.item(dir, summaryFile, { kind: 'lighthouse', route, profile: ff, mode: 'auto', tier: median.tier, pass: reports.every((r) => r.valid) && median.performance >= need && median.accessibility === 1 && median.cls === 0 && budgetPass && glOrderPass, metrics: { medianPerformance: median.performance, accessibility: median.accessibility, bestPractices: median.bestPractices, cls: median.cls, medianLcp: Math.round(medians.lcp), medianTbt: Math.round(medians.tbt), medianFcp: Math.round(medians.fcp), lcpBudget: budget.lcp, budgetPass, glAfterFcpRuns: reports.filter((r) => r.glAfterFcp).length, runs: reports.length, renderer: median.renderer, lcpElement: median.lcpElement } }));
       }
     }
   } finally {
