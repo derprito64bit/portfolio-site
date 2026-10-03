@@ -45,15 +45,18 @@ built `dist/` served by `scripts/serve-dist.mjs` (gzip, Pages rules), and prints
 
 ## Result schemas
 
-Every result has `schema: 1`, `instrument` (or `suite`), `pass` and `summary`. The fields that follow are specific to
+Every result has `schema` (1 unless noted), `instrument` (or `suite`), `pass` and `summary`. The fields that follow are specific to
 each instrument.
 
 ```text
 console   { fixtures: [{fault, caught, expectedChannel, channels[], byExpectedChannel, sample}], caught: "5/5",
             routes: [{profile, route, pass, events, failures[]}], regex }
 overflow  { rows: [{profile, mode, route, maxOverflowPx, samples, offenders[], pass}] }
-drift     { rows: [{browser, input, toolbarChangePx, frames, samples, maxDriftPx, clippedSamples, maxClipPx, missing,
+drift     { rows: [{browser, input, toolbarChangePx, frames, samples, maxDriftPx, shiftedSamples, clipTopSamples,
+            maxClipTopPx, clipBottomSamples, maxClipBottomPx, clipped[{frame, idx, edge, px}], missing,
             reallocOnHeight, coarse, tier, histogram{driftPx: count}, worst, pass}] }
+            (each sample: {idx, cls: glued|clipped|shifted, edge, topErr, bottomErr, drift}; clips are coverage at a
+            canvas edge, reported per edge; pass needs no shifted sample)
 gpu       { results: [{scenario, profile, loads, renderer, valid, tier, canvas{w,h,px}, dpr, medianOfMediansMs,
             medians[], shader}] }
 idle      { displayHz, renderer, rows: [{profile, route, taskMsPerSec, scriptMsPerSec, ticks, renders, pass}] }
@@ -70,8 +73,11 @@ flash     self-test: { rows: [{case, expectPass, analyserPass, generalPerSecond,
 keyboard  { rows: [{profile, walks: [{route, stops, failing[], minCoverage, detail[]}], roundtrip{started,
             afterBack{id,tag}, nextTab, pass}, hash{focus, pass}, anchor{samples, first, last, monotonic, focus,
             pass}, pass}] }
-counters  { rows: [{profile, route, tier, idle{gate{raf, rafFromDependencies, draws, rectReadsInRaf},
-            stage{ticks, drawCalls, renders}, ms}, idlePass, active{...}, matchPass, scroll{...}, scrollPass, pass}] }
+counters  schema 2: { motionEndWindow, rows: [{profile, route, tier, gl{entities, views, ...}, empty,
+            idle{gate{raf, rafFromDependencies, draws, clears, rectReadsInRaf}, stage{ticks, drawCalls, renders,
+            renderSkips}, ms}, idlePass, afterScroll{input, motionEndsMs, motionEndsBy, frameMs, lastRafAfterMotionMs,
+            afterMotion{fromMs, toMs, raf, draws}, afterInput{fromMs, toMs, raf, draws}, scrolledTo, counts{...}}, afterScrollPass, active{...}, matchPass,
+            emptyPass, scroll{...}, scrollPass, pass}] }
 ```
 
 ## GES-1 manifest (`scripts/crew.mjs shoot | a11y | lighthouse`)

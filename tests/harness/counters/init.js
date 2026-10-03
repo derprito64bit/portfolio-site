@@ -1,7 +1,10 @@
 // Gate-owned counters (W-D030), installed with page.addInitScript before any page script runs. They count what the
 // browser actually did, independent of the stage's own __stage.stats, so the two can be cross-checked.
 (() => {
-  const C = (window.__gateCounters = { raf: 0, rafRequests: 0, rafByDependency: {}, draws: 0, rectReads: 0, rectReadsInRaf: 0 });
+  const C = (window.__gateCounters = { raf: 0, rafRequests: 0, rafByDependency: {}, draws: 0, clears: 0, rectReads: 0, rectReadsInRaf: 0, rafTimes: [], drawTimes: [], lastScrollAt: 0 });
+  // Timestamps (capped) let the harness measure a window that starts when motion ends, not only when input ends.
+  const stamp = (list) => { if (list.length < 20000) list.push(performance.now()); };
+  addEventListener('scroll', () => { C.lastScrollAt = performance.now(); }, { capture: true, passive: true });
   let inRaf = 0;
   const raf = window.requestAnimationFrame;
   // Attribute each callback to the bundle that asked for it: src/ has one call site (the ticker); dependencies such
@@ -15,6 +18,7 @@
     const dep = source();
     return raf.call(window, (t) => {
       C.raf++;
+      stamp(C.rafTimes);
       if (dep) C.rafByDependency[dep] = (C.rafByDependency[dep] || 0) + 1;
       inRaf++;
       try {
@@ -32,7 +36,15 @@
       if (typeof orig !== 'function') continue;
       Ctx.prototype[m] = function (...a) {
         C.draws++;
+        stamp(C.drawTimes);
         return orig.apply(this, a);
+      };
+    }
+    const clear = Ctx.prototype.clear;
+    if (typeof clear === 'function') {
+      Ctx.prototype.clear = function (...a) {
+        C.clears++;
+        return clear.apply(this, a);
       };
     }
   }

@@ -95,6 +95,96 @@ async function reducedMidTimeline(base) {
   return { spinningBefore: before, framesToEnd, ...after, pass: before === true && !after.atChange.spinningAtChange && !after.spinning && after.motion === 'reduced' && !after.lenis };
 }
 
+/**
+ * The Motion switch (W-D032) works where storage throws: setMotion('reduced') applies at once (motion, data-motion,
+ * Lenis dropped), survives an OS media change, and setMotion(null) hands back to the OS setting. Run with storage
+ * working and with every Storage method throwing (blocked site data).
+ */
+async function motionSwitch(base) {
+  const BLOCK = `for (const m of ['getItem', 'setItem', 'removeItem', 'clear', 'key']) {
+    Storage.prototype[m] = function () { throw new DOMException('blocked', 'SecurityError'); };
+  }`;
+  const rows = [];
+  for (const storage of ['working', 'blocked']) {
+    const ctx = await newContext('D2');
+    if (storage === 'blocked') await ctx.addInitScript({ content: BLOCK });
+    const page = await ctx.newPage();
+    await page.goto(`${base}/`, { waitUntil: 'load' });
+    await waitSettled(page, 15000);
+    await page.waitForFunction(() => window.__stage.glState === 'ready', null, { polling: 100, timeout: 15000 }).catch(() => {});
+    const read = () => page.evaluate(() => ({ motion: window.__stage.motion, data: document.documentElement.dataset.motion, lenis: document.documentElement.classList.contains('lenis') }));
+    await sleep(300);
+    const start = await read();
+    await page.evaluate(() => window.__stage.setMotion('reduced'));
+    const reduced = await read();
+    // An OS change event must not undo the choice.
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
+    await sleep(100);
+    const afterOsChange = await read();
+    await page.evaluate(() => window.__stage.setMotion(null));
+    await sleep(300);
+    const cleared = await read();
+    const storageThrows = await page.evaluate(() => { try { localStorage.getItem('x'); return false; } catch { return true; } });
+    await ctx.close();
+    rows.push({
+      storage, storageThrows, start, reduced, afterOsChange, cleared,
+      pass: storageThrows === (storage === 'blocked') && start.motion === 'full' && reduced.motion === 'reduced' && reduced.data === 'reduced' && !reduced.lenis
+        && afterOsChange.motion === 'reduced' && cleared.motion === 'full' && cleared.data === 'full',
+    });
+  }
+  return { rows, pass: rows.every((r) => r.pass) };
+}
+
+/**
+ * The riding canvas keeps slack behind the viewport (review item 3, gate F2): after every re-anchor the trailing side
+ * has a quarter of the overscan (round(0.25 x (Hc - H)) px, unless clamped at the document top), and every rendered
+ * frame covers the viewport. Scrolled in 40 px steps down then up on /bench/ (lite, P2), one frame per step.
+ */
+async function railSlack(base) {
+  const ctx = await newContext('P2');
+  const page = await ctx.newPage();
+  await page.goto(`${base}/bench/?tier=lite`, { waitUntil: 'load' });
+  await waitSettled(page, 15000);
+  await page.waitForFunction(() => window.__stage.glState === 'ready', null, { polling: 100, timeout: 15000 });
+  const samples = await page.evaluate(async () => {
+    const frame = () => new Promise((r) => window.requestAnimationFrame(() => window.requestAnimationFrame(r)));
+    const v = window.__stage.view;
+    const out = [];
+    const max = document.documentElement.scrollHeight - innerHeight;
+    for (const dir of [1, -1]) {
+      for (let i = 0; i < 400; i++) {
+        const before = scrollY;
+        window.scrollBy(0, 40 * dir);
+        await frame();
+        if (scrollY === before) break;
+        out.push({ dir, sy: scrollY, anchor: v.anchor, H: v.H, Hc: v.Hc });
+        if ((dir > 0 && scrollY >= max - 2) || (dir < 0 && scrollY <= 0)) break;
+      }
+    }
+    return out;
+  });
+  await ctx.close();
+  const trailWant = samples.length ? Math.round(0.25 * (samples[0].Hc - samples[0].H)) : null;
+  const reanchors = [];
+  let uncovered = 0;
+  for (let i = 1; i < samples.length; i++) {
+    const s = samples[i];
+    if (s.sy < s.anchor - 0.5 || s.sy + s.H > s.anchor + s.Hc + 0.5) uncovered++;
+    if (s.anchor === samples[i - 1].anchor || s.anchor === 0) continue;
+    const trail = s.dir > 0 ? s.sy - s.anchor : s.anchor + s.Hc - (s.sy + s.H);
+    reanchors.push({ dir: s.dir, sy: s.sy, anchor: s.anchor, trailPx: Math.round(trail * 100) / 100 });
+  }
+  const down = reanchors.filter((r) => r.dir > 0);
+  const up = reanchors.filter((r) => r.dir < 0);
+  const minTrail = (list) => (list.length ? Math.min(...list.map((r) => r.trailPx)) : null);
+  return {
+    steps: samples.length, trailWantPx: trailWant, reanchorsDown: down.length, reanchorsUp: up.length,
+    minTrailDownPx: minTrail(down), minTrailUpPx: minTrail(up), uncovered, reanchors: reanchors.slice(0, 40),
+    pass: down.length > 0 && up.length > 0 && uncovered === 0 && minTrail(down) >= trailWant - 1 && minTrail(up) >= trailWant - 1,
+  };
+}
+
 /** Context loss: every slot drops .is-gl within 1 frame; a second loss within 60 s sets static. */
 async function contextLoss(base) {
   const ctx = await newContext('D2');
@@ -185,6 +275,8 @@ export async function run() {
     out.governor = await governor(srv.base);
     out.caps = await caps(srv.base);
     out.reducedMidTimeline = await reducedMidTimeline(srv.base);
+    out.motionSwitch = await motionSwitch(srv.base);
+    out.railSlack = await railSlack(srv.base);
     out.contextLoss = await contextLoss(srv.base);
     out.developKeepsFocus = await developKeepsFocus(srv.base);
     out.cubeProjection = await cubeProjection(srv.base);

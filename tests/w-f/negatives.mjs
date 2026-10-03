@@ -4,6 +4,7 @@
 //             and one link name pointing to two URLs
 //   stacking  a transform on #main in the live page makes every slot's ancestor a stacking context
 //   lint      a second rAF call site and a forbidden navigator read, in a scratch copy of the lint's rules
+//   detach    a ticker kept awake (__stage.invalidate every 250 ms) must fail the counters' after-scroll idle window
 // (The console gate's 5 injected faults live in tests/harness/console.)
 // Usage: node tests/w-f/negatives.mjs [--out negatives.json]
 import { spawnSync } from 'node:child_process';
@@ -12,7 +13,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { validateContent } from '../../src/lib/content/validate.js';
 import { scanInPage } from '../../scripts/check/stacking.mjs';
-import { ROOT, cliMain, newContext, serve, waitSettled } from '../harness/lib.mjs';
+import { ROOT, cliMain, newContext, serve, sleep, waitSettled } from '../harness/lib.mjs';
+import { INIT as COUNTERS_INIT, idleAfterScroll } from '../harness/counters/run.mjs';
 
 function contentControl() {
   const read = (f) => JSON.parse(readFileSync(join(ROOT, 'content', f), 'utf8'));
@@ -77,8 +79,32 @@ function lintControl() {
   return { rafCallSites: raf, forbiddenReads: forbidden, sameRulesAsLint: sameRules, pass: raf === 2 && forbidden === 1 && sameRules };
 }
 
+async function detachControl() {
+  const srv = await serve();
+  try {
+    const rows = [];
+    for (const plant of [false, true]) {
+      const ctx = await newContext('D2');
+      await ctx.addInitScript({ content: COUNTERS_INIT });
+      const page = await ctx.newPage();
+      await page.goto(`${srv.base}/`, { waitUntil: 'load' });
+      await waitSettled(page, 15000);
+      await sleep(300);
+      if (plant) await page.evaluate(() => { window.__plant = setInterval(() => window.__stage.invalidate(), 250); });
+      const r = await idleAfterScroll(page, null).catch((e) => ({ error: String(e).slice(0, 200) }));
+      await ctx.close();
+      const caught = Boolean(r.error) || r.afterMotion.raf > 0 || r.afterMotion.draws > 0;
+      rows.push({ plant, ...r, caught });
+    }
+    const [clean, planted] = rows;
+    return { rows, pass: !clean.caught && planted.caught };
+  } finally {
+    await srv.close();
+  }
+}
+
 export async function run() {
-  const out = { content: contentControl(), phGate: phGateControl(), stacking: await stackingControl(), lint: lintControl() };
+  const out = { content: contentControl(), phGate: phGateControl(), stacking: await stackingControl(), lint: lintControl(), detach: await detachControl() };
   const parts = Object.entries(out);
   return { schema: 1, suite: 'w-f/negatives', pass: parts.every(([, v]) => v.pass), ...out, summary: parts.map(([k, v]) => `${k} ${v.pass ? 'caught' : 'MISSED'}`).join(', ') };
 }
