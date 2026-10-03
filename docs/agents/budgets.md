@@ -4,6 +4,8 @@ A change that exceeds a budget fails its gate. Evidence standard: GES-1 (W-D030)
 
 ## Front Door
 
+- **X-T5 camera (D-021, overrides the 3D camera line below):** LOD0 at most 100k tris and 800 kB gz, full tier only, after first paint; LOD1 at most 15k tris and 150 kB gz; Manor LOD about 1.5k tris.
+
 - Lighthouse 13.5.0 under the GES-1 protocol (built dist over gzip, 5 runs, median by score, auto tier, valid only on a real renderer): performance >= 90 mobile and >= 95 desktop; accessibility 100; best practices >= 95. SEO is not gated while noindex is on.
 - LCP <= 2.5 s mobile and <= 2.0 s desktop. The LCP element is the h1 on mouse profiles, or the h1 or print 1's still on touch profiles. CLS <= 0.02. TBT <= 150 ms, mobile and desktop.
 - JS: pre-GL JS <= 35 kB gz, summed from the network log before the stage:gl-start mark. GL chunk (three, addons, anime, stage GL, effects) <= 185 kB gz. Effects <= 10 kB gz (6.0 measured).
