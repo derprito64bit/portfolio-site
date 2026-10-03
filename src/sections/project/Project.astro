@@ -1,0 +1,40 @@
+---
+// STUB by W-F (Wave 3a). Owner: W-S3, then W-C5. The dock: print, h1 (frame code while a placeholder), kind,
+// role and year in mono, blurb, one primary action; then the sections in w-ia order, empty ones omitted.
+import Slot from '../../components/slot/Slot.astro';
+import Text from '../../layouts/Text.astro';
+import type { ProjectView } from '../../lib/content/index.ts';
+
+interface Props {
+  project: ProjectView;
+}
+const { project } = Astro.props;
+---
+<section class="project wrap" data-ground aria-labelledby="project-title">
+  <Slot as="figure" kind="print" id={project.slug} class="dock">
+    <svg data-poster class="dock-still" viewBox="0 0 54 86" aria-hidden="true" focusable="false">
+      <rect width="54" height="86" rx="1.5" fill="var(--paper)"></rect>
+      <rect x="4" y="5" width="46" height="62" fill={project.tint}></rect>
+    </svg>
+  </Slot>
+  <div class="project-copy">
+    <h1 id="project-title" class="project-title">
+      {project.placeholder && <span class="project-frame">{project.frame} </span>}<Text value={project.title} />
+    </h1>
+    <p class="project-meta"><Text value={project.role} />, <Text value={project.year} /></p>
+    <p class="project-blurb"><Text value={project.blurb} /></p>
+    <p><a href="/#sheet">All work</a></p>
+  </div>
+</section>
+
+<style>
+  .project { display: grid; gap: var(--space-6); padding-block: var(--space-6) var(--space-8); }
+  @media (min-width: 48rem) { .project { grid-template-columns: minmax(160px, 1fr) 2fr; align-items: start; } }
+  .dock { max-inline-size: 320px; margin: 0; }
+  .dock-still { inline-size: 100%; block-size: auto; aspect-ratio: 54 / 86; border-radius: var(--radius-print); }
+  .project-title { font-size: var(--type-display); margin-block-end: var(--space-4); }
+  .project-frame { font-family: var(--font-edge); font-size: 0.5em; letter-spacing: 0.04em; }
+  .project-meta { font: 500 var(--type-edge) / 1.45 var(--font-edge); margin-block-end: var(--space-4); }
+  .project-blurb { max-inline-size: var(--measure-body); margin-block-end: var(--space-5); }
+  .project-copy a { display: inline-flex; align-items: center; min-block-size: 44px; }
+</style>

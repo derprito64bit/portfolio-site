@@ -1,0 +1,159 @@
+/* Base (W-F): faces, reset, the three layers, focus ring, skip link, placeholder slot, header, handback.
+   Section styling belongs to the section crews; this file only holds what every page shares. */
+
+/* ---------- Faces: 4 self-hosted files (W-D008). Preloaded: mark and text. ---------- */
+@font-face { font-family: "BG Mark"; src: url(/fonts/bricolage-mark.woff2) format("woff2"); font-weight: 300 800; font-stretch: 75% 100%; font-display: swap; }
+@font-face { font-family: "BG Display"; src: url(/fonts/bricolage-display-wd90.woff2) format("woff2"); font-weight: 300 800; font-display: swap; }
+@font-face { font-family: "BG Text"; src: url(/fonts/bricolage-text.woff2) format("woff2"); font-weight: 400 700; font-display: swap; }
+@font-face { font-family: "Edge Mono"; src: url(/fonts/geist-mono-500.woff2) format("woff2"); font-weight: 500; font-display: swap; }
+/* Metric-matched fallbacks (w-type, measured in Chromium on Windows against Arial and Consolas). */
+@font-face { font-family: "BG Mark Fallback"; src: local("Arial Bold"), local("Arial-BoldMT"), local("Helvetica Neue Bold"); size-adjust: 90.9%; ascent-override: 102.3%; descent-override: 29.7%; line-gap-override: 0%; }
+@font-face { font-family: "BG Display Fallback"; src: local("Arial"), local("ArialMT"), local("Helvetica Neue"); font-weight: 300 549; size-adjust: 73.3%; ascent-override: 126.9%; descent-override: 36.8%; line-gap-override: 0%; }
+@font-face { font-family: "BG Display Fallback"; src: local("Arial Bold"), local("Arial-BoldMT"), local("Helvetica Neue Bold"); font-weight: 550 800; size-adjust: 77.5%; ascent-override: 120%; descent-override: 34.8%; line-gap-override: 0%; }
+@font-face { font-family: "BG Text Fallback"; src: local("Arial"), local("ArialMT"), local("Helvetica Neue"), local("Helvetica"); size-adjust: 102.9%; ascent-override: 90.4%; descent-override: 26.2%; line-gap-override: 0%; }
+@font-face { font-family: "Edge Mono Fallback"; src: local("Consolas"), local("Menlo-Regular"), local("Menlo"); size-adjust: 109.1%; line-gap-override: 0%; }
+
+/* ---------- Reset ---------- */
+*, *::before, *::after { box-sizing: border-box; }
+html { background: var(--table); color: var(--ink); -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+body {
+  position: relative; /* the rail's containing block; z-index stays auto, so body is not a stacking context */
+  margin: 0;
+  min-height: 100svh;
+  font: 400 var(--type-body) / 1.55 var(--font-text);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-wrap: break-word;
+}
+h1, h2, h3, h4, p, ul, ol, figure, blockquote { margin: 0; }
+h1, h2, h3 { font-family: var(--font-display); font-weight: 650; line-height: 1.05; text-wrap: balance; }
+p, li { text-wrap: pretty; }
+ul[role="list"], ol[role="list"] { list-style: none; padding: 0; }
+img, svg, canvas, video { display: block; max-width: 100%; }
+a { color: inherit; text-underline-offset: 0.18em; }
+button { font: inherit; color: inherit; }
+:target { scroll-margin-block-start: var(--space-6); }
+
+/* ---------- Layers (W-D013): ground 0, the riding canvas 1, content 2, all in the root stacking context ---------- */
+#rail {
+  position: absolute;
+  inset: 0;
+  z-index: var(--z-gl);
+  overflow: clip;
+  pointer-events: none;
+}
+#rail > canvas {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-start: 0;
+  inline-size: 100%;
+  block-size: calc(100lvh * 1.25); /* toolbar rule: lvh, never dvh */
+}
+html[data-rail="drip"] #rail { z-index: var(--z-gl-raised-for-drip); }
+html[data-tier="static"] #rail, html:not(.js) #rail { display: none; }
+
+/* A ground is a section's own background colour (z 0 by paint order): the section creates no stacking context, so
+   its background paints in the root context under the canvas (z 1). A plain background rather than a ::before keeps
+   the ground readable by contrast tools (axe cannot resolve pseudo-element backgrounds). */
+:where([data-ground]) { background: var(--ground, transparent); }
+/* Content sits above the canvas. Slots are content; an element that contains a slot is never positioned with a
+   z-index, so no ancestor of a slot creates a stacking context and every ring paints above GL.
+   Rule for authors: inside a ground, wrap bare text in an element. */
+:where([data-gl]) { position: relative; z-index: var(--z-content); }
+:where([data-ground], [data-ground] :has([data-gl])) > :where(:not(:has([data-gl])):not([data-gl])) {
+  position: relative;
+  z-index: var(--z-content);
+}
+:where(.site-header, .site-footer) { position: relative; z-index: var(--z-content); }
+
+/* Handback (W-D013): GL borrows a slot by adding .is-gl, which hides the poster image only. */
+:where([data-gl].is-gl) :where(img, svg, canvas)[data-poster] { opacity: 0; }
+
+/* ---------- Focus ring (W-D032): 3 px ring plus a 2 px halo, colour by surface ---------- */
+:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus);
+  outline-offset: var(--focus-offset);
+  box-shadow: 0 0 0 calc(var(--focus-offset) + var(--focus-ring-width) + var(--focus-halo-width)) var(--focus-halo);
+}
+:focus:not(:focus-visible) { outline: none; }
+[tabindex="-1"]:focus { outline: none; box-shadow: none; }
+@media (forced-colors: active) {
+  :focus-visible { outline: 3px solid CanvasText; box-shadow: none; }
+}
+
+/* ---------- Skip link and screen-reader text ---------- */
+.skip {
+  position: absolute;
+  inset-block-start: var(--space-2);
+  inset-inline-start: var(--space-2);
+  z-index: var(--z-skip);
+  padding: var(--space-3) var(--space-4);
+  min-block-size: 44px;
+  background: var(--paper);
+  color: #13171A;
+  font: 600 var(--type-ui) / 1.3 var(--font-text);
+  border-radius: var(--radius-ui);
+  transform: translateY(-200%);
+}
+.skip:focus-visible { transform: none; }
+.sr-only {
+  position: absolute !important;
+  inline-size: 1px;
+  block-size: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ---------- Placeholder slot (W-D022): mono, ink-2, dashed rule, never amber ---------- */
+.ph {
+  font-family: var(--font-edge);
+  font-weight: 500;
+  font-size: clamp(12px, 0.8em, 20px);
+  letter-spacing: 0.02em;
+  color: var(--placeholder);
+  border: 1px dashed var(--placeholder);
+  border-radius: 2px;
+  padding: 0 0.3em;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  overflow-wrap: anywhere;
+}
+
+/* ---------- Page frame ---------- */
+.wrap { max-inline-size: var(--content-max); margin-inline: auto; padding-inline: var(--gutter); }
+.site-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3) var(--space-5);
+  max-inline-size: var(--content-max);
+  margin-inline: auto;
+  padding: var(--space-3) var(--gutter);
+}
+.site-mark {
+  display: inline-flex;
+  align-items: center;
+  min-block-size: 44px;
+  font: 540 1.25rem / 1 var(--font-mark);
+  letter-spacing: -0.012em;
+  text-decoration: none;
+}
+.site-mark .br { color: var(--accent); font-weight: 800; }
+html[data-page="home"] .site-mark { display: none; }
+.site-nav ul { display: flex; flex-wrap: wrap; gap: 0 var(--space-2); margin: 0; padding: 0; list-style: none; }
+.site-nav a {
+  display: inline-flex;
+  align-items: center;
+  min-block-size: 44px;
+  min-inline-size: 44px;
+  padding-inline: var(--space-2);
+  font: 500 var(--type-ui) / 1.3 var(--font-text);
+  text-decoration: none;
+}
+.site-nav a:hover { text-decoration: underline; }
+[data-mount] { display: contents; }

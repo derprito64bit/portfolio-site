@@ -1,0 +1,23 @@
+---
+// STUB by W-F (Wave 3a). Owner: W-C6. Footer contact on every page; footer-tools is W-C9's mount point.
+// Only true things: the address and links come from content/profile.json, and stay placeholders until confirmed.
+import Text from '../../layouts/Text.astro';
+import { content } from '../../lib/content/index.ts';
+const { profile } = content;
+const links = profile.links.filter((l) => l.href);
+---
+<footer class="site-footer">
+  <div class="wrap footer-inner">
+    <h2 id="contact" class="footer-title">Contact</h2>
+    <p>Write to me: {profile.email ? <a href={`mailto:${profile.email}`}>{profile.email}</a> : <span class="ph">[PLACEHOLDER: email address]</span>}</p>
+    {links.length > 0 && (
+      <ul class="footer-links" role="list">{links.map((l) => <li><a href={l.href}><Text value={l.label} /></a></li>)}</ul>
+    )}
+    <div data-mount="footer-tools"></div>
+  </div>
+</footer>
+
+<style>
+  .footer-inner { display: grid; gap: var(--space-3); padding-block: var(--space-7) var(--space-8); }
+  .footer-title { font-size: var(--type-title); }
+</style>

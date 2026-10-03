@@ -1,0 +1,21 @@
+---
+// STUB by W-F (Wave 3a). Owner: W-S2, then W-C4. The proof sheet of every project (2, 3 and 4 columns by band,
+// prints >= 140 px) and its List view (W-D024, W-D031).
+import Print from '../../components/print/Print.astro';
+import { content } from '../../lib/content/index.ts';
+---
+<section class="sheet wrap" data-ground aria-labelledby="sheet">
+  <h2 id="sheet" class="sheet-title">Proof sheet</h2>
+  <ol class="sheet-grid" role="list">
+    {content.projects.map((p) => <li><Print project={p} id={p.slug} /></li>)}
+  </ol>
+</section>
+
+<style>
+  .sheet { padding-block: var(--space-7); --ground: var(--table-lit); }
+  .sheet-title { font-size: var(--type-display); margin-block-end: var(--space-6); }
+  /* Two columns when two 140 px prints fit; one at 200% zoom on a phone (195 CSS px), so nothing overflows. */
+  .sheet-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(140px, 100%), 1fr)); gap: var(--space-5); }
+  @media (min-width: 48rem) { .sheet-grid { grid-template-columns: repeat(3, minmax(140px, 1fr)); } }
+  @media (min-width: 64rem) { .sheet-grid { grid-template-columns: repeat(4, minmax(140px, 1fr)); } }
+</style>

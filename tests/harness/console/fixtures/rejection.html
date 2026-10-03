@@ -1,0 +1,5 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Fixture: rejection</title></head>
+<body><h1>Fault: an unhandled promise rejection</h1>
+<script>setTimeout(() => { Promise.reject(new Error('fixture: nobody handles this')); }, 50);</script>
+</body></html>

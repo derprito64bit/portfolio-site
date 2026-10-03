@@ -1,0 +1,61 @@
+# GPU-free checks only (W-D030): CI has no GPU, so GL, performance and Lighthouse evidence comes from the reference
+# host (RX 6700 XT) through scripts/crew.mjs. This job proves the build, the checks and the GPU-free instruments.
+name: check
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      CI: 'true'
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0 # the ownership check diffs against origin/main
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - name: Playwright Chromium (stacking scan and console fixtures)
+        run: npx playwright install --with-deps chromium
+
+      - name: npm run check (build, astro check, lint, ownership, deps, size-limit, ph-gate, CSS lint, stacking, tokens)
+        run: npm run check -- --log check.log --json check.json
+
+      - name: GPU-free instruments (content, spring, contrast, flash self-test, console fault injection)
+        run: |
+          npm run h:content
+          npm run h:spring
+          npm run h:contrast
+          npm run h:flash -- --self-test
+          npm run h:console -- --fixtures-only
+
+      - name: W-C13 rig tests (three r186 under Node, no GPU)
+        if: hashFiles('tests/w-c13/**/*.test.mjs') != ''
+        run: npm run test:w-c13
+
+      - name: Keep the logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: check-${{ github.sha }}
+          path: |
+            check.log
+            check.json
+          if-no-files-found: ignore

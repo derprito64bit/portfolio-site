@@ -1,0 +1,21 @@
+---
+// STUB by W-F (Wave 3a). Owner: W-C6. 'Awards and medals' on a negative sleeve, from content/honours.json:
+// hero award, then awards, then medals, in file order.
+import Text from '../../layouts/Text.astro';
+import { content } from '../../lib/content/index.ts';
+const entries = [...content.honours.awards, ...content.honours.medals];
+---
+<section class="honours wrap" data-ground aria-labelledby="honours">
+  <h2 id="honours" class="honours-title">Awards and medals</h2>
+  <ul class="honours-list" role="list">
+    {entries.map((h) => (
+      <li><Text value={h.title} /> <span class="honours-event"><Text value={h.event} /></span></li>
+    ))}
+  </ul>
+</section>
+
+<style>
+  .honours { padding-block: var(--space-7); }
+  .honours-title { font-size: var(--type-display); margin-block-end: var(--space-5); }
+  .honours-list { display: grid; gap: var(--space-3); }
+</style>

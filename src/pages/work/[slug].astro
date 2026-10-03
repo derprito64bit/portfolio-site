@@ -1,0 +1,20 @@
+---
+// STUB by W-F (Wave 3a). Owner: W-S3, then W-C5. One page per project: the dock (the print that flew here keeps
+// its data-gl-id), the h1 with the frame code while a placeholder, and the page's sections (W-D015, W-D022).
+import Base from '../../layouts/Base.astro';
+import Project from '../../sections/project/Project.astro';
+import { content, type ProjectView } from '../../lib/content/index.ts';
+
+export function getStaticPaths() {
+  return content.projects.map((project) => ({ params: { slug: project.slug }, props: { project } }));
+}
+
+interface Props {
+  project: ProjectView;
+}
+const { project } = Astro.props;
+const title = project.placeholder ? `${project.frame} ${project.title}` : project.title;
+---
+<Base title={title} path={project.href} page="project" noindex={project.noindex || content.hasPlaceholders}>
+  <Project project={project} />
+</Base>

@@ -1,0 +1,9 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Fixture: failed request</title></head>
+<body><h1>Fault: a request that never connects</h1>
+<script>
+  // Port 9 (discard) is closed on the harness host, so the connection is refused: a requestfailed event.
+  // The catch keeps it from also being an unhandled rejection, so this fixture tests one channel only.
+  fetch('http://127.0.0.1:9/never').catch(() => {});
+</script>
+</body></html>

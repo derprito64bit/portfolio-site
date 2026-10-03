@@ -1,0 +1,22 @@
+---
+// /work/ redirects to the proof sheet on the home page (W-D003). A static page, so it works on GitHub Pages.
+const target = '/#sheet';
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>All work · derprito64bit</title>
+    <meta name="robots" content="noindex" />
+    <link rel="canonical" href="https://derprito64bit.github.io/" />
+    <meta http-equiv="refresh" content={`0; url=${target}`} />
+    <script is:inline>location.replace('/#sheet');</script>
+  </head>
+  <body>
+    <main>
+      <h1>All work</h1>
+      <p><a href={target}>Go to the proof sheet</a></p>
+    </main>
+  </body>
+</html>

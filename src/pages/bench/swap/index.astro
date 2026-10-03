@@ -1,0 +1,30 @@
+---
+// /bench/swap/: the second fixture page for Swup round trips. The cube keeps its id, so its GL entity and stage view
+// persist across swaps; the quads here are new entities, created and disposed on every visit.
+import Base from '../../../layouts/Base.astro';
+import Slot from '../../../components/slot/Slot.astro';
+import BenchStyles from '../_BenchStyles.astro';
+const quads = [7, 8, 9];
+---
+<Base title="Bench swap fixture" path="/bench/swap/" page="bench" noindex={true}>
+  <BenchStyles />
+  <section class="bench wrap" data-ground data-gl-boot="eager" aria-labelledby="swap-title">
+    <div class="bench-head">
+      <h1 id="swap-title">Swap fixture</h1>
+      <p><a href="/bench/">Back to the bench</a></p>
+    </div>
+    <div class="fx-row">
+      <Slot kind="object" id="fixture-cube" fixture="cube" class="fx-cube" />
+    </div>
+    <ol class="fx-list" role="list">
+      {quads.map((i) => (
+        <li>
+          <Slot as="a" kind="print" id={`fx-${i}`} fixture="quad" href="/bench/" class="fx-quad" data-gl-index={String(i)} style={`--b:${20 * i}`}>
+            <i class="bar" aria-hidden="true"></i>
+            <span class="fx-name">Fixture print {i}</span>
+          </Slot>
+        </li>
+      ))}
+    </ol>
+  </section>
+</Base>
