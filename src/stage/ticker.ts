@@ -87,6 +87,22 @@ export function markDirty(): void {
   dirty = true;
   invalidate();
 }
+/**
+ * Layout moved a slot and the rects are already re-measured: render now, outside rAF, through the same render path as
+ * a frame (counted in stats.draws and drawCalls). Called from the slots ResizeObserver callback, which runs after
+ * layout and before paint, so GL and the DOM change in the same presented frame instead of GL following a frame late.
+ * Scroll is read as a frame reads it, after any scroll anchoring the layout applied. Inside a frame (a re-measure the
+ * ticker ran) or before GL is up, the next frame renders as usual.
+ */
+export function renderNow(): void {
+  if (inFrame || !render) {
+    invalidate();
+    return;
+  }
+  const draws = stats.draws;
+  render(readScroll());
+  if (stats.draws > draws) stats.layoutRenders++;
+}
 bindWake(invalidate);
 
 function schedule(): void {

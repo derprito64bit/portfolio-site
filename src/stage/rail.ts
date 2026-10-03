@@ -83,7 +83,10 @@ export function place(sy: number, dir: 1 | -1): number {
     const raw = dir > 0 ? sy - trail : sy - (slack - trail);
     const anchor = Math.max(0, Math.round(raw * view.dpr) / view.dpr);
     // At the document top the anchor stays clamped at 0: no style write when nothing changes.
-    if (!anchored || anchor !== view.anchor) canvas.style.insetBlockStart = `${anchor}px`;
+    if (!anchored || anchor !== view.anchor) {
+      canvas.style.insetBlockStart = `${anchor}px`;
+      stats.reanchors++;
+    }
     view.anchor = anchor;
     anchored = true;
   }

@@ -2,7 +2,7 @@
 // cached in document space and re-measured on ResizeObserver, fonts.ready, a swap, a width or DPR change; never
 // per frame. GL borrows a slot with take() (adds .is-gl, which hides the poster image only) and hands it back with
 // give(). Keyboard focus never borrows a slot.
-import { invalidate } from './ticker.ts';
+import { invalidate, renderNow } from './ticker.ts';
 import { stats } from './state.ts';
 
 export type SlotKind = 'print' | 'object';
@@ -24,26 +24,36 @@ const slots = new Map<string, Slot>();
 const scanListeners = new Set<(s: Slot[]) => void>();
 const unscanListeners = new Set<(s: Slot[]) => void>();
 
-function measureOne(s: Slot, sx: number, sy: number): void {
+/** Re-measure one slot; true when its document-space box moved or changed size (by more than float noise). */
+function measureOne(s: Slot, sx: number, sy: number): boolean {
+  const { cx, cy, w, h } = s;
   const r = s.el.getBoundingClientRect();
   s.cx = r.left + r.width / 2 + sx;
   s.cy = r.top + r.height / 2 + sy;
   s.w = s.el.offsetWidth;
   s.h = s.el.offsetHeight;
+  return Math.abs(s.cx - cx) > 0.01 || Math.abs(s.cy - cy) > 0.01 || s.w !== w || s.h !== h;
 }
 
-/** Re-measure every slot together with the scroll position, so all rects share one document space. */
-export function measureAll(): void {
+/**
+ * Re-measure every slot together with the scroll position, so all rects share one document space. Returns true when
+ * any slot moved or changed size.
+ */
+export function measureAll(): boolean {
   const sx = window.scrollX;
   const sy = window.scrollY;
-  for (const s of slots.values()) measureOne(s, sx, sy);
+  let moved = false;
+  for (const s of slots.values()) if (measureOne(s, sx, sy)) moved = true;
   stats.measures++;
+  return moved;
 }
 
-// ResizeObserver callbacks run after layout and before paint, so GL and DOM change in the same frame.
+// ResizeObserver callbacks run after layout and before paint. When the re-measure finds a slot moved (a layout shift
+// mid-scroll, or svh and lvh changing with the viewport), the stage renders right here, so GL and the DOM change in
+// the same presented frame. The render goes through the ticker's one render path: no rAF, and no rect read in rAF.
 const ro = new ResizeObserver(() => {
-  measureAll();
-  invalidate();
+  if (measureAll()) renderNow();
+  else invalidate();
 });
 ro.observe(document.body);
 

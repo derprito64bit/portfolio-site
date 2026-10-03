@@ -11,7 +11,7 @@ import { stage as stageTokens } from '../../lib/tokens.js';
 import { canvas, measureViewport, place, view } from '../rail.ts';
 import { demote, getTier, onTier, tierReason } from '../tier.ts';
 import { flags, mark, stats } from '../state.ts';
-import { invalidate, markDirty, onActive, onBefore, onStep, setRender, wake } from '../ticker.ts';
+import { invalidate, isInFrame, markDirty, onActive, onBefore, onStep, setRender, wake } from '../ticker.ts';
 import { allSlots, getSlot, giveAll, onScan, onUnscan, type Slot } from '../slots.ts';
 import { scrollState } from '../scroll.ts';
 import { onMotion } from '../motion.ts';
@@ -161,9 +161,10 @@ function render(sy: number): void {
   const before = view.anchor;
   const anchor = place(sy, scrollState.dir);
   // A re-anchor moves the canvas and redraws it in one frame. WebKit (measured on its Windows build) can present the
-  // moved canvas with an older buffer for a frame or two, so a re-anchor keeps presenting for 3 more frames.
+  // moved canvas with an older buffer for a frame or two, so a re-anchor keeps presenting for 3 more frames (counted
+  // in ticker frames: a layout render in the same frame does not use one up).
   if (anchor !== before) represent = 3;
-  else if (represent > 0) represent--;
+  else if (represent > 0 && isInFrame()) represent--;
   if (represent > 0) invalidate();
   const f: FrameInfo = { sy, anchor, W: view.W, H: view.H, Hc: view.Hc };
   renderer.info.reset();

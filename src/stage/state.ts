@@ -4,8 +4,12 @@
 export const stats = {
   /** rAF callbacks run by the ticker (the only rAF call site in src/). */
   ticks: 0,
-  /** Frames that rendered. */
+  /** Frames that rendered (ticker frames plus layout renders). */
   draws: 0,
+  /** Renders run from the slots ResizeObserver callback because layout moved a slot (outside rAF; also in draws). */
+  layoutRenders: 0,
+  /** Canvas re-anchors (the rail moved the canvas to keep it over the viewport). */
+  reanchors: 0,
   /** Active frames that skipped the render: nothing to draw and the canvas already clear. */
   renderSkips: 0,
   /** WebGL draw calls issued by those frames (renderer.info.render.calls, summed). */

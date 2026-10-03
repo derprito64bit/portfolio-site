@@ -5,6 +5,8 @@
 //   stacking  a transform on #main in the live page makes every slot's ancestor a stacking context
 //   lint      a second rAF call site and a forbidden navigator read, in a scratch copy of the lint's rules
 //   detach    a ticker kept awake (__stage.invalidate every 250 ms) must fail the counters' after-scroll idle window
+//   resize    ResizeObserver callbacks deferred by a task (GL re-measures a frame after the layout moved, the round-2
+//             defect) must fail the drift harness's resize probe at a toolbar collapse and expand
 // (The console gate's 5 injected faults live in tests/harness/console.)
 // Usage: node tests/w-f/negatives.mjs [--out negatives.json]
 import { spawnSync } from 'node:child_process';
@@ -15,6 +17,7 @@ import { validateContent } from '../../src/lib/content/validate.js';
 import { scanInPage } from '../../scripts/check/stacking.mjs';
 import { ROOT, cliMain, newContext, serve, sleep, waitSettled } from '../harness/lib.mjs';
 import { INIT as COUNTERS_INIT, idleAfterScroll } from '../harness/counters/run.mjs';
+import { resizeProbeOnly } from '../harness/drift/run.mjs';
 
 function contentControl() {
   const read = (f) => JSON.parse(readFileSync(join(ROOT, 'content', f), 'utf8'));
@@ -103,8 +106,22 @@ async function detachControl() {
   }
 }
 
+/** A one-frame GL lag at a layout change: ResizeObserver callbacks deferred a task must fail the drift resize probe. */
+async function resizeControl() {
+  const srv = await serve();
+  try {
+    const clean = await resizeProbeOnly(srv.base, null);
+    const planted = await resizeProbeOnly(srv.base, 'defer-ro');
+    const cleanOk = clean.length === 2 && clean.every((r) => r.ok);
+    const caught = planted.length === 2 && planted.every((r) => !r.ok && r.quads.length > 0);
+    return { clean, planted, pass: cleanOk && caught };
+  } finally {
+    await srv.close();
+  }
+}
+
 export async function run() {
-  const out = { content: contentControl(), phGate: phGateControl(), stacking: await stackingControl(), lint: lintControl(), detach: await detachControl() };
+  const out = { content: contentControl(), phGate: phGateControl(), stacking: await stackingControl(), lint: lintControl(), detach: await detachControl(), resize: await resizeControl() };
   const parts = Object.entries(out);
   return { schema: 1, suite: 'w-f/negatives', pass: parts.every(([, v]) => v.pass), ...out, summary: parts.map(([k, v]) => `${k} ${v.pass ? 'caught' : 'MISSED'}`).join(', ') };
 }

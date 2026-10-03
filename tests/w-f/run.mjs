@@ -30,7 +30,8 @@ const STEPS = [
   ['h-idle', ...node('tests/harness/idle/run.mjs', '--out', out('idle.json'))],
   ['h-swap', ...node('tests/harness/swap/run.mjs', '--out', out('swap.json'))],
   ['h-keyboard', ...node('tests/harness/keyboard/run.mjs', '--out', out('keyboard.json'))],
-  ['h-drift', ...node('tests/harness/drift/run.mjs', '--out', out('drift.json'))],
+  // 5 Chromium runs (a one-in-four failure needs repeats to show; review item 5) and WebKit; the worst run is reported.
+  ['h-drift', ...node('tests/harness/drift/run.mjs', '--repeat', '5', '--out', out('drift.json'))],
   ['h-gpu', ...node('tests/harness/gpu/run.mjs', '--out', out('gpu.json'))],
   ['h-spring', ...node('tests/harness/spring/run.mjs', '--out', out('spring-conformance.json'))],
   ['h-contrast', ...node('tests/harness/contrast/run.mjs', '--out', out('contrast.json'))],

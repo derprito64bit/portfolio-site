@@ -17,7 +17,7 @@ built `dist/` served by `scripts/serve-dist.mjs` (gzip, Pages rules), and prints
 |---|---|---|---|
 | `h:console` | `console/` | 5 injected faults are caught (throw, rejection, 404, failed request, shader error); routes are clean | fixtures: no |
 | `h:overflow` | `overflow/` | max(scrollWidth - clientWidth) over the run is 0, plus an element scan | no |
-| `h:drift` | `drift/` | GL stays glued to its DOM slot through a touch fling and an 80 px toolbar change; no buffer reallocation | yes |
+| `h:drift` | `drift/` | GL stays glued to its DOM slot through a touch fling and 80 px toolbar changes, in the frame at each resize too; no buffer reallocation (`--repeat N`, `--plant defer-ro`) | yes |
 | `h:gpu` | `gpu/` | ms per frame of the committed bench, median of 5 fresh loads | yes |
 | `h:idle` | `idle/` | main-thread ms per second at rest, with the display rate; 0 ticks and renders | yes |
 | `h:swap` | `swap/` | same canvas and context over 6 Swup round trips; counts back at baseline; Back and Forward scroll | yes |
@@ -34,8 +34,10 @@ built `dist/` served by `scripts/serve-dist.mjs` (gzip, Pages rules), and prints
   Shots are taken only after it is true; a 10 s timeout is a FAIL.
 - `seek(ms)`: exists only behind `?t=`. It runs one frame on the manual clock and seeks CSS animations.
 - `bounds(id)` returns `{ id, kind, slot: {x, y, w, h}, gl: {x, y, w, h, angleDeg} | null }` in viewport CSS px.
-- `stats` holds the counters `ticks, draws, drawCalls, measures, measuresInTick, reallocs, wakes, sleeps, swaps,
-  losses, restores, governorSteps, motionLogInvalid`, and the gauges `dpr, canvasPx`.
+- `stats` holds the counters `ticks, draws, layoutRenders, reanchors, renderSkips, drawCalls, measures,
+  measuresInTick, reallocs, wakes, sleeps, swaps, losses, restores, governorSteps, motionLogInvalid`, and the gauges
+  `dpr, canvasPx`. `layoutRenders` are renders run from the slots ResizeObserver callback when layout moved a slot
+  (outside rAF, also counted in `draws` and `drawCalls`); `reanchors` counts the rail moving the canvas.
 - The remaining hooks are `tier`, `tierReason`, `tierLog`, `motion`, `glState`, `gl` (the GL API once ready, with
   `info()`, `forceContextLoss()` and `forceContextRestore()`), `slots()` and `marks()`.
 - The marks are `stage:renderer`, `stage:tier`, `stage:gl-start`, `stage:gl-ready`, `stage:settled` and
@@ -52,11 +54,21 @@ each instrument.
 console   { fixtures: [{fault, caught, expectedChannel, channels[], byExpectedChannel, sample}], caught: "5/5",
             routes: [{profile, route, pass, events, failures[]}], regex }
 overflow  { rows: [{profile, mode, route, maxOverflowPx, samples, offenders[], pass}] }
-drift     { rows: [{browser, input, toolbarChangePx, frames, samples, maxDriftPx, shiftedSamples, clipTopSamples,
-            maxClipTopPx, clipBottomSamples, maxClipBottomPx, clipped[{frame, idx, edge, px}], missing,
-            reallocOnHeight, coarse, tier, histogram{driftPx: count}, worst, pass}] }
+drift     schema 2: { plant, repeat, perBrowser: [{browser, runs, passed, worstRun, worstDriftPx, resizes,
+            probesWithQuad, probesGlued, resizeFramesCaptured, resizeFramesGlued, slotMovePx[]}],
+            rows: [{run, browser, input, toolbarChangePx, frameMs, frames, frameSizes{WxH: count}, samples, maxDriftPx,
+            shiftedSamples, clipTopSamples, maxClipTopPx, clipBottomSamples, maxClipBottomPx, clipped[{frame, idx,
+            edge, px}], skipped[{frame, size, resize}], skippedOutsideResize, resizes[{kind: collapse|expand, fromH, toH,
+            frameAtResize, swapAfterLayoutMs, skippedFrames[], atResize{samples, glued, classes[]}, slotMovePx[],
+            scrollYBefore, scrollYAfter, probe{quads[{idx, domTop, glTop, topErr, bottomErr, glued}], layoutRenders},
+            probeOk, probeWhy}], resizesProbed, resizeFramesCaptured, layoutRenders, missing, reallocOnHeight, coarse,
+            tier, histogram{driftPx: count}, worst, reanchor{frameMs, peakPxPerS, reanchorEveryFrameAbove[{H, slack,
+            pxPerFrame, pxPerSAtThisRate, pxPerSAt60Hz}], buckets[{pxPerFrame, frames, reanchors, perFrame, seconds,
+            perSecond, meanPxPerS}]}, checks{drift, missing, noRealloc, skippedFrames, frameAtResize, resizeProbe},
+            pass}] }
             (each sample: {idx, cls: glued|clipped|shifted, edge, topErr, bottomErr, drift}; clips are coverage at a
-            canvas edge, reported per edge; pass needs no shifted sample)
+            canvas edge, reported per edge; pass needs no shifted sample, every resize probe glued and, in Chromium,
+            at least 2 glued frames at a resize)
 gpu       { results: [{scenario, profile, loads, renderer, valid, tier, canvas{w,h,px}, dpr, medianOfMediansMs,
             medians[], shader}] }
 idle      { displayHz, renderer, rows: [{profile, route, taskMsPerSec, scriptMsPerSec, ticks, renders, pass}] }
