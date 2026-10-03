@@ -16,7 +16,7 @@ export function enableLenis(): void {
   offBefore = onBefore((time) => lenis?.raf(time));
   offActive = onActive(() => Boolean(lenis?.isScrolling));
   for (const t of INPUTS) addEventListener(t, wake, { passive: true, capture: true });
-  setLenis(lenis);
+  setLenis(lenis, wake);
 }
 
 export function disableLenis(): void {

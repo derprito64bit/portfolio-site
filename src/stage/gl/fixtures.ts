@@ -3,7 +3,7 @@
 // drift, persistence across swaps, reduced motion mid-timeline).
 // ?debug=drift paints quads rgb(255, 0, 20i) to match the DOM bars of the drift harness; ?debug=ring grows the
 // quads 12 px past the slot so the focus ring sits over GL.
-import { BoxGeometry, Mesh, PlaneGeometry, ShaderMaterial, Vector3, MathUtils } from 'three';
+import { BoxGeometry, DataTexture, Mesh, PlaneGeometry, ShaderMaterial, Vector3, MathUtils } from 'three';
 import { stage as stageTokens } from '../../lib/tokens.js';
 import { flags } from '../state.ts';
 import { give, take, type Slot } from '../slots.ts';
@@ -11,10 +11,19 @@ import { track, tween, type Timeline } from '../timelines.ts';
 import type { Entity, FrameInfo, GLApi, StageView } from './index.ts';
 
 const FLAT_VERT = 'void main() { gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }';
-const FLAT_FRAG = 'precision highp float; uniform vec3 uColor; void main() { gl_FragColor = vec4(uColor, 1.0); }';
-/** Exact 8-bit colours: no colour management, no tone mapping. */
+const FLAT_FRAG = 'precision highp float; uniform vec3 uColor; uniform sampler2D uTex; void main() { gl_FragColor = vec4(uColor * texture2D(uTex, vec2(0.5)).rgb, 1.0); }';
+/**
+ * Exact 8-bit colours: no colour management, no tone mapping. Each material samples its own 1 x 1 white texture, so
+ * the swap test can see textures being created and disposed (white keeps the colour exact).
+ */
 function flat(r: number, g: number, b: number): any {
-  return new ShaderMaterial({ vertexShader: FLAT_VERT, fragmentShader: FLAT_FRAG, uniforms: { uColor: { value: new Vector3(r / 255, g / 255, b / 255) } }, toneMapped: false });
+  const tex = new DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1);
+  tex.needsUpdate = true;
+  return new ShaderMaterial({ vertexShader: FLAT_VERT, fragmentShader: FLAT_FRAG, uniforms: { uColor: { value: new Vector3(r / 255, g / 255, b / 255) }, uTex: { value: tex } }, toneMapped: false });
+}
+function disposeFlat(m: any): void {
+  m.uniforms.uTex.value.dispose();
+  m.dispose();
 }
 
 class QuadFixture implements Entity {
@@ -54,7 +63,7 @@ class QuadFixture implements Entity {
   dispose(): void {
     this.gl.pageScene.remove(this.mesh);
     this.mesh.geometry.dispose();
-    this.mesh.material.dispose();
+    disposeFlat(this.mesh.material);
   }
   bounds() {
     const s = this.slot;
@@ -119,7 +128,7 @@ class CubeFixture implements Entity {
   dispose(): void {
     this.view.dispose();
     this.mesh.geometry.dispose();
-    this.mesh.material.dispose();
+    disposeFlat(this.mesh.material);
   }
   /** Projected bounds of the cube's 8 corners through its own camera, in viewport CSS px. */
   bounds() {

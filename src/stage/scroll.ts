@@ -13,6 +13,8 @@ let y = window.scrollY;
 let dir: 1 | -1 = 1;
 let moved = false;
 let lenis: LenisLike | null = null;
+/** Lenis only moves while the ticker runs, so every Lenis scroll wakes it (set with setLenis). */
+let wakeTicker: () => void = () => {};
 
 /** The ticker calls this once per frame. Everyone else reads scrollState. */
 export function readScroll(): number {
@@ -34,8 +36,9 @@ export const scrollState = {
   },
 };
 
-export function setLenis(l: LenisLike | null): void {
+export function setLenis(l: LenisLike | null, wake?: () => void): void {
   lenis = l;
+  if (wake) wakeTicker = wake;
 }
 export function getLenis(): LenisLike | null {
   return lenis;
@@ -43,14 +46,18 @@ export function getLenis(): LenisLike | null {
 
 /** Restore or reset a scroll position instantly (history entries, scroll:top). */
 export function scrollToY(top: number): void {
-  if (lenis) lenis.scrollTo(top, { immediate: true, force: true });
-  else window.scrollTo({ top, left: 0, behavior: 'instant' });
+  if (lenis) {
+    lenis.scrollTo(top, { immediate: true, force: true });
+    wakeTicker();
+  } else window.scrollTo({ top, left: 0, behavior: 'instant' });
 }
 
 /** The anchor scroller. One motion, one direction: Lenis glides when it is on, otherwise the page jumps. */
 export function scrollToElement(el: HTMLElement): void {
   const margin = parseFloat(getComputedStyle(el).scrollMarginBlockStart) || 0;
   const top = Math.max(0, el.getBoundingClientRect().top + window.scrollY - margin);
-  if (lenis) lenis.scrollTo(top, { force: true });
-  else window.scrollTo({ top, left: 0, behavior: 'instant' });
+  if (lenis) {
+    lenis.scrollTo(top, { force: true });
+    wakeTicker();
+  } else window.scrollTo({ top, left: 0, behavior: 'instant' });
 }
