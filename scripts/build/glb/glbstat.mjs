@@ -1,4 +1,4 @@
-﻿// glbstat.mjs (W-C13): size (raw, gzip -9, brotli), triangles, draws, nodes, materials, images and extensions of
+// glbstat.mjs (W-C13): size (raw, gzip -9, brotli), triangles, draws, nodes, materials, images and extensions of
 // each GLB, read straight from the GLB's JSON chunk (no decoder needed; meshopt keeps accessor counts).
 // Based on the Wave 1b evidence tool (portfolio-evidence/wave1b/w-3d-art/src/glbstat.mjs).
 //
