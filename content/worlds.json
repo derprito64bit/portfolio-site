@@ -1,0 +1,65 @@
+{
+  "schema": 2,
+  "worlds": [
+    {
+      "slug": "starry-night",
+      "key": "pf.world.starry-night",
+      "title": "The Starry Night",
+      "status": "building",
+      "publishAfter": "",
+      "credit": {
+        "mode": "public-domain",
+        "artist": "Vincent van Gogh",
+        "work": "The Starry Night",
+        "year": "1889",
+        "museum": "The Museum of Modern Art, New York",
+        "museumUrl": "https://www.moma.org/collection/works/79802"
+      },
+      "still": "",
+      "stillAlt": "",
+      "teaser": true,
+      "placeholder": false,
+      "source": "fork docs/portfolio/direction/painting-worlds.md (pilot, D-010); museumUrl"
+    },
+    {
+      "slug": "imaginary-prisons",
+      "key": "pf.world.imaginary-prisons",
+      "title": "[PLACEHOLDER: world title, proposed in D-007]",
+      "status": "",
+      "publishAfter": "",
+      "credit": {
+        "mode": "",
+        "artist": "[PLACEHOLDER: artist, from G04]",
+        "work": "[PLACEHOLDER: work, from G04]",
+        "year": "[PLACEHOLDER: plate edition year, from G04]",
+        "museum": "[PLACEHOLDER: holding museum, from G04]",
+        "museumUrl": ""
+      },
+      "still": "",
+      "stillAlt": "",
+      "teaser": false,
+      "placeholder": true,
+      "source": "decisions.md D-007 (proposed title); fork painting-worlds.md ranked list"
+    },
+    {
+      "slug": "water-lilies",
+      "key": "pf.world.water-lilies",
+      "title": "[PLACEHOLDER: world title]",
+      "status": "",
+      "publishAfter": "2027-01-01",
+      "credit": {
+        "mode": "",
+        "artist": "[PLACEHOLDER: artist, from G04]",
+        "work": "[PLACEHOLDER: which canvas, from G04]",
+        "year": "[PLACEHOLDER: year]",
+        "museum": "[PLACEHOLDER: holding museum]",
+        "museumUrl": ""
+      },
+      "still": "",
+      "stillAlt": "",
+      "teaser": false,
+      "placeholder": true,
+      "source": "fork painting-worlds.md ranked list (ships after 2027-01-01, D-010)"
+    }
+  ]
+}

@@ -1,0 +1,40 @@
+---
+// /bench/ (W-D003): noindex, unlinked, out of the sitemap. The committed GPU bench (ms per frame at the real canvas
+// size, readPixels fences, copyable JSON) and the stage fixtures the W-F acceptance harness drives.
+import Base from '../../layouts/Base.astro';
+import Slot from '../../components/slot/Slot.astro';
+import BenchStyles from './_BenchStyles.astro';
+const quads = [1, 2, 3, 4, 5, 6];
+---
+<Base title="Bench" path="/bench/" page="bench" noindex={true}>
+  <BenchStyles />
+  <section class="bench wrap" data-ground data-gl-boot="eager" data-bench aria-labelledby="bench-title">
+    <div class="bench-head">
+      <h1 id="bench-title">Bench</h1>
+      <p>GPU bench and stage fixtures for the evidence harness. This page is not linked from the site.</p>
+      <p class="bench-controls">
+        <label for="bench-scenario">Scenario</label>
+        <select id="bench-scenario" data-bench-scenario>
+          <option value="sheet8">8 wet sheet prints</option>
+          <option value="hero3">3 wet hero prints</option>
+        </select>
+        <button type="button" data-bench-run disabled>Run</button>
+      </p>
+      <pre class="bench-out" data-bench-out></pre>
+      <p><a href="/bench/swap/">Open the swap fixture</a></p>
+    </div>
+    <div class="fx-row">
+      <Slot kind="object" id="fixture-cube" fixture="cube" class="fx-cube" />
+    </div>
+    <ol class="fx-list" role="list">
+      {quads.map((i) => (
+        <li>
+          <Slot as="a" kind="print" id={`fx-${i}`} fixture="quad" href="/bench/swap/" class="fx-quad" data-gl-index={String(i)} style={`--b:${20 * i}`}>
+            <i class="bar" aria-hidden="true"></i>
+            <span class="fx-name">Fixture print {i}</span>
+          </Slot>
+        </li>
+      ))}
+    </ol>
+  </section>
+</Base>

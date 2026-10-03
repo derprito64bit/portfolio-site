@@ -1,0 +1,19 @@
+---
+// STUB by W-F (Wave 3a). Owner: W-S2, then W-C4. Selected work: the first 3 featured projects as enlargements
+// (W-D031 band table). The section heading is visually hidden (W-D004).
+import Print from '../../components/print/Print.astro';
+import { content } from '../../lib/content/index.ts';
+const picks = content.featured.slice(0, 3);
+---
+<section class="work wrap" data-ground aria-labelledby="work">
+  <h2 id="work" class="sr-only">Work</h2>
+  <ol class="enlargements" role="list">
+    {picks.map((p) => <li><Print project={p} id={`${p.slug}-enl`} /></li>)}
+  </ol>
+</section>
+
+<style>
+  .work { padding-block: var(--space-7); }
+  .enlargements { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: var(--space-6); }
+  .enlargements li { max-inline-size: 360px; }
+</style>
