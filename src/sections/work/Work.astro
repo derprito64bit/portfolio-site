@@ -14,6 +14,6 @@ const picks = content.featured.slice(0, 3);
 
 <style>
   .work { padding-block: var(--space-7); }
-  .enlargements { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: var(--space-6); }
+  .enlargements { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(160px, 100%), 1fr)); gap: var(--space-6); }
   .enlargements li { max-inline-size: 360px; }
 </style>

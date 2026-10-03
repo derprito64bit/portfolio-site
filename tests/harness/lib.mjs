@@ -169,9 +169,20 @@ export function gitSha() {
     return 'unknown';
   }
 }
+/**
+ * The evidence root: EVIDENCE_ROOT, else the first portfolio-evidence folder beside the repo or beside any folder
+ * above it (a crew worktree lives in ../portfolio-site.wt/<id>, two levels below the GitHub folder).
+ */
+export function evidenceRoot() {
+  if (process.env.EVIDENCE_ROOT) return resolve(process.env.EVIDENCE_ROOT);
+  for (let dir = resolve(ROOT, '..'); ; dir = dirname(dir)) {
+    const candidate = join(dir, 'portfolio-evidence');
+    if (existsSync(candidate)) return candidate;
+    if (dirname(dir) === dir) return resolve(ROOT, '..', 'portfolio-evidence');
+  }
+}
 export function evidenceDir(crew = 'W-F', wave = 'wave3a', role = 'crew') {
-  const base = process.env.EVIDENCE_ROOT || resolve(ROOT, '..', 'portfolio-evidence');
-  return join(base, wave, crew, gitSha().slice(0, 7), role);
+  return join(evidenceRoot(), wave, crew, gitSha().slice(0, 7), role);
 }
 export function cliOpts(argv = process.argv.slice(2)) {
   const out = { _: [] };

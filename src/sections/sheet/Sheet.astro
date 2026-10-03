@@ -14,7 +14,8 @@ import { content } from '../../lib/content/index.ts';
 <style>
   .sheet { padding-block: var(--space-7); --ground: var(--table-lit); }
   .sheet-title { font-size: var(--type-display); margin-block-end: var(--space-6); }
-  .sheet-grid { display: grid; grid-template-columns: repeat(2, minmax(140px, 1fr)); gap: var(--space-5); }
+  /* Two columns when two 140 px prints fit; one at 200% zoom on a phone (195 CSS px), so nothing overflows. */
+  .sheet-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(140px, 100%), 1fr)); gap: var(--space-5); }
   @media (min-width: 48rem) { .sheet-grid { grid-template-columns: repeat(3, minmax(140px, 1fr)); } }
   @media (min-width: 64rem) { .sheet-grid { grid-template-columns: repeat(4, minmax(140px, 1fr)); } }
 </style>
