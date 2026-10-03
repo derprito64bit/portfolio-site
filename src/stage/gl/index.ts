@@ -168,15 +168,21 @@ function render(sy: number): void {
     const s = getSlot(v.slotId);
     v.rect = null;
     if (!v.visible || !s || !s.near || !s.w || !s.h) continue;
-    const x = s.cx - s.w / 2 - window.scrollX;
-    const yCanvas = s.cy - s.h / 2 - anchor;
-    v.rect = { x, y: s.cy - s.h / 2 - sy, w: s.w, h: s.h };
-    if (yCanvas + s.h <= 0 || yCanvas >= view.Hc) continue;
-    const yGl = view.Hc - yCanvas - s.h;
-    v.camera.aspect = s.w / s.h;
+    // Snap the slot to device pixels in document space (as the browser paints its box), so the scissored view
+    // lands on the same pixels at every scroll position: the anchor is device-aligned, so this never jitters.
+    const snap = (n: number) => Math.round(n * view.dpr) / view.dpr;
+    const x = snap(s.cx - s.w / 2 - window.scrollX);
+    const top = snap(s.cy - s.h / 2);
+    const w = snap(s.w);
+    const h = snap(s.h);
+    const yCanvas = top - anchor;
+    v.rect = { x, y: top - sy, w, h };
+    if (yCanvas + h <= 0 || yCanvas >= view.Hc) continue;
+    const yGl = view.Hc - yCanvas - h;
+    v.camera.aspect = w / h;
     v.camera.updateProjectionMatrix();
-    renderer.setViewport(x, yGl, s.w, s.h);
-    renderer.setScissor(x, yGl, s.w, s.h);
+    renderer.setViewport(x, yGl, w, h);
+    renderer.setScissor(x, yGl, w, h);
     renderer.setScissorTest(true);
     renderer.render(v.scene, v.camera);
   }

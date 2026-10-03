@@ -7,6 +7,8 @@
   .bench-controls { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); }
   .bench-controls select, .bench-controls button { min-block-size: 44px; padding-inline: var(--space-3); }
   .bench-out { max-block-size: 40svh; overflow: auto; font: 500 var(--type-edge) / 1.45 var(--font-edge); white-space: pre-wrap; }
+  /* The cube sits half a screen down so a 40% scroll keeps it whole (projection drift test). */
+  .fx-row { padding-block-start: 50svh; }
   .fx-cube { inline-size: min(300px, 100%); aspect-ratio: 1; }
   /* Fixed gaps: an emulated height change also changes svh, which a real toolbar never does, so viewport units here
      would move the slots and test the emulator instead of the stage. */

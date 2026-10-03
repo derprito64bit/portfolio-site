@@ -49,7 +49,8 @@ export function measureViewport(): 'realloc' | 'height' | 'none' {
   anchored = false;
   stats.reallocs++;
   stats.dpr = dpr;
-  stats.canvasPx = Math.round(W * dpr) * Math.round(Hc * dpr);
+  // three.js sizes the buffer with Math.floor(css px x pixel ratio); the stat matches what the GPU allocates.
+  stats.canvasPx = Math.floor(W * dpr) * Math.floor(Hc * dpr);
   return 'realloc';
 }
 
