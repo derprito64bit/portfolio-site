@@ -1,4 +1,240 @@
 {
-  "$comment": "Which crew may edit which paths. Keys of 'crews' are crew ids (as in crew/<id>); values are arrays of globs relative to the repo root. A path matched by no crew belongs to the orchestrator. The ownership check (added to CI by the foundation crew) fails a PR that edits outside its crew's globs. Filled in Wave 2; only the orchestrator edits this file.",
-  "crews": {}
+  "$comment": "Crew -> owned globs (Wave 2 lock). A crew may only change files matching its globs.",
+  "W": {
+    "W-F": [
+      "package.json",
+      "package-lock.json",
+      "astro.config.mjs",
+      "tsconfig.json",
+      ".size-limit.cjs",
+      "playwright.config.ts",
+      ".github/workflows/**",
+      "scripts/crew.mjs",
+      "scripts/serve-dist.mjs",
+      "scripts/check/**",
+      "scripts/build/tokens.mjs",
+      "scripts/build/images.mjs",
+      "scripts/build/fonts/**",
+      "src/stage/**",
+      "src/lib/content/**",
+      "src/lib/tokens.js",
+      "src/layouts/**",
+      "src/styles/base.css",
+      "src/styles/tokens.css",
+      "src/components/slot/**",
+      "src/pages/index.astro",
+      "src/pages/work/index.astro",
+      "src/pages/bench/**",
+      "public/fonts/**",
+      "public/favicon.*",
+      "public/apple-touch-icon.png",
+      "tests/harness/**",
+      "tests/w-f/**",
+      "content/*.json (Wave 3a migration only; afterwards the orchestrator)",
+      "Stub files for every other crew's paths (initial commit only)"
+    ],
+    "W-R": [
+      "scripts/release/**",
+      "tests/w-r/**",
+      "fork: scripts/fork/publish.ps1",
+      "fork: scripts/fork/linkcheck.ps1",
+      "fork: scripts/fork/compose-check.ps1"
+    ],
+    "W-S1": [
+      "src/sections/hero/**",
+      "src/components/wordmark/**",
+      "src/components/camera-strip/**",
+      "src/gl/camera/**",
+      "src/gl/effects/develop/**",
+      "src/motion/spring/**",
+      "public/posters/camera/**",
+      "tests/w-s1/**"
+    ],
+    "W-S2": [
+      "src/sections/work/**",
+      "src/sections/sheet/**",
+      "src/components/print/**",
+      "src/lib/teststrip/**",
+      "src/gl/prints/**",
+      "tests/w-s2/**"
+    ],
+    "W-S3": [
+      "src/pages/work/[slug].astro",
+      "src/sections/project/**",
+      "src/gl/flight/**",
+      "tests/w-s3/**"
+    ],
+    "W-C13": [
+      "assets-src/3d/**",
+      "scripts/build/glb/**",
+      "scripts/build/posters/**",
+      "public/models/**",
+      "public/posters/wire/**",
+      "tests/w-c13/**"
+    ],
+    "W-C2": [
+      "src/gl/effects/**",
+      "src/gl/shaders/**",
+      "scripts/build/looks/**",
+      "tests/w-c2/**"
+    ],
+    "W-C3": [
+      "src/motion/**",
+      "src/styles/motion.css",
+      "tests/w-c3/**"
+    ],
+    "W-C14": [
+      "src/gl/camera/**",
+      "src/gl/scenes/**",
+      "src/sections/hero/**",
+      "src/components/wordmark/**",
+      "src/components/camera-strip/**",
+      "src/components/exhibit/**",
+      "public/posters/camera/**",
+      "tests/w-c14/**"
+    ],
+    "W-C4": [
+      "src/sections/work/**",
+      "src/sections/sheet/**",
+      "src/components/print/**",
+      "src/lib/teststrip/**",
+      "src/gl/prints/**",
+      "tests/w-c4/**"
+    ],
+    "W-C5": [
+      "src/pages/work/[slug].astro",
+      "src/sections/project/**",
+      "src/gl/flight/**",
+      "src/pages/og/**",
+      "scripts/build/og/**",
+      "tests/w-c5/**"
+    ],
+    "W-C6": [
+      "src/sections/honours/**",
+      "src/sections/footer/**",
+      "tests/w-c6/**"
+    ],
+    "W-C7": [
+      "src/sections/door/**",
+      "src/lib/handoff/**",
+      "tests/w-c7/**"
+    ],
+    "W-C8": [
+      "src/pages/404.astro",
+      "src/sections/notfound/**",
+      "src/styles/tier-static.css",
+      "tests/w-c8/**"
+    ],
+    "W-C9": [
+      "src/styles/interaction.css",
+      "src/lib/sound/**",
+      "src/components/sound-toggle/**",
+      "src/components/motion-switch/**",
+      "public/sound/**",
+      "tests/w-c9/**"
+    ],
+    "W-C10": [
+      "src/** (only while no other W crew is active)",
+      "tests/w-c10/**"
+    ]
+  },
+  "M": {
+    "M-F": [
+      "Assets/Portfolio/Runtime/Registry/**",
+      "Assets/Portfolio/Runtime/Content/**",
+      "Assets/Portfolio/Resources/Portfolio/*.json",
+      "Assets/Portfolio/Ion.Portfolio.asmref",
+      "Assets/Portfolio/Tests/EditMode/*.asmref",
+      "Assets/Portfolio/Tests/PlayMode/Registry*.cs",
+      "Assets/Portfolio/Tests/PlayMode/Content*.cs",
+      "SEED EXCEPTION (this PR only, before any other M crew starts): first versions of every stub file in the other crews' folders; ownership-check runs with -Owned 'Assets/Portfolio/**'"
+    ],
+    "M-QA": [
+      "Assets/Portfolio/Tests/PlayMode/Tour/**",
+      "Assets/Portfolio/Tests/PlayMode/Guards/**",
+      "scripts/fork/tour.ps1",
+      "scripts/fork/mud_metric.py",
+      "docs/portfolio/qa/**"
+    ],
+    "Seams": [
+      "Assets/Scripts/Gameplay/InstantCamera.cs",
+      "Assets/Scripts/Gameplay/ViewfinderFrame.cs",
+      "Assets/Scripts/Gameplay/FirstPersonController.cs",
+      "Assets/Scripts/Gameplay/PhotoHolder.cs",
+      "Assets/Scripts/Gameplay/PlayerInteractor.cs",
+      "Assets/Scripts/Presentation/PhotoOverlayUI.cs",
+      "Assets/Scripts/Presentation/ClickToPlayOverlay.cs",
+      "Assets/Scripts/Presentation/Motion/Feel.cs",
+      "Assets/Scripts/Presentation/Surface.cs",
+      "Assets/Scripts/Presentation/Palette.cs",
+      "Assets/Scripts/Presentation/Quality/UltraFx.cs",
+      "Assets/Scripts/Presentation/Audio/IonAudio.Footsteps.cs",
+      "Assets/Shaders/FlatToon.shader",
+      "Assets/Shaders/IonAtmosphere.hlsl",
+      "Assets/Shaders/IonPattern.hlsl",
+      "Assets/Scripts/Projection/ProjectionSystem.cs",
+      "Assets/Scripts/Levels/Room.cs",
+      "Assets/Scripts/Levels/ZoneCatalog.cs",
+      "Assets/Scripts/Levels/GameBootstrap.cs",
+      "Assets/Scripts/Levels/LevelProps.cs",
+      "Assets/Scripts/Levels/Rooms/HubLightTable.cs",
+      "Assets/Scripts/Levels/Rooms/GalleryEnding.cs",
+      "Assets/Plugins/WebGL/IonPointerLock.jslib",
+      "Assets/WebGLTemplates/Ion/index.html",
+      "Assets/UniversalRenderPipelineGlobalSettings.asset",
+      "Assets/Editor/ProjectSetup.cs",
+      "Assets/Tests/EditMode/**",
+      "Assets/Tests/PlayMode/IonPlayTestBase.cs",
+      "Assets/Tests/PlayMode/StreamingPlayTests.cs"
+    ],
+    "M-C1": [
+      "Assets/Portfolio/Runtime/Exhibits/**",
+      "Assets/Portfolio/Tests/PlayMode/Exhibits*.cs",
+      "Assets/Portfolio/Tests/EditMode/Exhibits*.cs"
+    ],
+    "M-C2": [
+      "Assets/Portfolio/Runtime/Rooms/Core/**",
+      "Assets/Portfolio/Runtime/Rooms/Foyer/**",
+      "Assets/Portfolio/Runtime/Rooms/Gallery/**",
+      "Assets/Portfolio/Runtime/Rooms/Honours/**",
+      "Assets/Portfolio/Runtime/Rooms/CameraRoom/**",
+      "Assets/Portfolio/Runtime/Rooms/Wing/**",
+      "Assets/Portfolio/Tests/PlayMode/ManorTests.cs",
+      "Assets/Portfolio/Tests/PlayMode/Rooms*.cs"
+    ],
+    "M-C3": [
+      "Assets/Portfolio/Runtime/Camera/**",
+      "Assets/Portfolio/Shaders/**",
+      "Assets/Portfolio/Resources/Portfolio/Camera/**",
+      "Assets/Portfolio/Tests/EditMode/Camera*.cs",
+      "Assets/Portfolio/Tests/PlayMode/Camera*.cs"
+    ],
+    "M-C4": [
+      "Assets/Portfolio/Runtime/Look/**",
+      "Assets/Portfolio/Tests/PlayMode/Look*.cs",
+      "docs/portfolio/direction/manor-look.md"
+    ],
+    "M-C5": [
+      "Assets/Portfolio/Runtime/Overlay/**",
+      "Assets/Portfolio/Plugins/WebGL/**",
+      "site/manor-overlay/**",
+      "Assets/Portfolio/Tests/PlayMode/Overlay*.cs"
+    ],
+    "M-C6": [
+      "Assets/Portfolio/Runtime/Streaming/**",
+      "Assets/Portfolio/Tests/PlayMode/Streaming*.cs",
+      "docs/portfolio/direction/manor-perf.md"
+    ],
+    "M-C7": [
+      "Assets/Portfolio/Runtime/Rooms/Workshop/**",
+      "Assets/Portfolio/Runtime/Rooms/Study/**",
+      "Assets/Portfolio/Tests/PlayMode/WorkshopStudy*.cs"
+    ],
+    "M-C8": [
+      "Assets/Portfolio/Runtime/Authored/**",
+      "Assets/Portfolio/Models/**",
+      "scripts/fork/blender/**",
+      "Assets/Portfolio/Tests/PlayMode/Authored*.cs"
+    ]
+  }
 }
