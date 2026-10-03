@@ -1,4 +1,4 @@
-// The one ticker (W-D002): the only requestAnimationFrame call site in src/. Frame order:
+// The one ticker (W-D002): the only rAF call site in src/ (schedule() below). Frame order:
 //   before hooks (lenis.raf, anime engine.update) -> read scrollY once -> re-measure if dirty -> step springs and
 //   entities -> return if idle -> else place and render.
 // It renders only when something moved, skips the render on idle frames and detaches after 1 s of idle, so a page at

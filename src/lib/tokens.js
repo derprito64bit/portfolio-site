@@ -134,7 +134,6 @@ export const tiers = /*#__PURE__*/ Object.freeze({
   "lite": "other WebGL2; DPR <= 1.5, canvas <= 1.5 Mpx, no MSAA, LITE shader, GL boot on intent",
   "static": "no WebGL2, 2 context losses in 60 s, or second governor step",
   "governor": "45 busy frames averaging > 22 ms step down one tier, never up",
-  "never": "navigator.hardwareConcurrency, maxTouchPoints",
   "override": "?tier=full|lite|static"
 });
 

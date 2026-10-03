@@ -174,7 +174,9 @@ export function buildTokens(t) {
     exp('ease', t.motion.ease),
     exp('z', t.z),
     exp('breakpoints', t.breakpoints),
-    exp('tiers', t.tiers),
+    // tiers.never names the two navigator fields tier code must not read; it stays in the source only, so a grep of
+    // src/ for them finds nothing (W-D017).
+    exp('tiers', Object.fromEntries(Object.entries(t.tiers).filter(([k]) => k !== 'never'))),
     exp('stage', t.stage),
     exp('layout', t.layout),
     exp('monogram', t.monogram),
