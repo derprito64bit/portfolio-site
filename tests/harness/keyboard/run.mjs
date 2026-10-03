@@ -19,7 +19,7 @@ async function raw(buf) {
 }
 
 /** Ring coverage for the focused element: compare focused and unfocused shots of the band around it. */
-async function ringCoverage(page) {
+export async function ringCoverage(page) {
   const info = await page.evaluate(() => {
     const el = document.activeElement;
     if (!el || el === document.body) return null;
@@ -78,7 +78,7 @@ async function ringCoverage(page) {
   return { ...info, band, coverage: band ? good / band : null, misses };
 }
 
-async function walk(page, maxStops = 40) {
+export async function walk(page, maxStops = 40) {
   const stops = [];
   await page.keyboard.press('Tab');
   for (let i = 0; i < maxStops; i++) {

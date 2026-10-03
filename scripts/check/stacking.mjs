@@ -6,12 +6,14 @@
 //   painted   a probe child with z-index:-1 is painted above its ancestor only inside a stacking context
 //             (document.elementsFromPoint order), which catches engine-specific triggers the list misses.
 // GPU-free: runs in CI. Usage: node scripts/check/stacking.mjs [--json report.json]
+import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { closeBrowsers, newContext, serve, waitSettled, writeJson } from '../../tests/harness/lib.mjs';
 
 const ROUTES = ['/', '/work/project-01/', '/bench/', '/bench/swap/'];
 const PROFILES = ['D2', 'P2'];
 
-function scanInPage() {
+export function scanInPage() {
   const reasons = (el) => {
     const cs = getComputedStyle(el);
     const parent = el.parentElement ? getComputedStyle(el.parentElement) : null;
@@ -33,15 +35,18 @@ function scanInPage() {
   const painted = (el) => {
     const box = el.getBoundingClientRect();
     if (box.width < 2 || box.height < 2) return null;
+    // A fixed probe covers the viewport (or the ancestor, when a transform makes it the containing block), so it
+    // overlaps the ancestor wherever the ancestor is on screen. Points are taken from that visible part.
+    const vis = { l: Math.max(0, box.left), t: Math.max(0, box.top), r: Math.min(innerWidth, box.right), b: Math.min(innerHeight, box.bottom) };
+    if (vis.r - vis.l < 2 || vis.b - vis.t < 2) return null;
     const probe = document.createElement('div');
-    probe.style.cssText = 'position:absolute;inset:0;z-index:-1;pointer-events:auto;background:transparent';
+    probe.style.cssText = 'position:fixed;inset:0;z-index:-1;pointer-events:auto;background:transparent';
     el.append(probe);
-    const pts = [[0.5, 0.5], [0.05, 0.05], [0.95, 0.95], [0.05, 0.95], [0.95, 0.05]];
+    const pts = [[0.5, 0.5], [0.1, 0.1], [0.9, 0.9], [0.1, 0.9], [0.9, 0.1]];
     let verdict = null;
     for (const [fx, fy] of pts) {
-      const x = box.left + box.width * fx;
-      const y = box.top + box.height * fy;
-      if (x < 0 || y < 0 || x >= innerWidth || y >= innerHeight) continue;
+      const x = vis.l + (vis.r - vis.l) * fx;
+      const y = vis.t + (vis.b - vis.t) * fy;
       const stack = document.elementsFromPoint(x, y);
       const ip = stack.indexOf(probe);
       const ie = stack.indexOf(el);
@@ -68,35 +73,41 @@ function scanInPage() {
   return out;
 }
 
-const srv = await serve();
-const results = [];
-let failures = 0;
-try {
-  for (const profile of PROFILES) {
-    for (const route of ROUTES) {
-      const ctx = await newContext(profile);
-      const page = await ctx.newPage();
-      await page.goto(srv.base + route, { waitUntil: 'load' });
-      await waitSettled(page);
-      const slots = await page.evaluate(scanInPage);
-      const bad = slots.filter((s) => s.offenders.length || s.slotZ !== '2');
-      failures += bad.length;
-      results.push({ profile, route, slots: slots.length, bad });
-      await ctx.close();
+async function main() {
+  const srv = await serve();
+  const results = [];
+  let failures = 0;
+  try {
+    for (const profile of PROFILES) {
+      for (const route of ROUTES) {
+        const ctx = await newContext(profile);
+        const page = await ctx.newPage();
+        await page.goto(srv.base + route, { waitUntil: 'load' });
+        await waitSettled(page);
+        const slots = await page.evaluate(scanInPage);
+        const bad = slots.filter((s) => s.offenders.length || s.slotZ !== '2');
+        failures += bad.length;
+        results.push({ profile, route, slots: slots.length, bad });
+        await ctx.close();
+      }
     }
+  } finally {
+    await closeBrowsers();
+    await srv.close();
   }
-} finally {
-  await closeBrowsers();
-  await srv.close();
+
+  const report = { schema: 1, check: 'stacking-context', routes: ROUTES, profiles: PROFILES, results, pass: failures === 0 };
+  const i = process.argv.indexOf('--json');
+  if (i > 0) writeJson(process.argv[i + 1], report);
+  const total = results.reduce((n, r) => n + r.slots, 0);
+  if (failures) {
+    console.error(`stacking: ${failures} slot(s) with a stacking-context ancestor or not on z 2:`);
+    for (const r of results) for (const b of r.bad) console.error(`  ${r.profile} ${r.route} ${b.id}: z ${b.slotZ}; ${b.offenders.map((o) => `${o.el} [${o.reasons.join(', ')}${o.painted ? ' painted' : ''}]`).join('; ')}`);
+    process.exitCode = 1;
+    return;
+  }
+  console.log(`stacking: ${total} slot visits on ${ROUTES.length} routes at ${PROFILES.join(', ')}; no ancestor creates a stacking context; every slot is on z 2`);
+
 }
 
-const report = { schema: 1, check: 'stacking-context', routes: ROUTES, profiles: PROFILES, results, pass: failures === 0 };
-const i = process.argv.indexOf('--json');
-if (i > 0) writeJson(process.argv[i + 1], report);
-const total = results.reduce((n, r) => n + r.slots, 0);
-if (failures) {
-  console.error(`stacking: ${failures} slot(s) with a stacking-context ancestor or not on z 2:`);
-  for (const r of results) for (const b of r.bad) console.error(`  ${r.profile} ${r.route} ${b.id}: z ${b.slotZ}; ${b.offenders.map((o) => `${o.el} [${o.reasons.join(', ')}${o.painted ? ' painted' : ''}]`).join('; ')}`);
-  process.exit(1);
-}
-console.log(`stacking: ${total} slot visits on ${ROUTES.length} routes at ${PROFILES.join(', ')}; no ancestor creates a stacking context; every slot is on z 2`);
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) await main();

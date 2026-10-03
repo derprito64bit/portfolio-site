@@ -52,16 +52,10 @@ button { font: inherit; color: inherit; }
 html[data-rail="drip"] #rail { z-index: var(--z-gl-raised-for-drip); }
 html[data-tier="static"] #rail, html:not(.js) #rail { display: none; }
 
-/* A ground is a section's colour, drawn under the canvas. */
-:where([data-ground]) { position: relative; }
-:where([data-ground])::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: var(--z-ground);
-  background: var(--ground, transparent);
-  pointer-events: none;
-}
+/* A ground is a section's own background colour (z 0 by paint order): the section creates no stacking context, so
+   its background paints in the root context under the canvas (z 1). A plain background rather than a ::before keeps
+   the ground readable by contrast tools (axe cannot resolve pseudo-element backgrounds). */
+:where([data-ground]) { background: var(--ground, transparent); }
 /* Content sits above the canvas. Slots are content; an element that contains a slot is never positioned with a
    z-index, so no ancestor of a slot creates a stacking context and every ring paints above GL.
    Rule for authors: inside a ground, wrap bare text in an element. */
