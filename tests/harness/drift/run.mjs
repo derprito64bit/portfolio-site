@@ -1,8 +1,13 @@
 // Drift instrument (W-D013, W-D030): is GL glued to its DOM slot while the page moves fast?
 // Ported from the w-scroll Wave 1b drift harness after a read. On /bench/?debug=drift each fixture slot has a 3 px DOM
 // bar rgb(0, 255, 20i) on top and a GL quad rgb(255, 0, 20i) of exactly the slot's size underneath. On every presented
-// frame, for every fully visible slot: drift = GL bottom edge - (DOM bar top + slot height), in CSS px. 0 = glued.
-//   Chromium: CDP screencast frames (what the compositor presented) during a dispatched touch fling.
+// frame, for every fully visible slot, both edges are measured in CSS px:
+//   top error    = first GL row under the bar - (bar top + 3 px)      (> 0: GL starts late)
+//   bottom error = GL bottom edge - (bar top + slot height)           (< 0: GL stops early)
+// Both within 0.5 px: glued. One edge glued and GL missing at the other: clipped at that edge (the canvas edge cut it,
+// so coverage, not position; reported per edge as clipTopPx and clipBottomPx). Anything else: shifted (drift).
+//   Chromium: CDP screencast frames (what the compositor presented) during dispatched touch flings, including a
+//             reversal: a drag against a running fling, where a canvas with no slack behind it would open a top gap.
 //   WebKit:   Playwright has no touch gestures for WebKit, so the fling is a smooth programmatic scroll on a touch
 //             (coarse pointer) context, and frames are page screenshots taken through it.
 // Mid-fling the viewport loses 80 px of height (a toolbar collapse). On a coarse pointer that must not reallocate the
@@ -18,7 +23,9 @@ export async function decode(buf) {
   return { data, w: info.width, h: info.height };
 }
 
-/** Per frame and per visible slot index: drift of the GL bottom edge against the DOM slot, in CSS px. */
+const BAR = 3;
+
+/** Per frame and per visible slot index: both GL edges against the DOM slot, in CSS px. */
 export function analyse(frame, slotHeights, scale) {
   const { data, w, h } = frame;
   const acc = new Map();
@@ -59,13 +66,14 @@ export function analyse(frame, slotHeights, scale) {
       out.push({ idx, drift: null, note: 'no GL under the slot' });
       continue;
     }
-    // Glued: the GL bottom edge meets the slot bottom. Clipped: the GL starts under the bar but stops early at the
-    // canvas edge (overscan ran out); that is coverage, reported apart from misplacement. Anything else is shifted.
-    const bottomErr = (gBottom + 1 - (a.barTop + hDev)) / scale;
-    const topUnderBar = gTop >= a.barTop - scale && gTop <= a.barTop + 4 * scale;
-    if (Math.abs(bottomErr) < 0.5) out.push({ idx, drift: 0, cls: 'glued' });
-    else if (topUnderBar && bottomErr < 0) out.push({ idx, drift: 0, cls: 'clipped', clipPx: Number((-bottomErr).toFixed(1)) });
-    else out.push({ idx, drift: Number(bottomErr.toFixed(2)), cls: 'shifted', gTop, barTop: a.barTop });
+    const topErr = Number(((gTop - (a.barTop + BAR * scale)) / scale).toFixed(2));
+    const bottomErr = Number(((gBottom + 1 - (a.barTop + hDev)) / scale).toFixed(2));
+    const topOk = Math.abs(topErr) < 0.5;
+    const bottomOk = Math.abs(bottomErr) < 0.5;
+    if (topOk && bottomOk) out.push({ idx, drift: 0, cls: 'glued', topErr, bottomErr });
+    else if (bottomOk && topErr > 0) out.push({ idx, drift: 0, cls: 'clipped', edge: 'top', clipTopPx: topErr, topErr, bottomErr });
+    else if (topOk && bottomErr < 0) out.push({ idx, drift: 0, cls: 'clipped', edge: 'bottom', clipBottomPx: -bottomErr, topErr, bottomErr });
+    else out.push({ idx, drift: Math.abs(topErr) > Math.abs(bottomErr) ? topErr : bottomErr, cls: 'shifted', topErr, bottomErr, gTop, barTop: a.barTop });
   }
   return out;
 }
@@ -105,6 +113,15 @@ async function scenario(name, base, dumpDir) {
       }
       await sleep(900);
       await drag(120, 50);
+      await sleep(900);
+    }
+    // Reversals: a drag against a running fling, both ways (the gate saw a 10 px top gap at one).
+    for (let k = 0; k < 3; k++) {
+      await drag(760, -50);
+      await sleep(120);
+      await drag(120, 50);
+      await sleep(120);
+      await drag(760, -50);
       await sleep(900);
     }
     await cdp.send('Page.stopScreencast');
@@ -148,10 +165,16 @@ async function scenario(name, base, dumpDir) {
   const histogram = {};
   for (const s of measured) histogram[s.drift] = (histogram[s.drift] || 0) + 1;
   const clipped = measured.filter((s) => s.cls === 'clipped');
-  const maxClipPx = clipped.length ? Math.max(...clipped.map((s) => s.clipPx)) : 0;
+  const clipTop = clipped.filter((s) => s.edge === 'top');
+  const clipBottom = clipped.filter((s) => s.edge === 'bottom');
+  const maxClipTopPx = clipTop.length ? Math.max(...clipTop.map((s) => s.clipTopPx)) : 0;
+  const maxClipBottomPx = clipBottom.length ? Math.max(...clipBottom.map((s) => s.clipBottomPx)) : 0;
+  const shifted = measured.filter((s) => s.cls === 'shifted');
   return {
     browser: name, input: name === 'chromium' ? 'touch fling (CDP touch events), screencast frames' : 'fling as 24 decaying per-frame scroll steps on a touch context, captured at frame boundaries', toolbarChangePx: 80,
-    frames: frames.length, samples: measured.length, maxDriftPx, clippedSamples: clipped.length, maxClipPx, missing, reallocOnHeight, coarse: before.coarse, tier: before.tier, histogram, worst,
+    frames: frames.length, samples: measured.length, maxDriftPx, shiftedSamples: shifted.length,
+    clipTopSamples: clipTop.length, maxClipTopPx, clipBottomSamples: clipBottom.length, maxClipBottomPx, clipped: clipped.map((s) => ({ frame: s.frame, idx: s.idx, edge: s.edge, px: s.clipTopPx ?? s.clipBottomPx })),
+    missing, reallocOnHeight, coarse: before.coarse, tier: before.tier, histogram, worst,
     pass: measured.length > 0 && maxDriftPx < 0.5 && missing === 0 && reallocOnHeight === 0,
   };
 }
@@ -165,7 +188,7 @@ export async function run(opts = {}) {
   } finally {
     await srv.close();
   }
-  return { schema: 1, instrument: 'drift', pass: rows.every((r) => r.pass), rows, summary: rows.map((r) => `${r.browser}: ${r.samples} samples over ${r.frames} frames, max drift ${r.maxDriftPx} px, reallocs on height change ${r.reallocOnHeight}`).join(' | ') };
+  return { schema: 1, instrument: 'drift', pass: rows.every((r) => r.pass), rows, summary: rows.map((r) => `${r.browser}: ${r.samples} samples over ${r.frames} frames, max drift ${r.maxDriftPx} px, clips top ${r.clipTopSamples} (max ${r.maxClipTopPx} px) bottom ${r.clipBottomSamples} (max ${r.maxClipBottomPx} px), reallocs on height change ${r.reallocOnHeight}`).join(' | ') };
 }
 
 await cliMain(import.meta.url, run);
