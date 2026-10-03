@@ -16,7 +16,7 @@ export interface Slot {
   cy: number;
   w: number;
   h: number;
-  /** Within half a viewport of the screen. */
+  /** Within one viewport of the screen (lead time for GL during a fast fling). */
   near: boolean;
 }
 
@@ -55,7 +55,7 @@ const near = new IntersectionObserver(
     }
     invalidate();
   },
-  { rootMargin: '50% 0px' },
+  { rootMargin: '100% 0px' },
 );
 
 export function scan(root: ParentNode = document): Slot[] {

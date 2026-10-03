@@ -84,6 +84,7 @@ const factories: EntityFactory[] = [];
 const views = new Set<StageViewImpl>();
 let lost = false;
 let dead = false;
+let represent = 0;
 const lossTimes: number[] = [];
 
 class StageViewImpl implements StageView {
@@ -116,7 +117,10 @@ function resize(): void {
     renderer.setSize(view.W, view.Hc, false);
     markDirty();
   } else if (kind === 'height') {
-    invalidate();
+    // On a coarse pointer a height-only change is the toolbar: layouts use svh and lvh, so slots stay put and are
+    // not re-measured (W-D013). On a fine pointer it is a real resize, and vh-based layout may move the slots.
+    if (matchMedia('(pointer: coarse)').matches) invalidate();
+    else markDirty();
   }
 }
 
@@ -145,7 +149,13 @@ function hasContent(): boolean {
 // ---------------------------------------------------------------- the frame
 function render(sy: number): void {
   if (!renderer || lost || dead) return;
+  const before = view.anchor;
   const anchor = place(sy, scrollState.dir);
+  // A re-anchor moves the canvas and redraws it in one frame. WebKit (measured on its Windows build) can present the
+  // moved canvas with an older buffer for a frame or two, so a re-anchor keeps presenting for 3 more frames.
+  if (anchor !== before) represent = 3;
+  else if (represent > 0) represent--;
+  if (represent > 0) invalidate();
   const f: FrameInfo = { sy, anchor, W: view.W, H: view.H, Hc: view.Hc };
   renderer.info.reset();
   renderer.setScissorTest(false);
