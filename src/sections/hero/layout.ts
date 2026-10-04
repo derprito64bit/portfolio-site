@@ -113,15 +113,17 @@ export function heroLayout(hero: HTMLElement, nudge = false): void {
   px('--row-h', rowH);
   // The camera slot sits on the canvas's pixel grid: the stage snaps every view to whole canvas pixels (the tier's
   // effective DPR), so a slot placed between them would put the first GL frame up to half a pixel off its poster.
-  const tier = doc.documentElement.getAttribute('data-tier') || 'static';
+  // The grid of the tier this device would get with GL (fine pointer and hover: full, else lite), so the layout is
+  // the same on every tier and mode: static and reduced shift nothing against auto (0 px).
+  const naturalFull = mm('(pointer: fine) and (hover: hover)');
   let g = win.devicePixelRatio || 1;
-  if (tier !== 'static') {
+  {
     const probe = doc.createElement('div');
     probe.style.cssText = 'position:fixed;top:0;width:0;height:100lvh;visibility:hidden';
     doc.body.appendChild(probe);
     const area = doc.documentElement.clientWidth * Math.round((probe.offsetHeight || vh) * 1.25);
     probe.remove();
-    const cap = tier === 'full' ? [2, 4.5e6] : [1.5, 1.5e6];
+    const cap = naturalFull ? [2, 4.5e6] : [1.5, 1.5e6];
     g = Math.min(g, cap[0]);
     if (area * g * g > cap[1]) g = Math.sqrt(cap[1] / area);
   }

@@ -364,10 +364,11 @@ export async function strip(base) {
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: cam.x, y: cam.y }] });
   for (let i = 1; i <= 10; i++) await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: cam.x, y: cam.y - i * 24 }] });
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
-  await sleep(600);
+  await sleep(1500); // the fling settles
   const y1 = await k.page.evaluate(() => scrollY);
   await k.page.evaluate(() => window.scrollTo(0, 0));
-  await sleep(300);
+  await sleep(800);
+  await k.page.waitForFunction(() => !window.__hero || window.__hero.live, null, { timeout: 8000 }).catch(() => {});
   // A tap on the camera presses the shutter: the next print is made and announced.
   const before = await k.page.evaluate(() => document.querySelectorAll('[data-hero-print] img.hero-still').length);
   await k.page.tap('[data-hero-camera]', { position: { x: 20, y: 20 } });
