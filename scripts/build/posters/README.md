@@ -38,8 +38,9 @@ node scripts/build/posters/wire.mjs                                    # public/
 3. **LOD:** `pickLod(rect.width, tier)`: the tokens rule (LOD0 at 600 device px and wider) on the full tier only;
    the lite tier always draws LOD1 (D-021: the 100k-triangle LOD0 is full tier only).
 4. **Poster in the DOM:** `posterSet(entry, { slotW, slotH, glDpr, tier })` gives the set of the LOD that GL will draw.
-   Show it as `<img srcset sizes style="object-fit: contain">` with `sizes` = the contain width in CSS px.
-   The static tier always shows the LOD0 set.
+   Show `posterFile(set.files, containCssWidth, glDpr)`, the file nearest the GL frame's device width, as
+   `<img style="object-fit: contain">`: a phone's lite canvas renders at DPR 1.5, so a 3x srcset pick would be sharper
+   than the frame it hands over to. The static tier shows the LOD0 set through `srcset` and `sizes`.
 5. **Look:** import the same look module that rendered the posters.
 6. **First frame:** draw it only after `renderer.compileAsync()` and `initTexture()` of every map, so it is never a
    half-loaded frame.

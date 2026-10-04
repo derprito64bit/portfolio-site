@@ -10,7 +10,7 @@ import { Color, LineBasicMaterial, LineSegments, MeshBasicMaterial, PerspectiveC
   WireframeGeometry } from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
-import { applyFraming, computeFraming, containRect, pickLod } from "./stage.js";
+import { applyFraming, computeFraming, containRect, pickLod, posterFile } from "./stage.js";
 
 const q = new URLSearchParams(location.search);
 const json = (k, d) => (q.has(k) ? JSON.parse(q.get(k)) : d);
@@ -131,10 +131,15 @@ async function run() {
   if (mode === "img") {
     const img = document.createElement("img");
     img.alt = "";
-    // The displayed width is the contain-fit width, so the browser picks the candidate the site would pick.
     const shown = containRect(w, h, framing.aspect).width;
-    img.sizes = `${shown}px`;
-    img.srcset = json("srcset").map((s) => `${s.url} ${s.w}w`).join(", "); // the set of the LOD the GL will draw
+    const set = json("srcset");                                 // the set of the LOD the GL will draw
+    if (q.has("glDpr")) {
+      // The live stage: the poster nearest to the GL frame's device width (stage.js posterFile).
+      img.src = posterFile(set, shown, Number(q.get("glDpr"))).url;
+    } else {
+      img.sizes = `${shown}px`;                                 // the static tier: no GL frame, the browser picks
+      img.srcset = set.map((s) => `${s.url} ${s.w}w`).join(", ");
+    }
     slot.append(img);
     await img.decode();
     await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));

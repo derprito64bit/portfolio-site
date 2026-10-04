@@ -113,3 +113,14 @@ export function posterSet(entry, { slotW, slotH, glDpr, tier }) {
   const lod = pickLod(containRect(Math.round(slotW * glDpr), Math.round(slotH * glDpr), entry.aspect).width, tier);
   return { lod, files: entry.posters[`lod${lod}`] };
 }
+
+/**
+ * The poster of a set to show: the file whose width is nearest, by ratio, to the GL frame's device width (the
+ * contain width in CSS px times the canvas's effective DPR), so the poster carries the detail GL will draw, no more
+ * and no less (W-S1's hero picks the same way). A phone's lite canvas renders at DPR 1.5, so its poster is not the
+ * 3x one a srcset would pick.
+ */
+export function posterFile(files, containCssW, glDpr) {
+  const need = containCssW * glDpr;
+  return files.reduce((best, f) => (Math.abs(Math.log(f.w / need)) < Math.abs(Math.log(best.w / need)) ? f : best));
+}
