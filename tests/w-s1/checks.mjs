@@ -353,15 +353,20 @@ export async function readable(base, { loads = 3, profileName = 'D2' } = {}) {
     await page.waitForFunction(() => performance.getEntriesByName('hero:readable').length || document.documentElement.dataset.hero === 'done', null, { timeout: WAIT.patience }).catch(() => {});
     const m = await page.evaluate(() => {
       const t = (n) => performance.getEntriesByName(n, 'mark')[0]?.startTime ?? null;
-      return { glReady: t('stage:gl-ready'), camReady: t('hero:cam-ready'), t0: t('hero:t0'), readable: t('hero:readable'), cam: document.documentElement.dataset.cam, renderer: window.__stage?.gl?.rendererName ?? null, guards: performance.getEntriesByType('mark').filter((x) => x.name.startsWith('hero:guard')).map((x) => x.name) };
+      return { glStart: t('stage:gl-start'), glReady: t('stage:gl-ready'), camModel: t('hero:cam-model'), camLook: t('hero:cam-look'), camReady: t('hero:cam-ready'), t0: t('hero:t0'), readable: t('hero:readable'), cam: document.documentElement.dataset.cam, renderer: window.__stage?.gl?.rendererName ?? null, guards: performance.getEntriesByType('mark').filter((x) => x.name.startsWith('hero:guard')).map((x) => x.name) };
     });
     await ctx.close();
-    runs.push({ ...m, t0AfterGlReady: m.t0 !== null && m.glReady !== null ? Math.round(m.t0 - m.glReady) : null, delta: m.readable !== null && m.glReady !== null ? Math.round(m.readable - m.glReady) : null });
+    const after = (t) => (t !== null && m.glReady !== null ? Math.round(t - m.glReady) : null);
+    // Where T0's wait goes, from GL-ready: the model in hand (cam-model), every program compiled and the environment
+    // drawn (cam-look), the first frame confirmed (cam-ready), T0.
+    runs.push({ ...m, modelAfterGlReady: after(m.camModel), lookAfterGlReady: after(m.camLook), t0AfterGlReady: after(m.t0), delta: after(m.readable) });
   }
   await H.closeBrowsers();
   const deltas = runs.map((r) => r.delta).filter((d) => d !== null);
   const med = median(deltas);
-  return { pass: deltas.length === loads && med <= heroTimeline.budgetAfterGlReady, medianMs: med, budgetMs: heroTimeline.budgetAfterGlReady, earliestMs: heroTimeline.readableAfterGlReady, runs };
+  // The margin W-C14 inherits: the budget minus the median, and T0's wait past its floor (gl-ready + t0AfterGlReady).
+  const t0Med = median(runs.map((r) => r.t0AfterGlReady).filter((d) => d !== null));
+  return { pass: deltas.length === loads && med <= heroTimeline.budgetAfterGlReady, medianMs: med, budgetMs: heroTimeline.budgetAfterGlReady, marginMs: med === null ? null : heroTimeline.budgetAfterGlReady - med, earliestMs: heroTimeline.readableAfterGlReady, t0AfterGlReadyMedianMs: t0Med, t0FloorMs: heroTimeline.t0AfterGlReady, t0PastFloorMs: t0Med === null ? null : t0Med - heroTimeline.t0AfterGlReady, runs };
 }
 
 /** 4b. With the GL chunk delayed 3 s, a developed print 1 is visible by FCP + 2.6 s: it appears when the late guard

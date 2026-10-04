@@ -27,7 +27,7 @@
     "heavy": 44,
     "light": 76
    },
-   "bytes": 18810,
+   "bytes": 18795,
    "stats": {
     "tris": 66180,
     "edges": 14907,
@@ -55,7 +55,7 @@
     "heavy": 52,
     "light": 68
    },
-   "bytes": 17440,
+   "bytes": 17406,
    "stats": {
     "tris": 66180,
     "edges": 14846,
@@ -83,7 +83,7 @@
     "heavy": 51,
     "light": 69
    },
-   "bytes": 16234,
+   "bytes": 16209,
    "stats": {
     "tris": 66180,
     "edges": 14542,

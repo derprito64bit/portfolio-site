@@ -23,6 +23,9 @@ const RW = opt.depthWidth ?? 2400;
 const RH = Math.round(RW / framing.aspect);
 const CREASE_DEG = opt.creaseDeg ?? 35;
 const TARGET = opt.target ?? 120; // not a time: strokes per band
+/** Debug only: a box whose edges are reported (see visibleRuns). */
+const PROBE = opt.probe ?? null;
+const probeLog = [];
 
 /** Faces of these materials draw no line (they still hide what is behind them). */
 const SKIP = new Set(['cam_lettering', 'cam_engraving', 'cam_lens_legend', 'cam_screen', 'cam_sensor', 'cam_sensor_edge', 'cam_contact', 'cam_pin', 'cam_glass', 'cam_glass_inner', 'cam_coated', 'cam_coated_green', 'cam_element_edge', 'cam_evf_glass', 'cam_lcd_glass', 'cam_lens_bore', 'cam_throat', 'cam_bayonet_dark', 'cam_lamp', 'cam_gold']);
@@ -154,11 +157,11 @@ function featureEdges(topo, camPos) {
     const front = fs.map(facing);
     if (!front.some(Boolean)) continue; // only back faces: never visible
     if (fs.length === 1) {
-      if (!KNURL.has(names[0]) && !SKIP.has(names[0])) out.push([x, y, 'line']);
+      if (!KNURL.has(names[0]) && !SKIP.has(names[0])) out.push([x, y, 'line', names]);
       continue;
     }
     if (front.some(Boolean) && front.some((f) => !f)) {
-      out.push([x, y, 'sil']);
+      out.push([x, y, 'sil', names]);
       continue;
     }
     const plain = names.filter((m) => !SKIP.has(m) && !KNURL.has(m));
@@ -166,11 +169,11 @@ function featureEdges(topo, camPos) {
     const dot = normals[f0 * 3] * normals[f1 * 3] + normals[f0 * 3 + 1] * normals[f1 * 3 + 1] + normals[f0 * 3 + 2] * normals[f1 * 3 + 2];
     const crease = fs.length > 2 || dot < cosCrease;
     if (crease && plain.length) {
-      out.push([x, y, 'line']);
+      out.push([x, y, 'line', names]);
       continue;
     }
     const silverSide = names.map((m) => SILVER.test(m));
-    if (!names.some((m) => SKIP.has(m)) && silverSide.some(Boolean) && silverSide.some((s) => !s)) out.push([x, y, 'line']);
+    if (!names.some((m) => SKIP.has(m)) && silverSide.some(Boolean) && silverSide.some((s) => !s)) out.push([x, y, 'line', names]);
   }
   return out;
 }
@@ -193,11 +196,11 @@ function sampler(depth) {
     if (x < 0 || y < 0 || x >= RW || y >= RH) return 0;
     return depth[y * RW + x];
   };
-  /** The nearest surface depth around a point (3 x 3 depth pixels); 0 where only background. */
-  const near = (sx, sy) => {
+  /** The nearest surface depth around a point (3 x 3 depth pixels, or (2r+1)^2); 0 where only background. */
+  const near = (sx, sy, r = 1) => {
     const x0 = Math.floor((sx / W) * RW), y0 = Math.floor((sy / H) * RH);
     let m = Infinity;
-    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+    for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
       const x = x0 + dx, y = y0 + dy;
       if (x < 0 || y < 0 || x >= RW || y >= RH) continue;
       const d = depth[y * RW + x];
@@ -208,11 +211,14 @@ function sampler(depth) {
   return { at, near };
 }
 
+/** Depth pixels a line may stand off the model's own coverage and still be drawn (a contour sits on its edge). */
+const COVER_PX = 2;
+
 function visibleRuns(edges, topo, project, depthAt) {
   const { pos } = topo;
   const runs = [];
   const step = (W / RW) * 0.7;
-  for (const [a, b, kind] of edges) {
+  for (const [a, b, kind, names] of edges) {
     const A = [pos[a * 3], pos[a * 3 + 1], pos[a * 3 + 2]];
     const B = [pos[b * 3], pos[b * 3 + 1], pos[b * 3 + 2]];
     const pa = project(...A), pb = project(...B);
@@ -224,7 +230,11 @@ function visibleRuns(edges, topo, project, depthAt) {
       const t = i / n;
       const p = project(A[0] + (B[0] - A[0]) * t, A[1] + (B[1] - A[1]) * t, A[2] + (B[2] - A[2]) * t);
       const d = depthAt.near(p[0], p[1]);
-      samples.push({ p, vis: d === 0 || p[2] <= d + 0.0012 + 0.004 * p[2] });
+      // Over background the model covers nothing within COVER_PX: no line there (curation, round 2 review: a stub past
+      // the top plate's right edge and below the grip, edges of geometry too thin to cover a depth pixel, which no
+      // GL frame shows either). On the model, the usual depth test.
+      const onModel = d > 0 || depthAt.near(p[0], p[1], COVER_PX) > 0;
+      samples.push({ p, vis: onModel && (d === 0 || p[2] <= d + 0.0012 + 0.004 * p[2]) });
     }
     // A contour grazing its own surface flickers in and out of the depth test: hidden stretches of 1.5 units or less
     // between visible ones are depth noise, not occlusion, and are filled.
@@ -234,6 +244,10 @@ function visibleRuns(edges, topo, project, depthAt) {
       while (j < samples.length && !samples[j].vis) j++;
       if (j < samples.length && (j - i) * step <= 1.5) for (let k = i; k < j; k++) samples[k].vis = true;
       i = j;
+    }
+    // Debug (opts.probe = [x0, y0, x1, y1] in the 1000-unit frame): every edge with a sample in the box, as seen.
+    if (PROBE && samples.some(({ p }) => p[0] >= PROBE[0] && p[0] <= PROBE[2] && p[1] >= PROBE[1] && p[1] <= PROBE[3])) {
+      probeLog.push({ kind, names, a: samples[0].p.map((v) => +v.toFixed(2)), b: samples[samples.length - 1].p.map((v) => +v.toFixed(2)), vis: samples.map((s) => (s.vis ? 1 : 0)).join(''), d: samples.map((s) => +depthAt.near(s.p[0], s.p[1]).toFixed(3)) });
     }
     let run = null;
     for (const { p, vis } of samples) {
@@ -463,19 +477,24 @@ function strokePath(pts) {
     const a = tAt(i - 1), b = tAt(i + 1);
     return deg(t) < 60 && a !== null && b !== null && Math.sign(a) === Math.sign(t) && Math.sign(b) === Math.sign(t) && deg(a) < 60 && deg(b) < 60;
   });
+  // The tangent's direction at a curve sample (its neighbours' chord); its length is set per segment below.
   const tangent = (i) => {
     const k = closed ? (i + m) % m : i;
     if (!smooth[k]) return [0, 0];
     const a = at(i - 1), b = at(i + 1);
-    return [(b[0] - a[0]) / 6, (b[1] - a[1]) / 6];
+    const l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+    return [(b[0] - a[0]) / l, (b[1] - a[1]) / l];
   };
   const cmds = [['M', [P[0]]]];
   const segs = closed ? m : m - 1;
   for (let i = 0; i < segs; i++) {
     const p1 = at(i), p2 = at(i + 1);
     const t1 = tangent(i), t2 = tangent(i + 1);
+    // Each handle is a third of this segment's own length (on even samples, the Catmull-Rom handle), so a short
+    // segment after a long one never overshoots: a chord-sixth handle there drew a stub past the top plate's end.
+    const h = Math.hypot(p2[0] - p1[0], p2[1] - p1[1]) / 3;
     if (!t1[0] && !t1[1] && !t2[0] && !t2[1]) cmds.push(['l', [p2]]);
-    else cmds.push(['c', [[p1[0] + t1[0], p1[1] + t1[1]], [p2[0] - t2[0], p2[1] - t2[1]], p2]]);
+    else cmds.push(['c', [[p1[0] + t1[0] * h, p1[1] + t1[1] * h], [p2[0] - t2[0] * h, p2[1] - t2[1] * h], p2]]);
   }
   return encode(cmds) + (closed ? 'z' : '');
 }
@@ -548,6 +567,7 @@ async function run() {
     light: pathData(light),
     stats: { tris, edges: edgeCount, runs: runs.length, chained: strokes.length, heavy: heavy.length, light: light.length, depth: [RW, RH], creaseDeg: CREASE_DEG },
     renderer: gpu,
+    ...(PROBE ? { probe: probeLog } : {}),
   };
 }
 
