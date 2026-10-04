@@ -243,11 +243,13 @@ export function heroPoster(hero: HTMLElement, load = false): void {
     if (area * dpr * dpr > cap[1]) dpr = Math.sqrt(cap[1] / area);
     lod = tier === 'full' && camW * dpr >= 600 ? 0 : 1;
   }
-  const list: [number, string, string][] = (sets[band] || sets.stacked)[lod ? 'lod1' : 'lod0'];
+  // [file prefix, widths ascending] (Hero.astro): a file is the prefix, its width and .avif or .webp.
+  const set: [string, number[]] = (sets[band] || sets.stacked)[lod];
   const need = camW * dpr;
   // The nearest size by ratio: the poster carries the detail GL will show, no more and no less.
-  let pick = list[0];
-  for (const p of list) if (Math.abs(Math.log(p[0] / need)) < Math.abs(Math.log(pick[0] / need))) pick = p;
+  let w = set[1][0];
+  for (const x of set[1]) if (Math.abs(Math.log(x / need)) < Math.abs(Math.log(w / need))) w = x;
+  const file = set[0] + w;
   const base = hero.getAttribute('data-poster-base') || '';
   img.setAttribute('data-lod', String(lod));
   // Under the drawing (W-D012 data-cam=drawing) the poster is not on screen. On the full tier's opening GL develops
@@ -255,12 +257,12 @@ export function heroPoster(hero: HTMLElement, load = false): void {
   // loads at low priority for the crossfade, never ahead of the LCP image.
   const drawing = root.getAttribute('data-cam') === 'drawing';
   if (drawing && !load && root.getAttribute('data-hero') === 'eject') return;
-  if (img.getAttribute('data-file') === pick[2]) return;
+  if (img.getAttribute('data-file') === `${file}.webp`) return;
   if (drawing) img.setAttribute('fetchpriority', 'low');
-  img.setAttribute('data-file', pick[2]);
+  img.setAttribute('data-file', `${file}.webp`);
   if (src) {
-    src.srcset = base + pick[1];
+    src.srcset = `${base + file}.avif`;
     src.media = 'all';
   }
-  img.src = base + pick[2];
+  img.src = `${base + file}.webp`;
 }

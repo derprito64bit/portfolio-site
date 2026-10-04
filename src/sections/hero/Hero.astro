@@ -32,12 +32,22 @@ interface PosterFile { w: number; h: number; avif: string; webp: string }
 const BASE = '/posters/camera/';
 const bands = posters.bands as unknown as Record<Band, Framing & { posters: { lod0: PosterFile[]; lod1: PosterFile[] } }>;
 
-// Poster sets (stage.js posterSet): every band's LOD0 and LOD1 files, as [width, avif, webp] by width. heroPoster()
-// (layout.ts) picks the file of the LOD GL will draw, at the size GL will draw it, right after the poster is parsed.
-const setOf = (files: PosterFile[]) => [...files].sort((a, b) => a.w - b.w).map((f) => [f.w, f.avif, f.webp]);
-const posterSets = JSON.stringify(Object.fromEntries((['split', 'stacked', 'phone'] as Band[]).map((b) => [b, { lod0: setOf(bands[b].posters.lod0), lod1: setOf(bands[b].posters.lod1) }])));
+// Poster sets (stage.js posterSet): per band [LOD0, LOD1], each [file prefix, widths ascending]; a file is the prefix,
+// its width and .avif or .webp. heroPoster() (layout.ts) picks the file of the LOD GL will draw, at the size GL will
+// draw it, right after the poster is parsed. Prefixes and widths only: the full names cost the document about 600 B
+// gzip, which pushed it past the first congestion window (14,600 B), a round trip later for the LCP. A file that
+// posters.json names any other way stops the build here.
+const setOf = (files: PosterFile[]) => {
+  const sorted = [...files].sort((a, b) => a.w - b.w);
+  const prefix = sorted[0].webp.slice(0, sorted[0].webp.lastIndexOf(String(sorted[0].w)));
+  for (const f of sorted) if (f.avif !== `${prefix}${f.w}.avif` || f.webp !== `${prefix}${f.w}.webp`) throw new Error(`Hero: poster ${f.webp} is not ${prefix}${f.w}.webp`);
+  return [prefix, sorted.map((f) => f.w)];
+};
+const posterSets = JSON.stringify(Object.fromEntries((['split', 'stacked', 'phone'] as Band[]).map((b) => [b, [setOf(bands[b].posters.lod0), setOf(bands[b].posters.lod1)]])));
 const fallback = bands.stacked.posters.lod1.find((f) => f.w === 600) ?? bands.stacked.posters.lod1[0];
-const posterScript = `(${heroPoster.toString()})(document.currentScript.closest('.hero'));`;
+// The two stringified functions go into the page without their indentation (neither holds a multi-line string).
+const inline = (fn: (...args: never[]) => void) => fn.toString().replace(/\n\s+/g, '\n');
+const posterScript = `(${inline(heroPoster)})(document.currentScript.closest('.hero'));`;
 
 // Rig markers projected into each band's poster: the flash centre (lens) and the drag hit areas (Look dial, lens).
 const nodes = (rig as unknown as { lods: { lod0: { nodes: Record<string, { translation: [number, number, number] }> } } }).lods.lod0.nodes;
@@ -72,7 +82,7 @@ const PHONE_MQ = '(max-width: 479px)';
 // on the row runs it again in the same frame when the row's width changes: a classic scrollbar appears once the rest
 // of the page has parsed and narrows the row by its width; re-laid out from the resize event instead, a frame later,
 // that would be a layout shift. Where scrollbars take room, the page keeps their gutter from the start (CSS below).
-const layoutScript = `(function(h,L,C){var d=document.documentElement,p=document.createElement('div');p.style.cssText='position:absolute;top:-200px;width:100px;height:100px;overflow:scroll;visibility:hidden';d.appendChild(p);if(p.offsetWidth-p.clientWidth>0)d.setAttribute('data-hero-gutter','');p.remove();L(h,!1,C);var r=h.querySelector('.hero-row');if(!r||!window.ResizeObserver)return;var w=r.clientWidth;h.__heroRo=new ResizeObserver(function(){if(r.clientWidth!==w){w=r.clientWidth;L(h,!1,C)}});h.__heroRo.observe(r)})(document.currentScript.closest('.hero'),${heroLayout.toString()},${POSTER_CAP});`;
+const layoutScript = `(function(h,L,C){var d=document.documentElement,p=document.createElement('div');p.style.cssText='position:absolute;top:-200px;width:100px;height:100px;overflow:scroll;visibility:hidden';d.appendChild(p);if(p.offsetWidth-p.clientWidth>0)d.setAttribute('data-hero-gutter','');p.remove();L(h,!1,C);var r=h.querySelector('.hero-row');if(!r||!window.ResizeObserver)return;var w=r.clientWidth;h.__heroRo=new ResizeObserver(function(){if(r.clientWidth!==w){w=r.clientWidth;L(h,!1,C)}});h.__heroRo.observe(r)})(document.currentScript.closest('.hero'),${inline(heroLayout)},${POSTER_CAP});`;
 // data-cam and data-hero (W-D012, #13 A2): no fetch, under 0.8 kB (tests/w-s1 measures it). A storage error counts
 // as unset. A runtime that never arrives still reveals print 1 (heroTimeline.revealSafetyAfterHead after the script runs).
 const heroHead = `(function(h,c){var s=null,n,t=h.dataset.tier;try{s=sessionStorage.getItem('ion.hero')}catch(e){}try{n=performance.getEntriesByType('navigation')[0]}catch(e){}var d=h.dataset.motion==='full'&&(t==='full'||t==='lite')&&!s&&!location.hash&&!(n&&n.type==='back_forward');h.dataset.cam=d?'drawing':'camera';if(d&&t==='full'&&matchMedia('(pointer: fine) and (hover: hover)').matches&&window.WebGL2RenderingContext&&!(c&&c.saveData)){h.dataset.hero='eject';setTimeout(function(){if(h.dataset.hero==='eject'&&!h.dataset.heroRun)h.dataset.hero='done'},${heroTimeline.revealSafetyAfterHead})}else h.dataset.hero='still'})(document.documentElement,navigator.connection)`;
