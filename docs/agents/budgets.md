@@ -6,7 +6,7 @@ A change that exceeds a budget fails its gate. Evidence standard: GES-1 (W-D030)
 
 - **X-T5 camera (D-021, overrides the 3D camera line below):** LOD0 at most 100k tris and 800 kB gz, full tier only, after first paint; LOD1 at most 15k tris and 150 kB gz; Manor LOD about 1.5k tris.
 
-- Lighthouse 13.5.0 under the GES-1 protocol (built dist over gzip, 5 runs, median by score, auto tier, valid only on a real renderer): performance >= 90 mobile and >= 95 desktop; accessibility 100; best practices >= 95. SEO is not gated while noindex is on.
+- Lighthouse 13.5.0 under the GES-1 protocol (built dist over gzip, 5 runs, median by score, auto tier, valid only on a real renderer and under Measurement validity R1-R5 below): performance >= 90 mobile and >= 95 desktop; accessibility 100; best practices >= 95. SEO is not gated while noindex is on.
 - LCP <= 2.5 s mobile and <= 2.0 s desktop. The LCP element is the h1 on mouse profiles, or the h1 or print 1's still on touch profiles. CLS <= 0.02. TBT <= 150 ms, mobile and desktop.
 - JS: pre-GL JS <= 35 kB gz, summed from the network log before the stage:gl-start mark. GL chunk (three, addons, anime, stage GL, effects) <= 185 kB gz. Effects <= 10 kB gz (6.0 measured; `docs/direction/fx-playbook.md` section 6 books 9.2 kB with D-025's effects, estimate).
 - Fonts <= 100 kB woff2 (96.8 planned); preloaded <= 46 kB.
@@ -23,6 +23,16 @@ A change that exceeds a budget fails its gate. Evidence standard: GES-1 (W-D030)
 - Sound: 0 bytes until opt-in, then <= 16 kB.
 - Process: every crew, gate and review agent runs on Opus 5.5 at effort xhigh (W-D001).
 
+### Measurement validity (R1-R5)
+
+These rules cover every timed or frame-count number a verdict rests on: Lighthouse scores, LCP, TBT and CLS, the hero's readable time, GPU ms, frame pacing, frame tails, drift and eject frames. Byte sizes and triangle counts are not timed. Only the perf gate, or a crew in its final evidence step, takes these numbers, and never while another heavy job runs (PROTOCOL section 9). The thresholds live in the `host` key of the block below, with how they were calibrated.
+
+- **R1, precheck.** No timed set starts without a passing precheck. Take the perf lane, then the blender lane (`scripts/fleet/lane.ps1 acquire perf -Agent <id> -TimeoutMinutes 45`, the same for `blender`; renew both every 20 minutes), then run `scripts/fleet/hostload.ps1 -Out <evidence>\hostload-<step>.json`. Exit 0 lets the set start. Exit 75 (busy; `incomplete` or `no-data` when samples are missing; or `uncalibrated` while the host key's thresholds are null) means wait and check again for up to 30 minutes. After that, or when a lane times out, the row is blocked (host) with the JSON, never pass or fail. Each set also keeps the `hostload.ps1 -Watch <pid>` file of its run.
+- **R2, host-suspect runs.** Every Lighthouse run records `lhr.environment.benchmarkIndex`. A run is host-suspect when its benchmarkIndex is below the host key's `suspectBelowRatio` times the calibrated baseline, or when its `-Watch` file does not exit 0 (it flagged a process outside the allowlist, part of the run was not watched, or samples were missing). A timed fail counts only on a clean set, one with no host-suspect run left in it.
+- **R3, replace, never average.** A host-suspect run is replaced by a new run, at most 5 extra runs per set, and each replacement is listed with its reason. It is never averaged in or kept beside the clean runs. A set that cannot reach its run count with clean runs (5 for Lighthouse, 3 cold loads for the hero) is blocked (host).
+- **R4, a rerun is a whole new set.** A fail on a clean set stands. A rerun is a whole new set after a fresh precheck, and both sets are reported.
+- **R5, near a budget, 10 runs.** When a set's median is at or above 85% of a maximum budget, or any clean run is past its budget (above a maximum or below a minimum), the set grows to 10 runs after a fresh precheck. Report the median of all 10, the worst run and the count past budget.
+
 ### Machine-readable (site)
 
 Tests read this block instead of parsing the sentences above (requested in the W-S1 round-2 review). The sentences stay the human source; any change edits both in the same PR.
@@ -30,7 +40,7 @@ Tests read this block instead of parsing the sentences above (requested in the W
 ```json budgets
 {
   "schema": 1,
-  "note": "Mirrors the Site sentences above, plus W-D012's head-script size and the W-S1 brief's poster parity in docs/direction/front-door-plan.md; those prose sources stay the human source, and a change edits both in the same PR. Units are in the key names; *Max/*Min say which side is inclusive, plain values are '<=' limits unless named otherwise.",
+  "note": "Mirrors the Site sentences and the Measurement validity rules above, plus W-D012's head-script size and the W-S1 brief's poster parity in docs/direction/front-door-plan.md; those prose sources stay the human source, and a change edits both in the same PR. Units are in the key names. Minimums (>=): site.lighthouse.*, site.focusRing.*, site.layout.targetMinPx, site.layout.sharedTargetFloorPx and site.layout.textMinPx. *StrictMax is <. Every other number is a <= limit, except these parameters: site.protocol.*, site.stillsPx.*, site.idle.windowStartS and windowEndS, site.gpu.hostMedianFactor and atRiskFactor, site.hero.delayGlMs and guardAfterFcpMs, and host.* other than its *Max keys. Strings are labels. Each budget has one key: zero overflow is site.layout.overflowPx.",
   "site": {
     "lighthouse": {
       "perfMobileMin": 90,
@@ -72,7 +82,7 @@ Tests read this block instead of parsing the sentences above (requested in the W
       "ownerWork": {
         "tris": 50000,
         "kbGz": 1000,
-        "scope": "its own project page only"
+        "scope": "on its own project only"
       }
     },
     "threeDPerPageKbGz": 1500,
@@ -132,15 +142,39 @@ Tests read this block instead of parsing the sentences above (requested in the W
       "driftPx": 0,
       "axeViolationsWcag": 0,
       "sharedFloorAxeSeriousOrCritical": 0,
-      "soundBytesBeforeOptIn": 0,
-      "overflowPxMax": 0
+      "soundBytesBeforeOptIn": 0
     },
     "protocol": {
       "lighthouseVersion": "13.5.0",
       "lighthouseRuns": 5,
       "heroColdLoadsMedianOf": 3,
       "gpuWorstMomentWetSheetPrints": 8,
-      "driftToolbarCollapsePx": 80
+      "driftToolbarCollapsePx": 80,
+      "noClippedTextZoomPct": 200,
+      "noClippedTextWidthPx": 320
+    }
+  },
+  "host": {
+    "calibrated": null,
+    "calibration": "Not calibrated yet: the thresholds are null, so scripts/fleet/hostload.ps1 exits 75 'uncalibrated', which counts as blocked (host). The orchestrator calibrates under the operating baseline: the orchestrator session with its needs:orchestrator Monitor and the watchdog alive, no other agents, no Blender or Unity, starting 10 minutes after an npm ci. Take hostload.ps1 -Samples 60 three times, and 5 Lighthouse runs each watched by hostload.ps1 -Watch. precheck.cpuBusyPctMax and gpu3dPctMax = the p95 of the 10-second window medians (precheck.stat) plus a margin; benchmarkIndex.baseline = the median benchmarkIndex of the 5 runs; watch.allowlist = the process names those -Watch files show outside each run's own tree, never the antivirus (MsMpEng: wait for its scan to settle instead); watch.foreignCpuPctMax is set with them. Record the date, the conditions and the margins in calibrated.",
+    "precheck": {
+      "samples": 10,
+      "stat": "median",
+      "cpuBusyPctMax": null,
+      "gpu3dPctMax": null
+    },
+    "watch": {
+      "foreignCpuPctMax": null,
+      "allowlist": null
+    },
+    "benchmarkIndex": {
+      "baseline": null,
+      "suspectBelowRatio": 0.9
+    },
+    "rules": {
+      "extraRunsPerSetMax": 5,
+      "nearBudgetPct": 85,
+      "nearBudgetRuns": 10
     }
   }
 }
