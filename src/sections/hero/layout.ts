@@ -140,10 +140,9 @@ export function heroLayout(hero: HTMLElement, nudge = false): void {
   if (nudge) hero.toggleAttribute('data-nudge');
   const px = (k: string, v: number) => s.setProperty(k, r(v) + (k.endsWith('-w') ? eps : 0) + 'px');
   px('--row-h', rowH);
-  // The camera slot sits on the canvas's pixel grid: the stage snaps every view to whole canvas pixels (the tier's
-  // effective DPR), so a slot placed between them would put the first GL frame up to half a pixel off its poster.
-  // The grid of the tier this device would get with GL (fine pointer and hover: full, else lite), so the layout is
-  // the same on every tier and mode: static and reduced shift nothing against auto (0 px).
+  // The camera slot's size lands on whole canvas pixels where it can (below), at the canvas DPR of the tier this
+  // device would get with GL (fine pointer and hover: full, else lite), so the layout is the same on every tier and
+  // mode: static and reduced shift nothing against auto (0 px).
   const naturalFull = mm('(pointer: fine) and (hover: hover)');
   let g = win.devicePixelRatio || 1;
   {
@@ -161,7 +160,6 @@ export function heroLayout(hero: HTMLElement, nudge = false): void {
   // whole canvas pixels, so of the sizes up to 3 px under the computed width, the one whose width and height land
   // closest to whole canvas pixels (at a fractional effective DPR, a floored height draws GL up to a pixel short of
   // the poster). Only ever down from the computed width, so the LCP cap above still holds after the snap.
-  const grid = (v: number) => Math.round(v * g) / g;
   const left = rowBox.left + win.scrollX;
   const off = (v: number) => Math.abs(v * g - Math.round(v * g));
   let camW = Math.floor(cam.w);
@@ -177,8 +175,11 @@ export function heroLayout(hero: HTMLElement, nudge = false): void {
       }
     }
   }
-  const camX = grid(left + cam.x) - left;
-  const camY = grid(rowTop + cam.y) - rowTop;
+  // Its position is whole CSS pixels in the page: Chrome paints the poster image on whole CSS pixels (measured: a
+  // slot at x.65 px showed its poster about a third of a CSS pixel off the GL frame, which the camera registers to
+  // the slot's exact box), so on whole pixels the poster, the slot and the first GL frame coincide.
+  const camX = Math.round(left + cam.x) - left;
+  const camY = Math.round(rowTop + cam.y) - rowTop;
   s.setProperty('--cam-x', camX + 'px');
   s.setProperty('--cam-y', camY + 'px');
   s.setProperty('--cam-w', camW + eps + 'px');
