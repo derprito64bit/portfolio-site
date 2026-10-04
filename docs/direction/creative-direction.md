@@ -35,7 +35,7 @@ The page is a backlit **light table**. Every project is an **instant print** tha
 - **Shared accent: safelight amber #E39B2B**, fill and stroke only, ink text on it. Dark scheme tokens defined.
 
 ## Motion (spring table, stiffness/damping)
-snap 520/34, soft 170/15, settle 110/11. Shutter 130 ms, flash 380 ms flat, eject 1250 ms, hang 420 ms, landing about 900 ms (one overshoot), hero develop 6.2 s, sheet develop 3.2 s with 170 ms stagger. Native cursor stays; an amber AF frame snaps to the hovered print.
+snap 520/34, soft 170/15, settle 110/11. Shutter 130 ms, flash 380 ms flat, eject 1250 ms, hang 420 ms, landing about 900 ms (one overshoot), hero develop 6.2 s, sheet develop 3.2 s with 170 ms stagger. Native cursor stays; an amber AF frame snaps to the hovered print. (Superseded by the plan: W-D010 and W-D011 set the springs and durations, the AF frame is cut, and keyboard focus shows W-D032's ring.)
 
 ## Fallbacks (every effect has one)
 | Effect | Fallback |

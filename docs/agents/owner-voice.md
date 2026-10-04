@@ -49,7 +49,8 @@ Owner: **derprito64bit**. Collected 2026-10-01 → 2026-10-04.
 
 ## The site and the game (2026-10-04)
 
-The newest words win over the earlier "front door" and "game as portfolio" framing above (D-023).
+These words win where earlier words or plans made the website a front door or landing page for the game (D-023).
+They do not retract the game's own gallery of projects.
 
 > "i think your starting to confuse the website as a landing page to enter the game treat it as a completely
 > different portfolio that is used to showcase all projects including the game"

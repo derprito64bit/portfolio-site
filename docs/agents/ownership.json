@@ -1,5 +1,5 @@
 {
-  "$comment": "Crew -> owned globs (Wave 2 lock). A crew may only change files matching its globs. D-023 (2026-10-04): W-C7 is merged into W-C5 and its door globs are retired; W-C2 and W-C6 take the one-off door and drip removals named in their entries (W-C2 removes the door tokens after W-C6 deletes the door). D-023 also gives W-S3 the content validator's sourced-field exception (W-D005), and D-024 gives W-S1 the hero drawing durations; content/*.json is otherwise the orchestrator's, including the game's entry (the plan's content step).",
+  "$comment": "Crew -> owned globs (Wave 2 lock). A crew may only change files matching its globs. D-023 (2026-10-04): W-C7 is merged into W-C5 and its door globs are retired; W-C2 and W-C6 take the one-off door and drip removals named in their entries (W-C2 removes the door tokens after W-C6 deletes the door). D-023 also gives W-S3 the content validator's sourced-field exception (W-D005) and the teaser field's retirement, and W-R the fork's FORK.md guard paragraph; D-024 gives W-S1 the hero drawing durations and heroTimelineMs; content/*.json is otherwise the orchestrator's, including the game's entry (the plan's content step).",
   "W": {
     "W-F": [
       "package.json",
@@ -38,7 +38,8 @@
       "tests/w-r/**",
       "fork: scripts/fork/publish.ps1",
       "fork: scripts/fork/linkcheck.ps1",
-      "fork: scripts/fork/compose-check.ps1"
+      "fork: scripts/fork/compose-check.ps1",
+      "fork: docs/FORK.md (D-023: the guard paragraph only)"
     ],
     "W-S1": [
       "src/sections/hero/**",
@@ -49,7 +50,7 @@
       "src/motion/spring/**",
       "public/posters/camera/**",
       "tests/w-s1/**",
-      "content/tokens.json (D-024: the three hero drawing durations only)",
+      "content/tokens.json (D-024: the three hero drawing durations and heroTimelineMs only)",
       "src/styles/tokens.css (D-024: regenerated output only)",
       "src/lib/tokens.js (D-024: regenerated output only)"
     ],
@@ -66,7 +67,8 @@
       "src/sections/project/**",
       "src/gl/flight/**",
       "tests/w-s3/**",
-      "src/lib/content/validate.js (D-023: the sourced-field exception only)",
+      "src/lib/content/validate.js (D-023: the sourced-field exception and the teaser retirement only)",
+      "src/lib/content/types.ts (D-023: the teaser retirement only)",
       "scripts/check/ph-gate.mjs (D-023: the same exception, only if it repeats the rule)"
     ],
     "W-C13": [

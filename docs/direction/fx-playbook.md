@@ -15,8 +15,8 @@ One family, **light-first development**. Nothing fades in. It develops like an i
 the eject edge, silver before dye, then the still (W-D016). The site opens on a line drawing of the X-T5 on an
 undeveloped print. The drawing develops into the real camera, and the camera ejects print 1, which develops in turn.
 Every supporting effect is part of a develop or of the darkroom equipment that makes one. It is cheap because it
-rides shaders that are being written now (`effects.develop` was a no-op at 7f12ced, `src/stage/effects.ts`, V), so
-W-S1 #13 settles these chunks before its develop shader locks. Static, no-WebGL and reduced motion show the
+rides shaders being written now (`effects.develop` was a no-op at 7f12ced, V), so W-S1 #13 settles these chunks
+before its develop shader locks. Static, no-WebGL and reduced motion show the
 baked end state.
 
 ## 2. Supporting effects (four, plus the camera patch)
@@ -26,11 +26,10 @@ baked end state.
 | 1 | Roller tracks (1) | every eject: print 1 (1) and shutter prints | W-S1 #13 (hero), W-C2 #17 (all ejects, final) | full: all ejects; lite: shutter ejects | none | 0.5 (E) |
 | 2 | Calm grain over a light-first glow (2, 5) | print 1 (1); enlargements (2); sheet, faint (3) | W-S1 #13, W-C2 #17 | full; lite with larger cells | stills | 0.7 (E) |
 | 3 | Halation (5) | hero (1); non-Standard looks (2, 3) | W-C2 #17 | baked; hero map | still | 0.6 (E) |
-| 4 | Coated glass: loupe and lens eye (3) | loupe (3, proof sheet); lens glint (1) | W-C14 #19, W-C13 #16 | full: hover; lite: tap; focus: AF frame | snaps; fixed | 1.5 (E) |
-| 5 | Camera develop patch (D-024) | hero (1) | W-S1 #13, then W-C14 #19 on m2; shader final W-C2 #17 | full: develop; lite: crossfade | end state | 0.4 (E) |
+| 4 | Coated glass: loupe and lens eye (3) | loupe (3, proof sheet); lens glint (1) | W-C14 #19, W-C13 #16 | full: hover; lite: tap; focus: ring only | snaps; fixed | 1.5 (E) |
+| 5 | Camera develop patch (D-024) | hero (1) | W-S1 #13, then W-C14 #19 and W-C2 #17 (section 5) | full: develop; lite: crossfade | end state | 0.4 (E) |
 
-Static and no-WebGL: stills and posters. **Cut (D-023):** the research's effect 5, the enlarger light, existed only
-for the door.
+Static and no-WebGL: stills and posters. **Cut (D-023):** the enlarger light (research effect 5), a door effect.
 
 **1. Roller tracks** (fx-glitch, re-scoped). While a print passes the rollers, the cyan veil carries per-column
 density tracks. The same track(x), read from a per-print row baked at boot, offsets the develop threshold, so the
@@ -114,10 +113,9 @@ no swap. The CTA and the strip stay live DOM throughout, and the W-D012 guards
 - **Totals:** print 1 is readable at about T0 + 3,004 ms, which is GL-ready + 3,204 ms. It is handed back by about
   T0 + 4,700 ms.
 - **Budgets** (budgets.md, D-024): print 1 is readable within 3,300 ms of `stage:gl-ready` on this first visit,
-  because the drawing holds the slot from FCP and the first screen is never empty. All automatic motion stays under
+  because the drawing holds the slot from FCP. All automatic motion stays under
   5,000 ms, with every phase in `__motionLog`. The split above is a reference: W-S1 may move time between the
   phases, but not past these two budgets.
-- **"Clay" means A1's first phase:** the untextured body in the veil tone. A grey clay render on white stays cut.
 - There is no lift shot: the drawing is already in the hero pose, so poster parity holds.
 
 **Tiers** (A1):
@@ -157,11 +155,11 @@ the coated lenses against a photograph, and an iridescence assert in `rig.test.m
 | Decision | Change | Crews |
 |---|---|---|
 | W-D016 | Calm grain forms once, with no boil (D-026). Grain is 0 at d 1 on prints. Roller tracks on ejected prints. B, G, R develop lag with the image registered. Warp at most 1 CSS px along the exit axis. LQIP glow. Baked halation | W-S1 #13, W-C2 #17, W-C14 #19 |
-| W-D033, W-D032 | Coating. Optional static loupe grain (D-026). 1.6x measured. The lens stays within the image window. Focus keeps the AF frame (W-D032), so the loupe follows hover (full) and taps (lite) | W-C14 #19, W-C13 #16 |
+| W-D033, W-D032 | Coating. Optional static loupe grain (D-026). 1.6x measured. The lens stays within the image window. The loupe follows hover (full) and taps (lite); keyboard focus shows W-D032's ring and never moves the loupe or borrows a print | W-C14 #19, W-C13 #16 |
 | W-C2 scope and the film-look contract | Halation in the look bake plus a hero map; the contract gains a halation term | W-C2 #17 |
 | W-D012, W-D011 | The drawing develops into the camera before the hero sequence (D-024). The door story is cut (D-023) | W-S1 #13, W-C14 #19, W-C3 #18 |
 | W-D019 | Addendum: a lines asset on request; iridescence on `cam_glass` | W-C13 #16 |
-| Ownership | Camera patch: W-S1, then W-C14 on m2; the shader final is W-C2's. The enlarger and safelight are cut with the door | as listed |
+| Ownership | Camera patch: GLSL chunk `src/gl/effects/develop/camera.ts` (W-S1, then W-C2's final); hook and timing `src/gl/camera/drawing.ts` (W-S1, then W-C14 on m2). W-S1 freezes the uniform names. The enlarger and safelight are cut with the door | as listed |
 | Not changed | W-D013's FOV 28, W-D014, W-D002, W-D031. Issue #31 lands first | n/a |
 
 ## 6. Budget ledger
@@ -178,8 +176,7 @@ here too, to be safe. New sizes stay E until measured minified (gzip -9).
 | **GL chunk** | **≤ 185** | **137.2 (V, gate 102c775) + 2.1** |
 | `camera_xt_lines.bin` (only if built) | 3D per page ≤ 1.5 MB | ≤ 25.9 (V, before curation) |
 
-Effects headroom is 0.8 kB (E) once the enlarger's 0.6 kB is cut: measure before W-S1's shader locks and cut in
-section 9's order if over. Sheet-8: +0.1 to 0.3 ms on an iGPU (E), gated as a reference-host median x30 ≤ 4 ms, then
+Effects headroom is 0.8 kB (E): measure before W-S1's shader locks and cut in section 9's order if over. Sheet-8: +0.1 to 0.3 ms on an iGPU (E), gated as a reference-host median x30 ≤ 4 ms, then
 `/bench/`. Loupe: +0.0024 to 0.0227 ms at DPR 1 on the RX 6700 XT (V, 10x spread), inside W-D033's 0.3 ms. Lens eye:
 0.046 to 0.10 ms per 400 x 400 slot (V). Hero camera develop: unmeasured (E), held by W-S1's hero GPU line. No mipmaps.
 
@@ -187,7 +184,7 @@ section 9's order if over. Sheet-8: +0.1 to 0.3 ms on an iGPU (E), gated as a re
 
 None at runtime beyond three core and three/addons; the libraries rejected in research stay out (sizes and licences
 there). Build:
-@gltf-transform/extensions and sharp. Optional dev tools (vite-plugin-glsl 1.6.1, spectorjs 0.9.33) need a `deps.md`
+@gltf-transform/cli 4.5.1 (iridescence goes through it) and sharp, both in `deps.md`. Optional dev tools (vite-plugin-glsl 1.6.1, spectorjs 0.9.33) need a `deps.md`
 entry first. CI compiles the patched programs in headless Chromium and asserts that every `replace()` matched.
 
 ## 8. Prototypes worth building next
@@ -200,7 +197,7 @@ entry first. CI compiles the patched programs in headless Chromium and asserts t
    budgets; FOV 28; no hidden line against Freestyle, no
    stipple; ≤ 40 draws; no task over 50 ms; stock camera at d 1; poster parity ≤ 4/255; all tiers in GES-1.
 3. **Loupe and coated glass** (W-C14 #19, W-C13 #16). Accept: ≤ 0.3 ms moving at GES-1 D2 (real radius, 5
-   interleaved loads); 0 draws at rest; 1.6 ± 0.05x; never over text; focus shows the AF frame; coating matches a
+   interleaved loads); 0 draws at rest; 1.6 ± 0.05x; never over text; keyboard focus moves nothing; coating matches a
    photograph.
 4. **Halation bake** (W-C2 #17). Accept: build vs GL ≤ 1/255 per look; Standard and Cyanotype identity; hero
    handback ≤ 2/255; small highlights glow past edges; no rim on white UI under Candle.
@@ -228,15 +225,16 @@ The hero's roller tracks and grain go last.
 
 ## 10. Owner questions from the research
 
-Resolved by the owner on 2026-10-04: story order and the hand sketch (D-024), loupe grain and the boil (D-026), the
-moodboard (D-025). The 4.7 s question gives way to section 4's budgets; the game's camera keeps its FlatToon
-look. **Still open:** halation on UI screenshots, band-pass or none? The default is band-pass in
-non-Standard looks, with `halation: false` per print.
+Resolved by the owner on 2026-10-04: story order and the line drawing (D-024), loupe grain and the boil (D-026), the
+moodboard (D-025). The 4.7 s question gives way to section 4's budgets. **Still open:** halation on UI
+screenshots, band-pass or none? The default is band-pass in non-Standard looks, with `halation: false` per print.
 
 ## Changelog
 
 - **Site revision 1** (2026-10-04): research section 4 moved from the door to the hero, aligned with #13 Amendment
   A1; the enlarger light, door chunk, lift shot and Grand Gallery print cut; grain made calm (D-026); the budget
-  ledger re-summed; owner questions marked resolved. D-024 overrides two research critic findings: fx-teardown
-  taste cut[2] ("T1 in the hero") and fx-sketch3d keep[0] ("the dark door section, not the hero").
+  ledger re-summed; owner questions marked resolved. D-024 and A1 override five research critic findings:
+  fx-teardown taste cut[2] ("T1 in the hero"); fx-sketch3d keep[0] (the door, not the hero), cut[3] (the clay stage
+  stays), cut[9] (lite, phones included, paints the drawing and crossfades) and keep[5] (the reduced-motion
+  diptych: reduced motion paints the finished camera).
 - **Research revision 3:** see `portfolio-evidence/research-fx/PLAYBOOK.md`.

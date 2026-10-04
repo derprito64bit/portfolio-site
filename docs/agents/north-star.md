@@ -84,7 +84,7 @@ Every design decision is checked against these six words.
 3. **A weak-hardware floor:** the site is complete and beautiful with WebGL off, on a 5-year-old laptop and a mid-range phone.
 4. **WCAG 2.2 AA**, with reduced motion fully respected.
 5. **Budgets:**
-   - Site: page budgets as listed in `budgets.md`.
+   - Site: page budgets as listed in portfolio-site `docs/agents/budgets.md`.
    - Game (Manor): ≤120 batches, ≤60k triangles per zone, ≤8 Ultra-only lights.
 6. **Slop:**
    - Nothing generic. No templates, no unearned cards or gradients, no decoration without a beat.
