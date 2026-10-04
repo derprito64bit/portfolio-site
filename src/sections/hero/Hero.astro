@@ -14,7 +14,7 @@ import { content } from '../../lib/content/index.ts';
 import stillsManifest from '../../lib/content/stills.json';
 import posters from '../../../public/posters/camera/posters.json';
 import rig from '../../../assets-src/3d/camera_xt/rig.json';
-import { heroLayout } from './layout.ts';
+import { heroLayout, heroPoster } from './layout.ts';
 import { CARD, svgDataUri, testStripSvg } from './still.ts';
 import { bandMarks, type Framing, type Rig } from './framing.ts';
 
@@ -23,23 +23,12 @@ interface PosterFile { w: number; h: number; avif: string; webp: string }
 const BASE = '/posters/camera/';
 const bands = posters.bands as unknown as Record<Band, Framing & { posters: { lod0: PosterFile[]; lod1: PosterFile[] } }>;
 
-// Poster sets (stage.js posterSet, by media): touch shows the LOD1 set (lite draws LOD1, D-021); a fine pointer gets
-// LOD1 up to 600 device px and LOD0 from 800 up, the tokens' LOD-by-projected-width rule in srcset form.
-const set = (files: PosterFile[], fmt: 'avif' | 'webp') => files.map((f) => `${BASE}${f[fmt]} ${f.w}w`).join(', ');
-const fineSet = (b: Band, fmt: 'avif' | 'webp') =>
-  set([...bands[b].posters.lod1.filter((f) => f.w <= 600), ...bands[b].posters.lod0.filter((f) => f.w >= 800)], fmt);
-const coarseSet = (b: Band, fmt: 'avif' | 'webp') => set(bands[b].posters.lod1, fmt);
-const SPLIT = '(min-width: 64rem), (orientation: landscape) and (max-height: 500px)';
-const FINE = '(pointer: fine) and (hover: hover)';
-const sources: { media: string; band: Band; fine: boolean }[] = [
-  { media: `(min-width: 64rem) and ${FINE}, (orientation: landscape) and (max-height: 500px) and ${FINE}`, band: 'split', fine: true },
-  { media: SPLIT, band: 'split', fine: false },
-  { media: `(max-width: 479px) and ${FINE}`, band: 'phone', fine: true },
-  { media: '(max-width: 479px)', band: 'phone', fine: false },
-  { media: FINE, band: 'stacked', fine: true },
-];
-const sizes = '(min-width: 64rem) or ((orientation: landscape) and (max-height: 500px)) 36vw, 64vw';
+// Poster sets (stage.js posterSet): every band's LOD0 and LOD1 files, as [width, avif, webp] by width. heroPoster()
+// (layout.ts) picks the file of the LOD GL will draw, at the size GL will draw it, right after the poster is parsed.
+const setOf = (files: PosterFile[]) => [...files].sort((a, b) => a.w - b.w).map((f) => [f.w, f.avif, f.webp]);
+const posterSets = JSON.stringify(Object.fromEntries((['split', 'stacked', 'phone'] as Band[]).map((b) => [b, { lod0: setOf(bands[b].posters.lod0), lod1: setOf(bands[b].posters.lod1) }])));
 const fallback = bands.stacked.posters.lod1.find((f) => f.w === 600) ?? bands.stacked.posters.lod1[0];
+const posterScript = `(${heroPoster.toString()})(document.currentScript.closest('.hero'));`;
 
 // Rig markers projected into each band's poster: the flash centre (lens) and the drag hit areas (Look dial, lens).
 const nodes = (rig as unknown as { lods: { lod0: { nodes: Record<string, { translation: [number, number, number] }> } } }).lods.lod0.nodes;
@@ -84,6 +73,8 @@ const heroHead = `(function(h,c){if(matchMedia('(pointer: fine) and (hover: hove
   data-aspect-split={bands.split.aspect}
   data-aspect-stacked={bands.stacked.aspect}
   data-aspect-phone={bands.phone.aspect}
+  data-posters={posterSets}
+  data-poster-base={BASE}
   style={markVars}
 >
   <script is:inline set:html={heroHead}></script>
@@ -96,15 +87,11 @@ const heroHead = `(function(h,c){if(matchMedia('(pointer: fine) and (hover: hove
     <script is:inline set:html={layoutScript}></script>
     <div class="hero-camera" data-gl="object" data-gl-id="camera" data-hero-camera>
       <picture>
-        {sources.map((s) => (
-          <>
-            <source media={s.media} type="image/avif" srcset={s.fine ? fineSet(s.band, 'avif') : coarseSet(s.band, 'avif')} sizes={sizes} />
-            <source media={s.media} type="image/webp" srcset={s.fine ? fineSet(s.band, 'webp') : coarseSet(s.band, 'webp')} sizes={sizes} />
-          </>
-        ))}
-        <source type="image/avif" srcset={coarseSet('stacked', 'avif')} sizes={sizes} />
-        <img class="hero-poster" data-poster src={BASE + fallback.webp} srcset={coarseSet('stacked', 'webp')} sizes={sizes} width={fallback.w} height={fallback.h} alt="" fetchpriority="high" decoding="async" />
+        <source class="hero-poster-avif" type="image/avif" srcset={BASE + fallback.avif} media="not all" />
+        <img class="hero-poster" data-poster width={fallback.w} height={fallback.h} alt="" fetchpriority="high" decoding="async" />
       </picture>
+      <script is:inline set:html={posterScript}></script>
+      <noscript><img class="hero-poster-noscript" src={BASE + fallback.webp} width={fallback.w} height={fallback.h} alt="" /></noscript>
       <span class="hero-hit" data-drag="look" aria-hidden="true"></span>
       <span class="hero-hit" data-drag="lens" aria-hidden="true"></span>
     </div>
@@ -232,6 +219,7 @@ const heroHead = `(function(h,c){if(matchMedia('(pointer: fine) and (hover: hove
 
   /* Print 1 waits for the eject on the full tier (W-D012); everywhere else it is developed from first paint. */
   :global(html[data-hero='eject']) .hero-still { opacity: 0; transition: none; }
+  :global(html[data-hero-cut]) .hero-still { transition: none; }
 
   /* Drag hit areas over the Look dial and the lens ring: fine pointer and full tier only, aria-hidden bonuses. */
   @media (pointer: fine) and (hover: hover) {

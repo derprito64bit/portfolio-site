@@ -5,7 +5,7 @@
 // - The hero run (W-D012, full tier): the GL camera module is fetched when GL starts booting, the timeline starts at
 //   T0 = stage:gl-ready + 200 ms, and the guards jump it to the end state.
 // GL work lives in src/gl/camera (its own chunk, loaded after first paint). The stage is reached through bridge.ts.
-import { heroLayout } from './layout.ts';
+import { heroLayout, heroPoster } from './layout.ts';
 import { afterStage, markTime, onContentReplace, onHtmlAttr, reduced, stage, tier, whenGL, whenMark } from './bridge.ts';
 import { durations, heroTimeline, springs } from '../../lib/tokens.js';
 import type { CameraController, QueueItem } from '../../gl/camera/index.ts';
@@ -31,6 +31,7 @@ function layout(force = false): void {
   if (!force && w === lastW && matchMedia('(pointer: coarse)').matches) return;
   lastW = w;
   heroLayout(hero, true);
+  heroPoster(hero);
   stage()?.invalidate();
 }
 
@@ -266,6 +267,8 @@ function finishIntro(why: string): void {
   if (introState === 'done' || introState === 'none') return;
   introState = 'done';
   for (const off of guardOff.splice(0)) off();
+  // A guard jumps to the end state: print 1 appears at once, with no crossfade (the GL print is let go at once too).
+  html.dataset.heroCut = '';
   cam?.finishIntro();
   if (html.dataset.hero === 'eject') html.dataset.hero = 'done';
   mark(`hero:guard=${why}`);

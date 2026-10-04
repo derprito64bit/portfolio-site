@@ -259,8 +259,15 @@ async function raw(buf) {
 export async function parity(base, { profiles = [...GES, 'X1180', 'X600'], out } = {}) {
   const rows = [];
   for (const p of profiles) {
-    // The poster: the static tier never draws GL, so the slot shows the baked poster.
-    const s = await open(base, p, 'reduced', { query: 'tier=static' });
+    // The poster this tier shows before GL: the same page with the GL chunk held back, so the poster stays up.
+    const sctx = await context(p, 'reduced');
+    const spage = await sctx.newPage();
+    await spage.route(/\/_astro\/gl\.[^/]+\.js$/, async (route) => {
+      await sleep(20000);
+      await route.continue().catch(() => {});
+    });
+    await spage.goto(`${base}/`, { waitUntil: 'load' });
+    const s = { page: spage, ctx: sctx };
     await s.page.evaluate(() => document.fonts.ready);
     await s.page.waitForFunction(() => document.querySelector('.hero-poster')?.complete, null, { timeout: 8000 });
     await sleep(300);

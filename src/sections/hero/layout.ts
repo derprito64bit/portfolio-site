@@ -111,10 +111,32 @@ export function heroLayout(hero: HTMLElement, nudge = false): void {
   if (nudge) hero.toggleAttribute('data-nudge');
   const px = (k: string, v: number) => s.setProperty(k, r(v) + (k.endsWith('-w') ? eps : 0) + 'px');
   px('--row-h', rowH);
-  px('--cam-x', cam.x);
-  px('--cam-y', cam.y);
-  px('--cam-w', cam.w);
-  px('--cam-h', cam.h);
+  // The camera slot sits on the canvas's pixel grid: the stage snaps every view to whole canvas pixels (the tier's
+  // effective DPR), so a slot placed between them would put the first GL frame up to half a pixel off its poster.
+  const tier = doc.documentElement.getAttribute('data-tier') || 'static';
+  let g = win.devicePixelRatio || 1;
+  if (tier !== 'static') {
+    const probe = doc.createElement('div');
+    probe.style.cssText = 'position:fixed;top:0;width:0;height:100lvh;visibility:hidden';
+    doc.body.appendChild(probe);
+    const area = doc.documentElement.clientWidth * Math.round((probe.offsetHeight || vh) * 1.25);
+    probe.remove();
+    const cap = tier === 'full' ? [2, 4.5e6] : [1.5, 1.5e6];
+    g = Math.min(g, cap[0]);
+    if (area * g * g > cap[1]) g = Math.sqrt(cap[1] / area);
+  }
+  // The stage measures slots with offsetWidth/Height (whole px), so the size is whole px too: the width that lands
+  // closest to whole canvas pixels, and the height rounded down, so the poster fits by height exactly as GL does.
+  const grid = (v: number) => Math.round(v * g) / g;
+  const left = rowBox.left + win.scrollX;
+  let camW = Math.round(cam.w);
+  for (const c of [camW - 1, camW + 1, camW - 2]) if (Math.abs(c * g - Math.round(c * g)) < Math.abs(camW * g - Math.round(camW * g)) - 1e-6) camW = c;
+  const camX = grid(left + cam.x) - left;
+  const camY = grid(rowTop + cam.y) - rowTop;
+  s.setProperty('--cam-x', camX + 'px');
+  s.setProperty('--cam-y', camY + 'px');
+  s.setProperty('--cam-w', camW + eps + 'px');
+  s.setProperty('--cam-h', Math.floor(camW / A) + 'px');
   px('--pr-x', pr.x);
   px('--pr-y', pr.y);
   px('--pr-w', pr.w);
@@ -132,4 +154,52 @@ export function heroLayout(hero: HTMLElement, nudge = false): void {
   hero.setAttribute('data-laid', '');
   void doc;
   void WIN;
+}
+
+/**
+ * The camera poster to show before GL (scripts/build/posters/stage.js posterSet): the set of the LOD that GL will
+ * draw, at the size GL will draw it, so the poster and the first GL frame are the same picture (acceptance: mean
+ * diff <= 4/255). GL draws at the tier's effective DPR (W-D017: full DPR <= 2 and 4.5 Mpx, lite DPR <= 1.5 and
+ * 1.5 Mpx over the riding canvas, 100lvh x 1.25), LOD0 only on full at 600 device px and wider (D-021); the static
+ * tier has no GL frame to match and gets the sharpest LOD0. Runs inline right after the poster is parsed, then on
+ * every layout change. Self-contained (stringified like heroLayout).
+ */
+export function heroPoster(hero: HTMLElement): void {
+  const doc = hero.ownerDocument;
+  const win = doc.defaultView as Window;
+  const img = hero.querySelector('.hero-poster') as HTMLImageElement | null;
+  const src = hero.querySelector('.hero-poster-avif') as HTMLSourceElement | null;
+  const camEl = hero.querySelector('[data-hero-camera]') as HTMLElement | null;
+  if (!img || !camEl) return;
+  const sets = JSON.parse(hero.getAttribute('data-posters') || '{}');
+  const band = hero.getAttribute('data-band') || 'stacked';
+  const tier = doc.documentElement.getAttribute('data-tier') || 'static';
+  const camW = camEl.offsetWidth;
+  let dpr = win.devicePixelRatio || 1;
+  let lod = 0;
+  if (tier !== 'static') {
+    const probe = doc.createElement('div');
+    probe.style.cssText = 'position:fixed;top:0;width:0;height:100lvh;visibility:hidden';
+    doc.body.appendChild(probe);
+    const area = doc.documentElement.clientWidth * Math.round((probe.offsetHeight || win.innerHeight) * 1.25);
+    probe.remove();
+    const cap = tier === 'full' ? [2, 4.5e6] : [1.5, 1.5e6];
+    dpr = Math.min(dpr, cap[0]);
+    if (area * dpr * dpr > cap[1]) dpr = Math.sqrt(cap[1] / area);
+    lod = tier === 'full' && camW * dpr >= 600 ? 0 : 1;
+  }
+  const list: [number, string, string][] = (sets[band] || sets.stacked)[lod ? 'lod1' : 'lod0'];
+  const need = camW * dpr;
+  // The nearest size by ratio: the poster carries the detail GL will show, no more and no less.
+  let pick = list[0];
+  for (const p of list) if (Math.abs(Math.log(p[0] / need)) < Math.abs(Math.log(pick[0] / need))) pick = p;
+  const base = hero.getAttribute('data-poster-base') || '';
+  if (img.getAttribute('data-file') === pick[2]) return;
+  img.setAttribute('data-file', pick[2]);
+  img.setAttribute('data-lod', String(lod));
+  if (src) {
+    src.srcset = base + pick[1];
+    src.media = 'all';
+  }
+  img.src = base + pick[2];
 }

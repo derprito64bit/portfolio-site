@@ -10,7 +10,25 @@
 //   (W-D016), and hands back to its DOM still.
 // - The intro (W-D012) is a pure function of the stage clock from T0, so __stage.seek(ms) can film it.
 // The stage is reached through the hooks the hero passes in (no import of src/stage: see sections/hero/bridge.ts).
-import { Box3, CanvasTexture, LinearFilter, MathUtils, Matrix4, Mesh, NoColorSpace, OrthographicCamera, PlaneGeometry, Quaternion, Scene, Vector3 } from 'three';
+import {
+  Box3,
+  CanvasTexture,
+  HalfFloatType,
+  LinearFilter,
+  MathUtils,
+  Matrix4,
+  Mesh,
+  MeshBasicMaterial,
+  NoColorSpace,
+  OrthographicCamera,
+  PlaneGeometry,
+  Quaternion,
+  Scene,
+  ShaderMaterial,
+  SRGBColorSpace,
+  Vector3,
+  WebGLRenderTarget,
+} from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { applyFraming } from '../../../scripts/build/posters/stage.js';
@@ -63,6 +81,8 @@ type Band = 'split' | 'stacked' | 'phone';
 type Framing = { fovDeg: number; aspect: number; position: number[]; quaternion: number[]; near: number; far: number };
 const BANDS = posters.bands as unknown as Record<Band, Framing>;
 const SPEC = (rig as unknown as { spec: { pivots: Record<string, { detents?: number; stepDeg?: number; travelM?: number }> } }).spec;
+/** The exit slot from the rig contract (a root node, so its translation is its position): known before the model loads. */
+const EXIT = (rig as unknown as { lods: { lod0: { nodes: { print_exit: { translation: [number, number, number] } } } } }).lods.lod0.nodes.print_exit.translation;
 const PRINT_W = 0.054; // the instant print in metres (W-D006: 54 x 86 mm)
 const PRINT_H = 0.086;
 const RISE = 0.4 * PRINT_H; // how far the eject pushes the print out of the slot before the flight takes it
@@ -111,8 +131,12 @@ function estimateDpr(): number {
 }
 /** Start fetching the model the camera will draw while GL boots. */
 export function prefetch(tier: string): void {
-  const w = document.querySelector<HTMLElement>('[data-hero-camera]')?.offsetWidth ?? 0;
-  void loadModel(lodFor(w, estimateDpr(), tier)).catch(() => {});
+  void loadModel(posterLod() ?? lodFor(document.querySelector<HTMLElement>('[data-hero-camera]')?.offsetWidth ?? 0, estimateDpr(), tier)).catch(() => {});
+}
+/** The LOD of the poster on screen (heroPoster() applied the same rule): GL draws that LOD, so the hand-over matches. */
+function posterLod(): 0 | 1 | null {
+  const v = document.querySelector<HTMLElement>('.hero-poster')?.dataset.lod;
+  return v === '0' ? 0 : v === '1' ? 1 : null;
 }
 
 function bandOf(hero: HTMLElement): Band {
@@ -282,6 +306,14 @@ class HeroCamera implements CameraController {
   private readonly introFired = new Set<string>();
   private readonly marked = new Set<string>();
   private readonly ready: Promise<void>;
+  /** Lite anti-aliasing (no MSAA on the lite canvas, W-D017): the camera is drawn into a 4x MSAA target, tone-mapped
+   *  and sRGB-encoded as the canvas would be (so samples resolve in the same space as the poster's), then composited
+   *  onto its view by a quad; a depth-only proxy of the model keeps the print's occlusion. Redrawn only when the
+   *  camera changes (scrolling reuses it: the projection is stage-local). */
+  private aa: { scene: any; rt: any; quad: any; proxy: any; proxyNodes: Record<string, any>; dirty: boolean } | null = null;
+  /** The print can fly before the camera's own programs are compiled: until then the poster (DOM, above GL) hides
+   *  the part of the print that is inside the camera's silhouette, as the body's depth does afterwards. */
+  private readonly printReady: Promise<unknown>;
 
   constructor(gl: GLApi, opts: CameraOptions) {
     this.gl = gl;
@@ -295,6 +327,11 @@ class HeroCamera implements CameraController {
     // Created second, so it renders after the camera view, over it, with the camera's depth in the buffer.
     this.fxView = gl.createStageView('hero-fx');
     this.fxView.visible = false;
+    this.band = bandOf(this.hero);
+    applyFraming(this.camView.camera, BANDS[this.band]);
+    this.exitPos.set(EXIT[0], EXIT[1], EXIT[2]);
+    this.printReady = developReady;
+    if (tierNow() !== 'full' && gl.renderer?.extensions?.has?.('EXT_color_buffer_float')) this.aa = this.createAA();
     this.ready = this.boot();
     gl.registerEntityFactory({
       match: (s: Slot) => s.id === 'camera' || s.id === 'hero-fx' || s.id === 'hero-print',
@@ -344,9 +381,15 @@ class HeroCamera implements CameraController {
     this.setModel(model);
     applyFraming(this.camView.camera, BANDS[this.band]);
     const renderer = this.gl.renderer;
+    const scene = this.drawScene();
     // Every program compiles in parallel, off the main thread (look.js explains the stand-in environment).
     await quietX4122(() =>
-      applyLook({ renderer, scene: this.camView.scene, tier: tierNow(), compile: () => renderer.compileAsync(this.camView.scene, this.camView.camera) }),
+      applyLook({
+        renderer,
+        scene,
+        tier: tierNow(),
+        compile: () => Promise.all([renderer.compileAsync(scene, this.camView.camera), this.aa ? renderer.compileAsync(this.camView.scene, this.camView.camera) : null]),
+      }),
     );
     this.mark('hero:cam-look');
     await new Promise((r) => setTimeout(r, 0));
@@ -354,7 +397,7 @@ class HeroCamera implements CameraController {
       if (!o.isMesh) return;
       for (const v of Object.values(o.material as object)) if ((v as any)?.isTexture) renderer.initTexture(v);
     });
-    if (renderer.compileAsync) await renderer.compileAsync(this.camView.scene, this.camView.camera);
+    if (renderer.compileAsync) await renderer.compileAsync(scene, this.camView.camera);
     this.mark('hero:cam-ready');
     this.camView.visible = true;
     this.invalidate();
@@ -362,13 +405,80 @@ class HeroCamera implements CameraController {
 
   /** LOD by projected width (tokens.stage.lod): LOD0 at 600 device px and wider, full tier only (D-021). */
   private pickLod(): 0 | 1 {
+    const fromPoster = posterLod();
+    if (fromPoster !== null && tierNow() !== 'static') return tierNow() === 'full' ? fromPoster : 1;
     const w = this.hero.querySelector<HTMLElement>('[data-hero-camera]')?.offsetWidth ?? 0;
     return lodFor(w, this.stageHooks() ? this.dpr() : estimateDpr(), tierNow());
   }
 
+  /** Where the model and its light live: the view's own scene, or the anti-aliasing target's scene on lite. */
+  private drawScene(): any {
+    return this.aa ? this.aa.scene : this.camView.scene;
+  }
+
+  private createAA() {
+    const scene = new Scene();
+    const rt = new WebGLRenderTarget(2, 2, { samples: 4, type: HalfFloatType, depthBuffer: true, colorSpace: SRGBColorSpace });
+    // three tone-maps and encodes only for the screen or an XR target; flagged as one, this target gets exactly the
+    // canvas's output (Neutral, sRGB), and its samples resolve in that space, as the antialiased poster's did.
+    rt.isXRRenderTarget = true;
+    const quad = new Mesh(
+      new PlaneGeometry(2, 2),
+      new ShaderMaterial({
+        uniforms: { tColor: { value: rt.texture } },
+        vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }',
+        fragmentShader: 'uniform sampler2D tColor; varying vec2 vUv; void main() { gl_FragColor = texture2D(tColor, vUv); }',
+        transparent: true,
+        premultipliedAlpha: true,
+        depthTest: false,
+        depthWrite: false,
+        toneMapped: false,
+      }),
+    );
+    quad.frustumCulled = false;
+    quad.renderOrder = -1;
+    this.camView.scene.add(quad);
+    return { scene, rt, quad, proxy: null, proxyNodes: {}, dirty: true };
+  }
+
+  /** Lite: redraw the camera into the MSAA target when it changed, then give the frame back to the stage untouched. */
+  private drawAA(cam: Rect, f: FrameInfo): void {
+    const aa = this.aa;
+    if (!aa || !this.model) return;
+    const r = this.gl.renderer;
+    const dpr = this.dpr();
+    const w = Math.max(2, Math.round(cam.w * dpr));
+    const h = Math.max(2, Math.round(cam.h * dpr));
+    if (aa.rt.width !== w || aa.rt.height !== h) {
+      aa.rt.setSize(w, h);
+      aa.dirty = true;
+    }
+    if (!aa.dirty) return;
+    aa.dirty = false;
+    const prev = r.getRenderTarget();
+    r.setRenderTarget(aa.rt);
+    r.clear();
+    r.render(aa.scene, this.camView.camera);
+    r.setRenderTarget(prev);
+    // The stage's frame state, as render() left it before placing entities.
+    r.setScissorTest(false);
+    r.setViewport(0, 0, f.W, f.Hc);
+  }
+
   private setModel(root: any): void {
     this.model = root;
-    this.camView.scene.add(root);
+    this.drawScene().add(root);
+    if (this.aa) {
+      // The depth proxy: the same geometry, depth only, posed with the rig, so the print hides behind the body.
+      const depthOnly = new MeshBasicMaterial({ colorWrite: false });
+      const proxy = root.clone(true);
+      proxy.traverse((o: any) => {
+        if (o.isMesh) o.material = depthOnly;
+      });
+      this.aa.proxy = proxy;
+      for (const name of ['shutter_button', 'dial_look', 'lens_focus_ring']) this.aa.proxyNodes[name] = proxy.getObjectByName(name);
+      this.camView.scene.add(proxy);
+    }
     for (const name of ['shutter_button', 'dial_look', 'lens_focus_ring', 'print_exit']) {
       const obj = root.getObjectByName(name);
       if (obj) this.nodes[name] = { obj, pos: obj.position.clone(), quat: obj.quaternion.clone() };
@@ -392,6 +502,16 @@ class HeroCamera implements CameraController {
     if (n.lens_focus_ring) {
       const step = MathUtils.degToRad(FOCUS_STEP_DEG);
       n.lens_focus_ring.obj.quaternion.copy(n.lens_focus_ring.quat).multiply(new Quaternion().setFromAxisAngle(new Vector3(0, 0, 1), step * this.focusSpring.value));
+    }
+    if (this.aa) {
+      for (const [name, p] of Object.entries(this.aa.proxyNodes)) {
+        const src = n[name]?.obj;
+        if (p && src) {
+          p.position.copy(src.position);
+          p.quaternion.copy(src.quaternion);
+        }
+      }
+      this.aa.dirty = true;
     }
   }
 
@@ -469,6 +589,7 @@ class HeroCamera implements CameraController {
     if (band !== this.band && this.model) {
       this.band = band;
       applyFraming(this.camView.camera, BANDS[band]);
+      if (this.aa) this.aa.dirty = true;
       moving = true;
     }
     return moving;
@@ -484,6 +605,7 @@ class HeroCamera implements CameraController {
       camera.updateProjectionMatrix();
     }
     camera.updateMatrixWorld();
+    if (cam && this.aa && this.camView.visible) this.drawAA(cam, f);
     const vp = new Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
     for (const p of this.prints) {
       if (!p.pose || !cam || !fx || !this.fxView.visible) {
@@ -600,7 +722,7 @@ class HeroCamera implements CameraController {
   }
 
   /** The DOM still takes the pixels back: it fades in over GL in 120 ms (W-D012), then GL lets go and sleeps. */
-  private handback(fl: Flight): void {
+  private handback(fl: Flight, cut = false): void {
     if (fl.done) return;
     fl.done = true;
     fl.print.d = 1;
@@ -612,14 +734,17 @@ class HeroCamera implements CameraController {
     }
     this.hero.querySelector('[data-hero-print]')?.classList.remove('is-gl');
     this.invalidate();
-    setTimeout(() => {
+    const release = () => {
       for (const p of this.prints.splice(0)) p.dispose(this.fxView.scene);
       this.fxView.visible = false;
       this.hero.removeAttribute('data-fx');
       if (this.flying === fl) this.flying = null;
       fl.resolve();
       this.invalidate();
-    }, durations.glHandback);
+    };
+    // A guard cuts to the end state at once; the natural handback crossfades for 120 ms.
+    if (cut) release();
+    else setTimeout(release, durations.glHandback);
   }
 
   private async newPrint(src: string, slug: string, order: number): Promise<GLPrint> {
@@ -674,11 +799,14 @@ class HeroCamera implements CameraController {
   }
 
   async intro(t0: number, hooks: IntroHooks): Promise<void> {
-    await this.ready;
+    await this.printReady;
     this.introHooks = hooks;
     const still = this.hero.querySelector<HTMLImageElement>('[data-hero-print] img.hero-still');
     const print = await this.newPrint(still?.getAttribute('src') || '', this.hero.querySelector<HTMLElement>('[data-hero-print]')?.dataset.slug || 'print-1', 10);
     // T0 = stage:gl-ready + 200 ms; on the manual clock (?t=) T0 is stage time 0, so seek(ms) shows T0 + ms.
+    // The print's program compiles off the main thread before its first frame (the eject is 380 ms away).
+    const r = this.gl.renderer;
+    if (r.compileAsync) await r.compileAsync(this.fxView.scene, this.fxView.camera);
     const start = manualClock ? 0 : Math.max(t0, performance.now());
     this.introT0 = start;
     this.showFx();
@@ -714,7 +842,7 @@ class HeroCamera implements CameraController {
     this.takeCamera();
     if (this.introT0 === null && !this.flying?.intro) return;
     this.introT0 = null;
-    if (this.flying?.intro) this.handback(this.flying);
+    if (this.flying?.intro) this.handback(this.flying, true);
     this.introHooks?.handback();
     this.shutterSpring.set(0);
     this.applyRig();
