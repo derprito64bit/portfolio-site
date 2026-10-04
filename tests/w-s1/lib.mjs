@@ -31,12 +31,14 @@ export async function context(name, mode = 'auto', extra = {}) {
   });
 }
 
-/** Open the home page; `mode` static adds ?tier=static. Returns { page, ctx, gate } with the console gate attached. */
-export async function open(base, name, mode = 'auto', { query = '', colorScheme, init } = {}) {
+/** Open the home page; `mode` static adds ?tier=static; `route` ({ match, handler }) is installed before the visit.
+ *  Returns { page, ctx, gate } with the console gate attached. */
+export async function open(base, name, mode = 'auto', { query = '', colorScheme, init, route } = {}) {
   const ctx = await context(name, mode, { colorScheme });
   const page = await ctx.newPage();
   const gate = H.consoleGate(page);
   if (init) await page.addInitScript(init);
+  if (route) await page.route(route.match, route.handler);
   const q = new URLSearchParams(query);
   if (mode === 'static') q.set('tier', 'static');
   const s = q.toString();

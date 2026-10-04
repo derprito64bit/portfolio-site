@@ -10,8 +10,8 @@
 // - the whole camera and print 1 sit in the first screen; print 1 overlaps the grip side, never the lens;
 // - the h1, lede and CTA are no-fly rects: nothing GL sits on them, and the eject has headroom below them;
 // - no text box over a GL rect at rest (the strip never touches the camera or the print);
-// - the LCP element stays the h1 on mouse profiles (the camera poster is kept below 85% of the h1's area) and the h1
-//   or print 1's still on touch (the poster stays below 85% of the print's area).
+// - the LCP element stays the h1 on mouse profiles (the camera poster is kept below 85% of the h1's LCP area, its
+//   name's text) and the h1 or print 1's still on touch (the poster stays below 85% of the larger of the two).
 export function heroLayout(hero: HTMLElement, nudge = false): void {
   const doc = hero.ownerDocument;
   const win = doc.defaultView as Window;
@@ -37,8 +37,20 @@ export function heroLayout(hero: HTMLElement, nudge = false): void {
   const r = (n: number) => Math.round(n);
   const rowBox = row.getBoundingClientRect();
   const rowTop = rowBox.top + win.scrollY;
-  const h1Box = h1.getBoundingClientRect();
-  const h1Area = h1Box.width * h1Box.height;
+  // The h1's LCP size is its name's text, not its box: the brackets are positioned spans that paint on their own,
+  // and the box runs the content width. The fallback face draws the same text box (Wordmark.astro), so a late font
+  // changes neither this area nor the layout.
+  let h1Area = 0;
+  const range = doc.createRange();
+  h1.childNodes.forEach((n) => {
+    if (n.nodeType !== 3 || !(n.textContent || '').trim()) return;
+    range.selectNodeContents(n);
+    for (const b of range.getClientRects()) h1Area += b.width * b.height;
+  });
+  if (!h1Area) {
+    const h1Box = h1.getBoundingClientRect();
+    h1Area = h1Box.width * h1Box.height;
+  }
   let textRight = 0;
   let copyBottom = 0;
   copy.querySelectorAll('.hero-line, .hero-cta a').forEach((el) => {
@@ -129,10 +141,11 @@ export function heroLayout(hero: HTMLElement, nudge = false): void {
   }
   // The stage measures slots with offsetWidth/Height (whole px), so the size is whole px too: the width that lands
   // closest to whole canvas pixels, and the height rounded down, so the poster fits by height exactly as GL does.
+  // Only ever down from the computed width, so the LCP cap above still holds after the snap.
   const grid = (v: number) => Math.round(v * g) / g;
   const left = rowBox.left + win.scrollX;
-  let camW = Math.round(cam.w);
-  for (const c of [camW - 1, camW + 1, camW - 2]) if (Math.abs(c * g - Math.round(c * g)) < Math.abs(camW * g - Math.round(camW * g)) - 1e-6) camW = c;
+  let camW = Math.floor(cam.w);
+  for (const c of [camW - 1, camW - 2]) if (Math.abs(c * g - Math.round(c * g)) < Math.abs(camW * g - Math.round(camW * g)) - 1e-6) camW = c;
   const camX = grid(left + cam.x) - left;
   const camY = grid(rowTop + cam.y) - rowTop;
   s.setProperty('--cam-x', camX + 'px');

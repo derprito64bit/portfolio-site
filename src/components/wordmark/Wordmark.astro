@@ -19,9 +19,16 @@ const { id } = Astro.props;
      drawn to the glyphs. Measured in Chromium (canvas, 1000 px): ascenders and brackets reach 0.703em, the p's
      descender 0.141em (wght 540); the file's own box is 0.930 + 0.270em. With ascent 72% and descent 15% the text's
      box is the glyphs plus a hair, so the h1's box is exactly its text: nothing GL ever sits on it (W-D013) and the
-     hero row can start right under it. The fallback carries the same metrics, so the swap moves nothing. */
+     hero row can start right under it.
+     The fallback draws the same box, so a late font moves nothing and the h1's text (its LCP area) is as large in
+     either face: size-adjust 93.57% makes Arial Bold's "derprito64bit" (letter-spacing included) as wide as the
+     face's at wght 540 (measured in Chromium at 390, 800, 1350 and 1440 px: 0.93567 to 0.93570), and since the
+     overrides are scaled by size-adjust, they are 72% / 0.9357 and 15% / 0.9357 here. The brackets get their own
+     fallback (Arial's are wider: at 93.57% the line would no longer fit and would wrap): 88.59% makes each 0.283em,
+     the face's wght 800 bracket, so the fallback line is exactly as long as the real one. */
   @font-face { font-family: "BG Mark Tight"; src: url(/fonts/bricolage-mark.woff2) format("woff2"); font-weight: 300 800; font-stretch: 75% 100%; font-display: swap; ascent-override: 72%; descent-override: 15%; line-gap-override: 0%; }
-  @font-face { font-family: "BG Mark Tight Fallback"; src: local("Arial Bold"), local("Arial-BoldMT"), local("Helvetica Neue Bold"); size-adjust: 90.9%; ascent-override: 72%; descent-override: 15%; line-gap-override: 0%; }
+  @font-face { font-family: "BG Mark Tight Fallback"; src: local("Arial Bold"), local("Arial-BoldMT"), local("Helvetica Neue Bold"); size-adjust: 93.57%; ascent-override: 76.95%; descent-override: 16.03%; line-gap-override: 0%; }
+  @font-face { font-family: "BG Mark Bracket Fallback"; src: local("Arial Bold"), local("Arial-BoldMT"), local("Helvetica Neue Bold"); size-adjust: 88.59%; ascent-override: 81.27%; descent-override: 16.93%; line-gap-override: 0%; }
 </style>
 
 <style>
@@ -42,6 +49,7 @@ const { id } = Astro.props;
   .br {
     position: relative;
     color: var(--accent);
+    font-family: "BG Mark Tight", "BG Mark Bracket Fallback", system-ui, sans-serif;
     font-weight: 800;
   }
   .br-l { inset-inline-start: -0.07em; }

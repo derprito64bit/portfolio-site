@@ -10,7 +10,16 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // The state of the first screen at the first contentful paint, recorded by a paint observer in the page, and the
 // final LCP candidate.
 const FCP_PROBE = () => {
-  window.__w1 = { fcp: null, lcp: [] };
+  window.__w1 = { fcp: null, lcp: [], heroShift: 0, shifts: [] };
+  // Layout shifts with a source inside the hero (the nav and the sections below are not the hero's).
+  new PerformanceObserver((l) => {
+    for (const e of l.getEntries()) {
+      const src = e.sources.filter((s) => s.node && (s.node.nodeType === 1 ? s.node : s.node.parentElement)?.closest?.('.hero'));
+      if (!src.length) continue;
+      window.__w1.heroShift += e.value;
+      window.__w1.shifts.push({ t: Math.round(e.startTime), v: e.value, src: src.map((s) => ({ n: s.node.nodeType === 1 ? s.node.className || s.node.tagName : '#text', p: [s.previousRect.x, s.previousRect.y, s.previousRect.width, s.previousRect.height].map(Math.round), c: [s.currentRect.x, s.currentRect.y, s.currentRect.width, s.currentRect.height].map(Math.round) })) });
+    }
+  }).observe({ type: 'layout-shift', buffered: true });
   const vis = (el) => {
     if (!el) return { ok: false, why: 'missing' };
     const b = el.getBoundingClientRect();
@@ -40,20 +49,45 @@ const FCP_PROBE = () => {
   }).observe({ type: 'largest-contentful-paint', buffered: true });
 };
 
-/** 1. FCP shows the h1, the line slot, the CTA, the strip and the camera poster; the LCP element per profile. */
-export async function fcp(base, { profiles = [...GES, 'WK-P2', 'WK-T2'] } = {}) {
+// The LCP sizes the page reports for the h1 (its name's text), the camera poster and print 1's still, in px^2.
+const LCP_AREAS = () => {
+  const h1 = document.querySelector('h1');
+  const range = document.createRange();
+  let h1Text = 0;
+  for (const n of h1.childNodes) {
+    if (n.nodeType !== 3 || !n.textContent.trim()) continue;
+    range.selectNodeContents(n);
+    for (const b of range.getClientRects()) h1Text += b.width * b.height;
+  }
+  const area = (s) => { const b = document.querySelector(s)?.getBoundingClientRect(); return b ? b.width * b.height : 0; };
+  return { h1Text: Math.round(h1Text), poster: Math.round(area('.hero-poster')), print: Math.round(area('[data-hero-print] img.hero-still')) };
+};
+
+/** 1. FCP shows the h1, the line slot, the CTA, the strip and the camera poster; the LCP element per profile, with
+ *  the poster below 85% of the h1's LCP area (mouse) or of the larger of the h1 and print 1 (touch), and no layout
+ *  shift in the hero. A second pass holds every web font back 800 ms (the h1 paints in its fallback face first): the
+ *  LCP element must not change and nothing in the hero may shift when the fonts arrive. */
+export async function fcp(base, { profiles = [...GES, 'WK-P2', 'WK-T2'], lateFont = ['D1', 'D2', 'D3', 'T2', 'P2'] } = {}) {
   const rows = [];
-  for (const p of profiles) {
-    const { page, ctx } = await open(base, p, 'auto', { init: FCP_PROBE });
+  const late = { match: /\.woff2(\?|$)/, handler: async (r) => { await sleep(800); await r.continue(); } };
+  for (const [p, route] of [...profiles.map((x) => [x, null]), ...lateFont.map((x) => [x, late])]) {
+    const { page, ctx } = await open(base, p, 'auto', { init: FCP_PROBE, ...(route ? { route } : {}) });
     await page.waitForFunction(() => window.__w1?.fcp, null, { timeout: 10000 }).catch(() => {});
-    await sleep(1500);
+    await sleep(route ? 2300 : 1500);
     const r = await page.evaluate(() => window.__w1);
+    const areas = await page.evaluate(LCP_AREAS);
     await ctx.close();
     const f = r?.fcp;
-    const shown = f && ['h1', 'lineSlot', 'cta', 'strip', 'poster'].every((k) => f[k]?.ok);
+    const shown = route ? true : f && ['h1', 'lineSlot', 'cta', 'strip', 'poster'].every((k) => f[k]?.ok);
     const last = r?.lcp?.at(-1)?.el ?? null;
     const lcpOk = MOUSE(p) ? /^h1/.test(last ?? '') : /^h1/.test(last ?? '') || /data-lcp=print-1/.test(last ?? '');
-    rows.push({ profile: p, pass: Boolean(shown && lcpOk), shown, lcpElement: last, lcpOk, fcp: f });
+    const ref = MOUSE(p) ? areas.h1Text : Math.max(areas.h1Text, areas.print);
+    const posterShare = ref ? Math.round((areas.poster / ref) * 1000) / 1000 : null;
+    const capOk = posterShare !== null && posterShare <= 0.851;
+    // Nothing in the hero moves, with or without the late font (the fallback faces draw the same boxes).
+    const heroShift = Math.round((r?.heroShift ?? 0) * 1e5) / 1e5;
+    const stillOk = heroShift < 0.001;
+    rows.push({ profile: p, lateFont: Boolean(route), pass: Boolean(shown && lcpOk && capOk && stillOk), shown, lcpElement: last, lcpOk, areas, posterShare, capOk, heroShift, stillOk, shifts: r?.shifts, lcp: r?.lcp, ...(route ? {} : { fcp: f }) });
   }
   return { pass: rows.every((r) => r.pass), rows };
 }
