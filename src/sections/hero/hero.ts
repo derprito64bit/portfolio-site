@@ -39,6 +39,8 @@ let ro: ResizeObserver | null = null;
 function watchLayout(): void {
   ro?.disconnect();
   if (!hero) return;
+  // The inline script's pre-paint observer (Hero.astro) hands over to this one.
+  (hero as HTMLElement & { __heroRo?: ResizeObserver }).__heroRo?.disconnect();
   let first = true;
   ro = new ResizeObserver(() => {
     // The first callback reports the sizes the pre-paint layout already used.
