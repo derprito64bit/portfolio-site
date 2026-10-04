@@ -9,6 +9,8 @@
 // 1. Landscape phones (vw > vh and vh <= 500 CSS px): print 1's laid-out height (its layout box, not the tilted
 //    bounding box) is at least 50% of the small viewport height. The 50%-of-content-width rule does not apply there,
 //    and neither does the 220 px window floor. Still required: print 1 in view, no text over GL, 0 no-fly crossings.
+//    The ruling names the class by the viewport alone, so its size rule wins at any width; where print 1 may sit
+//    follows the width (2 and 3).
 // 2. 64rem and wider: W-D009 as amended. Print 1's window is at least 220 px; print 1 may land in the copy column
 //    under the CTA instead of inside the stage, clear of the copy; in view; no text over GL; 0 no-fly crossings.
 // 3. Below 64rem, landscape phones excepted: unchanged. Print 1 is at least 50% of the content width and lands inside
@@ -77,8 +79,9 @@ export function lineThree(g, { textOverGl = [], crossings = [], flightFrames } =
   const textRight = Math.max(...[g.line, g.cta].filter(Boolean).map((r) => r.x + r.w));
   const placement = g.band === 'split' && g.print.x < textRight ? 'copy column' : 'stage';
   const copyGap = Math.min(...copy.map((r) => boxGap(g.print, r)));
-  // Amended W-D009: the copy column is allowed at 64rem and wider only, and there print 1 keeps clear of the copy.
-  const placementRule = cls === '64rem and wider'
+  // Amended W-D009: the copy column is allowed at 64rem and wider only (by width, so a landscape phone that wide gets it
+  // too: ruling 1 sets only its size rule), and there print 1 keeps clear of the copy.
+  const placementRule = g.wide
     ? { name: 'amended W-D009: print 1 in the stage, or in the copy column clear of the copy', placement, pass: placement === 'stage' || copyGap > 0 }
     : { name: 'W-D009 as locked below 64rem: print 1 lands inside the stage', placement, pass: placement === 'stage' };
 

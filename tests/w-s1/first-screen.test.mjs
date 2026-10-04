@@ -126,6 +126,19 @@ test('text over GL, a covered lens or a no-fly crossing fails every class', () =
   }
 });
 
+test('a landscape phone 64rem wide keeps the height rule, and may use the copy column (placement follows the width)', () => {
+  const g = clone(G.L844);
+  g.wide = true;
+  g.print.x = g.line.x;
+  g.print.y = g.cta.y + g.cta.h + 4;
+  g.print.h = g.vh - g.print.y; // kept in view for this case
+  const r = lineThree(g);
+  assert.equal(r.class, 'landscape phone');
+  assert.match(r.rule.name, /laid-out height/);
+  assert.equal(r.placementRule.placement, 'copy column');
+  assert.equal(r.checks.placement, true);
+});
+
 test('a press that logs no flight leaves the no-fly check vacuous, so it fails', () => {
   assert.deepEqual(lineThree(G.L844, { flightFrames: 0 }).failed, ['noFly']);
   assert.equal(lineThree(G.L844, { flightFrames: 64 }).status, 'PASS');
