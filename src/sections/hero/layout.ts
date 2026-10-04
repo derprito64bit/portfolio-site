@@ -12,7 +12,14 @@
 // - no text box over a GL rect at rest (the strip never touches the camera or the print);
 // - the LCP element stays the h1 on mouse profiles (the camera poster is kept below 85% of the h1's LCP area, its
 //   name's text) and the h1 or print 1's still on touch (the poster stays below 85% of the larger of the two).
-export function heroLayout(hero: HTMLElement, nudge = false): void {
+
+/** The LCP cap (#13 line 1): the camera poster's area stays below this share of the h1's text area (mouse) or of the
+ *  larger of the h1 and print 1 (touch). The one copy of it: heroLayout takes it as an argument (it is stringified, so
+ *  it cannot read this module), and tests/w-s1 imports it. */
+export const POSTER_CAP = 0.85;
+
+/** Lays the hero out. `nudge`: a re-run after first paint; `posterCap`: POSTER_CAP. */
+export function heroLayout(hero: HTMLElement, nudge: boolean, posterCap: number): void {
   const doc = hero.ownerDocument;
   const win = doc.defaultView as Window;
   const row = hero.querySelector('.hero-row') as HTMLElement | null;
@@ -67,10 +74,10 @@ export function heroLayout(hero: HTMLElement, nudge = false): void {
   let cam: { x: number; y: number; w: number; h: number };
   let pr: { x: number; y: number; w: number; h: number };
   let strip: { x: number; y: number } | null;
-  const capArea = (printArea: number) => 0.85 * (touch ? Math.max(h1Area, printArea) : h1Area);
+  const capArea = (printArea: number) => posterCap * (touch ? Math.max(h1Area, printArea) : h1Area);
   if (split) {
     const avail = vh - rowTop - 6;
-    const short = avail < SH + 260 || !fits;
+    const short = avail < SH + 260 || !fits; // not a time: the strip's height plus a 260 px stage, CSS px
     arrangement = short ? 'short' : 'beside';
     rowH = Math.max(avail, 200); // not a time: the row's floor in CSS px
     const stripRoom = short ? 0 : SH + GS;
@@ -91,7 +98,7 @@ export function heroLayout(hero: HTMLElement, nudge = false): void {
     if (under) pw = Math.min(pw, roomUnder);
     let cw = camFor(pw);
     // Under the copy the print keeps 24 px clear of the camera; beside it, it sits left of the strip, over the grip.
-    if (under && pw + 24 > W - cw) {
+    if (under && pw + 24 > W - cw) { // not a time: a 24 px gap, CSS px
       under = false;
       pw = pwBeside;
       cw = camFor(pw);

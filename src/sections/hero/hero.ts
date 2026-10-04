@@ -11,7 +11,7 @@
 //   the pre-GL budget), T0 is the later of stage:gl-ready + 200 ms and the camera being ready, and the guards jump
 //   it to the end state.
 // GL work lives in src/gl/camera (its own chunk, loaded after first paint). The stage is reached through bridge.ts.
-import { heroLayout, heroPoster } from './layout.ts';
+import { POSTER_CAP, heroLayout, heroPoster } from './layout.ts';
 import { svgDataUri, testStripSvg } from './still.ts';
 import { afterStage, markTime, onContentReplace, onHtmlAttr, reduced, stage, tier, whenGL, whenMark } from './bridge.ts';
 import { develop as developTokens, durations, heroTimeline, springs } from '../../lib/tokens.js';
@@ -49,7 +49,7 @@ function layout(force = false): void {
   // A height-only change on a touch screen is the toolbar: slots stay put (W-D013).
   if (!force && w === lastW && matchMedia('(pointer: coarse)').matches) return;
   lastW = w;
-  heroLayout(hero, true);
+  heroLayout(hero, true, POSTER_CAP);
   heroPoster(hero);
   stage()?.invalidate();
 }

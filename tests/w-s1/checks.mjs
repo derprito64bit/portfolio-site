@@ -6,12 +6,15 @@ import { join } from 'node:path';
 import sharp from 'sharp';
 import { durations, heroTimeline, springs } from '../../src/lib/tokens.js';
 import { loadBudgets } from './budgets.mjs';
+import { POSTER_CAP } from '../../src/sections/hero/layout.ts';
 import { H, WAIT, context, heroAtRest, heroRects, median, open, profile, rectsIntersect, sleep } from './lib.mjs';
 
 const GES = ['D1', 'D2', 'D3', 'T1', 'T2', 'P1', 'P2', 'S1', 'S2'];
 const MOUSE = (p) => profile(p).input === 'mouse';
 /** The acceptance numbers no token holds, read from budgets.md and the plan at run time (budgets.mjs). */
 const SPEC = loadBudgets();
+/** One step of posterShare's rounding (3 decimals): the only tolerance on the poster's LCP cap. */
+const SHARE_ROUNDING = 0.001;
 /** A held key repeats about 30 times a second (a rate, for the Space and Enter holds). */
 const KEY_REPEAT_HZ = 30;
 const GL_CHUNK = /\/_astro\/gl\.[^/]+\.js$/;
@@ -129,7 +132,8 @@ export async function fcp(base, { profiles = [...GES, 'WK-P2', 'WK-T2'], lateFon
     const cameraLcp = (r?.lcp ?? []).filter((e) => /hero-(poster|lines)/.test(e.el ?? ''));
     const ref = MOUSE(p) ? areas.h1Text : Math.max(areas.h1Text, areas.print);
     const posterShare = ref ? Math.round((areas.poster / ref) * 1000) / 1000 : null;
-    const capOk = posterShare !== null && posterShare <= 0.851;
+    // The layout's own cap (layout.ts POSTER_CAP), plus one step of posterShare's rounding to 3 decimals above.
+    const capOk = posterShare !== null && posterShare <= POSTER_CAP + SHARE_ROUNDING;
     const heroShift = Math.round((r?.heroShift ?? 0) * 1e5) / 1e5;
     const stillOk = heroShift < 0.001;
     rows.push({ profile: p, lateFont: Boolean(route), pass: Boolean(shown && lcpOk && capOk && stillOk && !cameraLcp.length), shown, cam: f?.cam, lcpElement: last, lcpOk, cameraLcp, areas, posterShare, capOk, heroShift, stillOk, shifts: r?.shifts, lcp: r?.lcp, ...(route ? {} : { fcp: f }) });
@@ -262,6 +266,7 @@ export async function wordmark(base) {
       if (best > 0) worst = Math.min(worst, fs / best);
       best = Math.max(best, fs);
     }
+    // Acceptance line 2: "its size never decreases as width grows (5% tolerance)".
     sweeps.push({ height: h, worstRatio: Math.round(worst * 1000) / 1000, pass: worst >= 0.95, sizes });
   }
   await ctx.close();
@@ -329,6 +334,8 @@ export async function firstScreen(base, { profiles = ['D1', 'D2', 'D3', 'S1', 'T
     const narrow = g.vw < 1024;
     const landscapePhone = g.vh <= 500 && g.vw > g.vh;
     const windowW = (g.printLayoutW * 46) / 54;
+    // Acceptance line 3: "Print 1 is >= 50% of content width below 64rem ... and its window is >= 220 px at 64rem and
+    // wider" (half a CSS px for subpixel layout).
     const widthRule = g.printLayoutW >= 0.5 * g.contentW - 0.5;
     const sizeRule = narrow && !landscapePhone ? widthRule : landscapePhone ? widthRule : windowW >= 220;
     const proposed = landscapePhone ? { rule: 'print 1 at least 50% of the small viewport height (manager, round 1)', printH: Math.round(g.print.h), viewportH: g.vh, pass: g.print.h >= 0.5 * g.vh } : null;
@@ -562,6 +569,7 @@ export async function parity(base, { profiles = [...GES, 'X1180', 'X600', 'WK-P2
   const r0 = rel(top);
   const r1 = rel(scrolled);
   const drift = { angleDeg: Math.abs(r0.a - r1.a), px: Math.max(Math.abs(r0.dx - r1.dx), Math.abs(r0.dy - r1.dy), Math.abs(r0.w - r1.w), Math.abs(r0.h - r1.h)) };
+  // Acceptance line 5: "Camera pose drifts < 1 degree across a 40% hero scroll".
   return { pass: rows.every((r) => r.pass) && drift.angleDeg < 1 && handover.pass, rows, handover, drift, top, scrolled };
 }
 
@@ -729,6 +737,8 @@ export async function restPress(base, p, { out, presses: count = 2, run = 1 } = 
     if (out) {
       for (const [name, buf] of [['before', beforeShot], ['mid', midShot], ['after', afterShot]]) await sharp(buf).toFile(`${out}/rest-${p}-run${run}-press${n}-${name}.png`);
     }
+    const tenth = (x) => Math.round(x * 10) / 10;
+    const hundredth = (x) => Math.round(x * 100) / 100;
     // The frame: the page's own frame interval while the print flies (median of the logged frames' gaps).
     const gaps = frames.slice(1).map((f, i) => f.t - frames[i].t);
     const frameMs = median(gaps) ?? null;
@@ -769,7 +779,7 @@ export async function restPress(base, p, { out, presses: count = 2, run = 1 } = 
       checks,
       tierDrops: drops,
       restMs: rest.idleAt === null ? null : Math.round(pressedAt - rest.idleAt),
-      frameMs: frameMs === null ? null : Math.round(frameMs * 100) / 100,
+      frameMs: frameMs === null ? null : hundredth(frameMs),
       firstFrameAfterPressMs: frames.length ? Math.round(frames[0].t - pressedAt) : null,
       ejectFrames: eject.length,
       ejectSpanMs: Math.round(ejectSpanMs),
@@ -777,8 +787,8 @@ export async function restPress(base, p, { out, presses: count = 2, run = 1 } = 
       flightFrames: frames.length,
       crossings: crossings.slice(0, 5),
       pressRow: pressRow ?? null,
-      pressT0MinusClickMs: pressT0 === null ? null : Math.round((pressT0 - pressedAt) * 10) / 10,
-      flightT0MinusClickMs: flightPress === null ? null : Math.round((flightPress - pressedAt) * 10) / 10,
+      pressT0MinusClickMs: pressT0 === null ? null : tenth(pressT0 - pressedAt),
+      flightT0MinusClickMs: flightPress === null ? null : tenth(flightPress - pressedAt),
       diffMidVsBefore: Math.round(diffBefore * 1000) / 1000,
       diffMidVsAfter: Math.round(diffAfter * 1000) / 1000,
       parityMax: SPEC.parityMax,
@@ -793,6 +803,39 @@ export async function restPress(base, p, { out, presses: count = 2, run = 1 } = 
   return { profile: p, run, live, tier: g.tier, tierLog, pass: live && presses.every((x) => x.pass), presses };
 }
 
+/**
+ * The GL context lost with a print in the air (gate round 3, should-fix): lost mid-flight, then restored or not. The
+ * press ends on its still, the next press prints, and the console stays clean (no WebGL call on objects of the lost
+ * context: "delete: object does not belong to this context", W-D030's console gate).
+ */
+export async function lossRow(base, p, { restore = true } = {}) {
+  const { page, ctx } = await open(base, p);
+  const messages = [];
+  page.on('console', (m) => messages.push(`${m.type()}: ${m.text()}`));
+  const touch = !MOUSE(p);
+  const press = () => (touch ? page.tap('[data-hero-camera]', { position: { x: 20, y: 20 } }) : page.click('[data-shutter]'));
+  const live = await page.waitForFunction(() => window.__hero?.live, null, { timeout: WAIT.patience }).then(() => true, () => false);
+  await heroAtRest(page).catch(() => {});
+  await press();
+  await sleep(MID_FLIGHT);
+  const during = await page.evaluate(() => ({ flying: Boolean(window.__hero?.flying) }));
+  await page.evaluate(() => window.__stage.gl.forceContextLoss());
+  await sleep(WAIT.beat);
+  if (restore) await page.evaluate(() => window.__stage.gl.forceContextRestore());
+  await sleep(WAIT.press);
+  const first = await page.evaluate(PRINT_STATE);
+  const stats = await page.evaluate(() => ({ losses: window.__stage.stats.losses, restores: window.__stage.stats.restores }));
+  await press();
+  await sleep(WAIT.press);
+  const second = await page.evaluate(PRINT_STATE);
+  const placement = await page.evaluate(PLACEMENT);
+  await ctx.close();
+  const bad = messages.filter((m) => /does not belong|INVALID_OPERATION|GL_INVALID|CONTEXT_LOST_WEBGL/i.test(m));
+  const ended = (s) => s.lastOpacity === 1 && !s.flying && !s.fx && !s.printIsGl && /Printed/.test(s.status);
+  const pass = live && during.flying && ended(first) && ended(second) && second.stills === 3 && placement.every((x) => x.ok) && bad.length === 0 && stats.losses === 1 && stats.restores === (restore ? 1 : 0);
+  return { profile: p, restore, live, during, stats, first, second, placement, badMessages: bad, pass };
+}
+
 export async function strip(base, { out } = {}) {
   const { page, ctx } = await open(base, 'P2');
   await page.evaluate(() => document.fonts.ready);
@@ -801,7 +844,8 @@ export async function strip(base, { out } = {}) {
     const b = e.getBoundingClientRect();
     return { name: e.value || e.textContent.trim(), x: b.x, y: b.y, w: b.width, h: b.height };
   }));
-  const small = targets.filter((t) => t.w < 44 || t.h < 44);
+  // budgets.md Layout: "Targets >= 44x44 px".
+  const small = targets.filter((t) => t.w < SPEC.targetMinPx || t.h < SPEC.targetMinPx);
   const overlaps = [];
   for (let i = 0; i < targets.length; i++) for (let j = i + 1; j < targets.length; j++) {
     const a = targets[i];
@@ -861,6 +905,9 @@ export async function strip(base, { out } = {}) {
   const dropped = [];
   for (const p of ['P2', 'WK-P2']) dropped.push(await pressRow(base, p, { demoteAt: MID_FLIGHT }));
   const thrown = [await pressRow(base, 'P2', { failDecode: true })];
+  // The context lost mid-flight, restored or not (round 3 should-fix: a clean console at restore).
+  const lost = [];
+  for (const p of ['D2', 'P2']) for (const restore of [true, false]) lost.push(await lossRow(base, p, { restore }));
   // Presses after a rest (round 3 must-fixes 1 and 2): the eject, the press's clock and the develop in view.
   const rested = [];
   for (const p of REST_PROFILES) {
@@ -868,8 +915,9 @@ export async function strip(base, { out } = {}) {
     else rested.push(await restPress(base, p, { out }));
   }
   const same = tapped.lens === keyed.lens && tapped.look === keyed.look && tapped.readout === keyed.readout;
-  const pass = group === 1 && small.length === 0 && overlaps.length === 0 && same && y1 - y0 > 100 && presses.every((p) => p.pass) && [...early, ...dropped, ...thrown, ...rested].every((r) => r.pass);
-  return { pass, group, targets: targets.length, small, overlaps, tapped, keyed, identical: same, swipeScrolledPx: y1 - y0, presses, early, dropped, thrown, rested };
+  // Acceptance line 6: "a vertical swipe on the camera stage scrolls the page" (more than 100 px of the 240 px swiped).
+  const pass = group === 1 && small.length === 0 && overlaps.length === 0 && same && y1 - y0 > 100 && presses.every((p) => p.pass) && [...early, ...dropped, ...thrown, ...lost, ...rested].every((r) => r.pass);
+  return { pass, group, targets: targets.length, small, overlaps, tapped, keyed, identical: same, swipeScrolledPx: y1 - y0, presses, early, dropped, thrown, lost, rested };
 }
 /** Where a press after a rest is checked: the full tier, lite on Chromium and lite on WebKit (round 3 review). */
 const REST_PROFILES = ['D2', 'P2', 'WK-P2'];
@@ -899,6 +947,7 @@ export async function motion(base) {
   const interrupted = log.filter((e) => e.interrupted);
   const springRows = log.filter((e) => e.spring && table[e.spring] !== undefined && e.to !== e.from && !e.interrupted).map((e) => {
     const os = Math.max(0, ((e.peak - e.to) / (e.to - e.from)) * 100);
+    // Acceptance line 7: "overshoot within +-0.5 points of the table".
     return { id: e.id, spring: e.spring, measured: Boolean(e.measured), overshootPct: Math.round(os * 100) / 100, table: table[e.spring], ok: Math.abs(os - table[e.spring]) <= 0.5 };
   });
   const kinds = new Set(springRows.map((r) => r.spring));
@@ -1007,6 +1056,7 @@ export async function reducedStatic(base) {
     const fade = (s) => s && s.anims.some((a) => a.duration === durations.reduced && a.props.includes('opacity')) && !s.flying && !s.fx;
     const noDrawing = (m) => geo[m].camAtFcp === 'camera' && !(geo[m].camSeen ?? []).includes('drawing');
     const placed = (m) => geo[m].presses.length === 4 && geo[m].presses.every((x) => x.pass);
+    // Acceptance line 8: "layout shift vs auto is 0 px" (within half a CSS px: boxes are read at subpixel precision).
     const pass = geo.reduced.printAtFcp?.ok && geo.static.printAtFcp?.ok && noDrawing('reduced') && noDrawing('static') && fade(geo.reduced.swap) && fade(geo.static.swap) && placed('reduced') && placed('static') && shiftReduced <= 0.5 && shiftStatic <= 0.5;
     rows.push({ profile: p, pass: Boolean(pass), shiftReducedPx: shiftReduced, shiftStaticPx: shiftStatic, reduced: { printAtFcp: geo.reduced.printAtFcp, camAtFcp: geo.reduced.camAtFcp, swap: geo.reduced.swap, presses: geo.reduced.presses }, static: { printAtFcp: geo.static.printAtFcp, camAtFcp: geo.static.camAtFcp, swap: geo.static.swap, presses: geo.static.presses } });
   }
@@ -1141,16 +1191,19 @@ function ownedFiles() {
  *   interval, wait*, settle*, hold*, *Ms, *_MS);
  * - clock: a number of 10 or more added to or taken from Date.now() or performance.now();
  * - budget: a comparison against a number of 1000 or more next to bytes, ms, time or a budget;
+ * - compare: a number of 10 or more added to or taken from an operand of a comparison (`g < f + 1000`: a window
+ *   written as a literal, gate round 3), on either side of <, <=, > or >= (never =>, << or >>);
  * - token: a bare number equal to a hero drawing duration or a heroTimelineMs value.
  * Numbers under 10 in those places are counts and factors (2 * WAIT.settle); 1000 is allowed as a unit conversion
- * (s to ms, kB to bytes). A line marked 'not a time: <reason>' in a comment exempts a token or budget hit, and the
- * report lists every exemption.
+ * (s to ms, kB to bytes) only next to * or /. A line marked 'not a time: <reason>' in a comment exempts a token,
+ * budget or compare hit, and the report lists every exemption.
  */
 export function scanTimeLiterals(entries, tokenValues = TOKEN_VALUES) {
   const NUM = String.raw`\d[\d_]*(?:\.\d+)?(?:e\d+)?`;
   const ARGS = String.raw`((?:[^()]|\((?:[^()]|\([^()]*\))*\))*)`;
   const VALUE = String.raw`([^,;{}\n]*)`;
   // Each rule: [name, regex, which capture holds the expression or the number, scan the expression for numbers?].
+  // A number is reported once, by the first rule that finds it (a token value as a token, before compare).
   const rules = [
     ['unit', new RegExp(String.raw`(?<![\w.$#-])(${NUM})\s?(?:ms|s)\b`, 'g'), false],
     ['e3', new RegExp(String.raw`(?<![\w.])(\d[\d_.]*e3)\b`, 'g'), false],
@@ -1160,6 +1213,7 @@ export function scanTimeLiterals(entries, tokenValues = TOKEN_VALUES) {
     ['clock', new RegExp(String.raw`\b(?:Date\.now|performance\.now)\(\)\s*[-+]\s*${VALUE}`, 'g'), true],
     ['budget', new RegExp(String.raw`([\w.\]) ]{0,40})(?:<=?|>=?)\s*(${NUM})(?![\w.])`, 'g'), 'budget'],
     ['token', new RegExp(String.raw`(?<![\w.$#-])(${tokenValues.join('|')})(?![\w.])`, 'g'), false],
+    ['compare', new RegExp(String.raw`([^;,(){}\n&|?:=<>!]{0,80})(?<![<>=!-])(?:<=?|>=?)(?![<>=])([^;,(){}\n&|?:<>]{0,80})`, 'g'), 'compare'],
   ];
   const hits = [];
   const exempt = [];
@@ -1175,7 +1229,7 @@ export function scanTimeLiterals(entries, tokenValues = TOKEN_VALUES) {
       const line = code.slice(0, at).split('\n').length;
       const text = lines[line - 1].trim().slice(0, 160);
       const row = { file, line, rule, value: n, text };
-      if ((rule === 'token' || rule === 'budget') && /not a time:/.test(lines[line - 1])) exempt.push({ ...row, reason: /not a time:\s*([^*]*)/.exec(lines[line - 1])[1].trim() });
+      if ((rule === 'token' || rule === 'budget' || rule === 'compare') && /not a time:/.test(lines[line - 1])) exempt.push({ ...row, reason: /not a time:\s*([^*]*)/.exec(lines[line - 1])[1].trim() });
       else hits.push(row);
     };
     const unitConversion = (expr, i, len) => /[*/]\s*$/.test(expr.slice(0, i)) || /^\s*[*/]/.test(expr.slice(i + len));
@@ -1203,6 +1257,18 @@ export function scanTimeLiterals(entries, tokenValues = TOKEN_VALUES) {
             if (!(v >= 10)) continue;
             if (v === 1000 && unitConversion(expr, n.index, n[0].length)) continue;
             hit(rule, offset + n.index, v);
+          }
+          continue;
+        }
+        if (mode === 'compare') {
+          // Each side of the comparison: a number after a binary + or - is an offset written as a literal.
+          const sides = [[m[1], m.index], [m[2], m.index + m[0].length - m[2].length]];
+          for (const [side, at] of sides) {
+            for (const n of side.matchAll(new RegExp(String.raw`(?<!\d[eE])[+-]\s*(${NUM})(?![\w.])`, 'g'))) {
+              const v = Number(n[1].replace(/_/g, ''));
+              if (!(v >= 10)) continue;
+              hit(rule, at + n.index + n[0].length - n[1].length, v);
+            }
           }
           continue;
         }
@@ -1258,7 +1324,8 @@ export async function gpu(base, { loads = 5 } = {}) {
   const pm = median(proto);
   const hm = median(hero);
   const valid = renderer && !H.SOFTWARE_RENDERER.test(renderer);
-  return { pass: Boolean(valid) && hm <= 1.5 * pm, renderer, valid, prototypeMedianMs: pm, heroMedianMs: hm, ratio: Math.round((hm / pm) * 1000) / 1000, proto, hero };
+  // budgets.md GPU: "Crews stay <= 1.5x the prototype median".
+  return { pass: Boolean(valid) && hm <= SPEC.gpuRatioMax * pm, gpuRatioMax: SPEC.gpuRatioMax, renderer, valid, prototypeMedianMs: pm, heroMedianMs: hm, ratio: Math.round((hm / pm) * 1000) / 1000, proto, hero };
 }
 
 /** Evidence: seeked hero filmstrips on the manual clock (?t=0). Full: the opening (drawing, clay, the develop) and

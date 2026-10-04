@@ -98,7 +98,7 @@ export const heroTimeline = /*#__PURE__*/ Object.freeze({
   "rollerTracksEnd": 1300,
   "lateGlAfterFcp": 2500,
   "cameraAfterGlReady": 2500,
-  "revealSafety": 6000
+  "revealSafetyAfterHead": 6000
 });
 
 export const develop = /*#__PURE__*/ Object.freeze({

@@ -13,7 +13,7 @@ const scan = (src) => scanTimeLiterals([{ file: 'fixture.ts', src }]);
 // The round-2 literals the gate and the manager found, rebuilt from their values, and the other forms of a time.
 const BAD = [
   ['key', `const LATE_GUARD_MS = ${heroTimeline.lateGlAfterFcp};`],
-  ['e3', `setTimeout(reveal, ${heroTimeline.revealSafety / 1000}e3);`],
+  ['e3', `setTimeout(reveal, ${heroTimeline.revealSafetyAfterHead / 1000}e3);`],
   ['key', `const ROLL_TAIL = ${heroTimeline.rollerTracksEnd - heroTimeline.flight}; const tailMs = ${durations.glHandback};`],
   ['token', `if (rel >= seq + heroTimeline.developed + ${durations.posterFade}) done();`],
   ['unit', `transition: color ${durations.listToggle}ms var(--ease-out);`],
@@ -25,6 +25,10 @@ const BAD = [
   ['clock', `const end = Date.now() + ${5 * durations.flashMinGap};`],
   ['budget', `const pass = bytes <= ${B.preGlBytes};`],
   ['budget', `ok = gzipBytes <= ${B.glBytes};`],
+  // Round 3 (gate and manager, A2-5): the flash window written as a literal offset of a comparison's operand, exactly
+  // as it stood in checks.mjs, and the same form on the left side.
+  ['compare', `for (const f of flashes) worst = Math.max(worst, flashes.filter((g) => g >= f && g < f + ${durations.flashMinGap}).length);`],
+  ['compare', `if (t0 - ${durations.shutter} > pressedAt) late();`],
 ];
 const GOOD = [
   'setTimeout(fn, 0);',
@@ -38,6 +42,12 @@ const GOOD = [
   'transition-duration: 0s !important;',
   `// a comment may say ${durations.eject} ms`,
   'const end = Date.now() + 5 * durations.flashMinGap;',
+  // The compare rule: the token, small offsets, arrows, shifts and scientific notation are not offsets.
+  'for (const f of flashes) worst = Math.max(worst, flashes.filter((g) => g >= f && g < f + durations.flashMinGap).length);',
+  'const ok = b.right <= innerWidth + 8 && b.left >= -8;',
+  'const xs = ys.map((v) => v + 16);',
+  'seed = (seed * 31 + code) >>> 0;',
+  'if (Math.abs(travel) < 1e-12) return 0;',
 ];
 
 for (const [rule, src] of BAD) {

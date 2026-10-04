@@ -2,7 +2,8 @@
 // in tests/w-s1). Each one is found by its sentence, so a reworded budget fails loudly here instead of the suite
 // silently testing an old number. When the orchestrator lands a machine-readable budgets block (round 2 review), this
 // reader switches to it and keeps its shape.
-//   docs/agents/budgets.md              pre-GL JS, GL chunk, the automatic-motion cap, the delayed-GL line
+//   docs/agents/budgets.md              pre-GL JS, GL chunk, the automatic-motion cap, the delayed-GL line, the crews'
+//                                       GPU ratio, the target size
 //   docs/direction/front-door-plan.md   W-D012's head script size; the W-S1 brief's poster parity
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -31,6 +32,10 @@ export function loadBudgets() {
     /** "With GL delayed 3 s, a developed print 1 is visible by FCP + 2.6 s". */
     delayGlMs: b(/With GL delayed ([\d.]+) s,/, 'delayed GL') * 1000, // s to ms
     printVisibleAfterFcpMs: b(/visible by FCP \+ ([\d.]+) s\b/, 'print 1 after FCP') * 1000, // s to ms
+    /** GPU: "Crews stay <= 1.5x the prototype median". */
+    gpuRatioMax: b(/Crews stay <= ([\d.]+)x the prototype median/, 'GPU ratio'),
+    /** Layout: "Targets >= 44x44 px" (the square's side). */
+    targetMinPx: b(/Targets >= (\d+)x\1 px/, 'target size'),
     /** W-D012: "An inline head script (no fetch, under 0.8 kB with data-cam)". */
     headScriptBytes: p(/inline head script \(no fetch, under ([\d.]+) kB/, 'head script') * 1000, // kB to bytes, as budgets.md counts them
     /** The W-S1 brief: "Poster vs first GL frame: mean diff <= 4/255". */

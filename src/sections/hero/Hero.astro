@@ -20,7 +20,7 @@ import { content } from '../../lib/content/index.ts';
 import stillsManifest from '../../lib/content/stills.json';
 import posters from '../../../public/posters/camera/posters.json';
 import rig from '../../../assets-src/3d/camera_xt/rig.json';
-import { heroLayout, heroPoster } from './layout.ts';
+import { POSTER_CAP, heroLayout, heroPoster } from './layout.ts';
 import { CARD, svgDataUri, testStripSvg } from './still.ts';
 import drawings from '../../../public/posters/camera/drawing.json';
 import { bandMarks, type Framing, type Rig } from './framing.ts';
@@ -72,10 +72,10 @@ const PHONE_MQ = '(max-width: 479px)';
 // on the row runs it again in the same frame when the row's width changes: a classic scrollbar appears once the rest
 // of the page has parsed and narrows the row by its width; re-laid out from the resize event instead, a frame later,
 // that would be a layout shift. Where scrollbars take room, the page keeps their gutter from the start (CSS below).
-const layoutScript = `(function(h,L){var d=document.documentElement,p=document.createElement('div');p.style.cssText='position:absolute;top:-200px;width:100px;height:100px;overflow:scroll;visibility:hidden';d.appendChild(p);if(p.offsetWidth-p.clientWidth>0)d.setAttribute('data-hero-gutter','');p.remove();L(h);var r=h.querySelector('.hero-row');if(!r||!window.ResizeObserver)return;var w=r.clientWidth;h.__heroRo=new ResizeObserver(function(){if(r.clientWidth!==w){w=r.clientWidth;L(h)}});h.__heroRo.observe(r)})(document.currentScript.closest('.hero'),${heroLayout.toString()});`;
+const layoutScript = `(function(h,L,C){var d=document.documentElement,p=document.createElement('div');p.style.cssText='position:absolute;top:-200px;width:100px;height:100px;overflow:scroll;visibility:hidden';d.appendChild(p);if(p.offsetWidth-p.clientWidth>0)d.setAttribute('data-hero-gutter','');p.remove();L(h,!1,C);var r=h.querySelector('.hero-row');if(!r||!window.ResizeObserver)return;var w=r.clientWidth;h.__heroRo=new ResizeObserver(function(){if(r.clientWidth!==w){w=r.clientWidth;L(h,!1,C)}});h.__heroRo.observe(r)})(document.currentScript.closest('.hero'),${heroLayout.toString()},${POSTER_CAP});`;
 // data-cam and data-hero (W-D012, #13 A2): no fetch, under 0.8 kB (tests/w-s1 measures it). A storage error counts
-// as unset. A runtime that never arrives still reveals print 1 (heroTimeline.revealSafety after the script runs).
-const heroHead = `(function(h,c){var s=null,n,t=h.dataset.tier;try{s=sessionStorage.getItem('ion.hero')}catch(e){}try{n=performance.getEntriesByType('navigation')[0]}catch(e){}var d=h.dataset.motion==='full'&&(t==='full'||t==='lite')&&!s&&!location.hash&&!(n&&n.type==='back_forward');h.dataset.cam=d?'drawing':'camera';if(d&&t==='full'&&matchMedia('(pointer: fine) and (hover: hover)').matches&&window.WebGL2RenderingContext&&!(c&&c.saveData)){h.dataset.hero='eject';setTimeout(function(){if(h.dataset.hero==='eject'&&!h.dataset.heroRun)h.dataset.hero='done'},${heroTimeline.revealSafety})}else h.dataset.hero='still'})(document.documentElement,navigator.connection)`;
+// as unset. A runtime that never arrives still reveals print 1 (heroTimeline.revealSafetyAfterHead after the script runs).
+const heroHead = `(function(h,c){var s=null,n,t=h.dataset.tier;try{s=sessionStorage.getItem('ion.hero')}catch(e){}try{n=performance.getEntriesByType('navigation')[0]}catch(e){}var d=h.dataset.motion==='full'&&(t==='full'||t==='lite')&&!s&&!location.hash&&!(n&&n.type==='back_forward');h.dataset.cam=d?'drawing':'camera';if(d&&t==='full'&&matchMedia('(pointer: fine) and (hover: hover)').matches&&window.WebGL2RenderingContext&&!(c&&c.saveData)){h.dataset.hero='eject';setTimeout(function(){if(h.dataset.hero==='eject'&&!h.dataset.heroRun)h.dataset.hero='done'},${heroTimeline.revealSafetyAfterHead})}else h.dataset.hero='still'})(document.documentElement,navigator.connection)`;
 ---
 <section
   class="hero wrap"

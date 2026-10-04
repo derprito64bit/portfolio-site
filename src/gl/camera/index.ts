@@ -272,8 +272,11 @@ class GLPrint {
   /** The DOM still this is the GL copy of (the keeper's: print 1's), and the shader variant it was made for. */
   el: HTMLImageElement | null = null;
   readonly lite: boolean;
-  constructor(scene: any, texture: any, lite: boolean, seed: number, order: number, grain: [number, number]) {
+  /** The GL context it was made in (HeroCamera.epoch): after a loss its GPU objects belong to no live context. */
+  readonly epoch: number;
+  constructor(scene: any, texture: any, lite: boolean, seed: number, order: number, grain: [number, number], epoch: number) {
     this.lite = lite;
+    this.epoch = epoch;
     this.material = (develop as typeof Develop).createDevelopMaterial({ map: texture, lite, screenClip: true, clipBody: true, pad: PAD, seed, grain });
     this.material.depthTest = true;
     this.mesh = new Mesh(new PlaneGeometry(1, 1), this.material);
@@ -282,8 +285,12 @@ class GLPrint {
     this.mesh.visible = false;
     scene.add(this.mesh);
   }
-  dispose(scene: any): void {
+  /** Remove it; free its GPU objects only when they belong to the live context (`live`). A print made before a context
+   *  loss is only dropped: three's dispose listeners from before the loss would delete the lost context's objects on
+   *  the restored one ("object does not belong to this context", W-D030's console gate). */
+  dispose(scene: any, live: boolean): void {
     scene.remove(this.mesh);
+    if (!live) return;
     this.mesh.geometry.dispose();
     this.material.uniforms.uMap.value?.dispose?.();
     this.material.dispose();
@@ -371,6 +378,9 @@ class HeroCamera implements CameraController {
   private readonly printReady: Promise<unknown>;
   /** GL is gone for this visit (the stage was torn down: the tier dropped to static). See leaveGL. */
   private gone = false;
+  /** The context is lost right now; `epoch` counts losses (a print remembers the one it was made in). */
+  private lost = false;
+  private epoch = 0;
   /**
    * Print 1's GL copy, kept for the visit, one per shader variant: compiled before the camera takes its slot when
    * there is no opening (on the full tier's opening it is the intro's print), so a press never compiles the print
@@ -416,6 +426,15 @@ class HeroCamera implements CameraController {
       if (t === 'static') this.leaveGL();
       else if (t === 'lite' && this.live) void this.keeper(true);
     }).observe(html, { attributes: true, attributeFilter: ['data-tier'] });
+    // A context loss: W-F hands every slot back (giveAll); the GPU objects made until now belong to no live context.
+    const canvas = gl.renderer?.domElement as HTMLCanvasElement | undefined;
+    canvas?.addEventListener('webglcontextlost', () => {
+      this.lost = true;
+      this.epoch++;
+    });
+    canvas?.addEventListener('webglcontextrestored', () => {
+      this.lost = false;
+    });
   }
 
   /**
@@ -1070,7 +1089,8 @@ vec3 ionNeutral(vec3 color) {
     const rel = time - fl.t0;
     // GL takes the print slot once its copies of the stack have been presented (PRESENT_TAIL frames: WebKit presents a
     // canvas a frame late), and before the eject: the stills then fade out over identical GL pixels, never over a gap.
-    if (!fl.held && !fl.intro && (fl.frames > PRESENT_TAIL || rel >= EJECT_LEAD)) {
+    // (Not while the context is lost: W-F has handed the slots back and GL draws nothing.)
+    if (!fl.held && !fl.intro && !this.lost && (fl.frames > PRESENT_TAIL || rel >= EJECT_LEAD)) {
       fl.held = true;
       this.hero.querySelector('[data-hero-print]')?.classList.add('is-gl');
     }
@@ -1124,7 +1144,7 @@ vec3 ionNeutral(vec3 color) {
   private letGo(): void {
     for (const p of this.prints.splice(0)) {
       if (!this.kept.has(p)) {
-        p.dispose(this.fxView.scene);
+        p.dispose(this.fxView.scene, p.epoch === this.epoch && !this.lost);
         continue;
       }
       p.pose = null;
@@ -1148,7 +1168,7 @@ vec3 ionNeutral(vec3 color) {
     for (let i = 0; i < slug.length; i++) seed = (seed * 31 + slug.charCodeAt(i)) >>> 0;
     // The grain cell is fixed per print: 2 device px at the print's size in its landing slot (D-026).
     const grain = (develop as typeof Develop).grainScale((this.printSlot?.w ?? 300) * this.dpr());
-    const p = new GLPrint(this.fxView.scene, tex, lite, (seed % 997) / 997, order, grain);
+    const p = new GLPrint(this.fxView.scene, tex, lite, (seed % 997) / 997, order, grain, this.epoch);
     this.gl.renderer.initTexture(tex);
     return p;
   }
