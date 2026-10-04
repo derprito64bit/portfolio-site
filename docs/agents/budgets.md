@@ -23,6 +23,111 @@ A change that exceeds a budget fails its gate. Evidence standard: GES-1 (W-D030)
 - Sound: 0 bytes until opt-in, then <= 16 kB.
 - Process: every crew, gate and review agent runs on Opus 5.5 at effort xhigh (W-D001).
 
+### Machine-readable (site)
+
+Tests read this block instead of parsing the sentences above (requested in the W-S1 round-2 review). The sentences stay the human source; any change edits both in the same PR.
+
+```json budgets
+{
+  "schema": 1,
+  "note": "Mirrors the sentences above, which stay the human source; a change edits both in the same PR. Units are in the key names.",
+  "site": {
+    "lighthouse": {
+      "perfMobileMin": 90,
+      "perfDesktopMin": 95,
+      "a11yMin": 100,
+      "bestPracticesMin": 95
+    },
+    "lcpMs": {
+      "mobile": 2500,
+      "desktop": 2000
+    },
+    "clsMax": 0.02,
+    "tbtMs": 150,
+    "preGlJsKbGz": 35,
+    "glChunkKbGz": 185,
+    "effectsKbGz": 10,
+    "fontsKbWoff2": 100,
+    "fontsPreloadKb": 46,
+    "camera": {
+      "lod0Tris": 100000,
+      "lod0KbGz": 800,
+      "lod1Tris": 15000,
+      "lod1KbGz": 150,
+      "manorLodTris": 1500
+    },
+    "models": {
+      "cartridge": {
+        "tris": 1500,
+        "kbGz": 20
+      },
+      "loupe": {
+        "tris": 3000,
+        "kbGz": 40
+      },
+      "gear": {
+        "tris": 4000,
+        "kbGz": 40
+      },
+      "ownerWork": {
+        "tris": 50000,
+        "kbGz": 1000
+      }
+    },
+    "threeDPerPageKbGz": 1500,
+    "canvasMpx": {
+      "full": 4.5,
+      "lite": 1.5
+    },
+    "dprCap": {
+      "full": 2,
+      "lite": 1.5
+    },
+    "stillsPx": {
+      "sheetLongEdge": 512,
+      "enlargementAndHero": 1024
+    },
+    "homeImagesFirstScrollKb": 600,
+    "gpu": {
+      "worstMomentMs": 4,
+      "hostMedianFactor": 30,
+      "atRiskFactor": 10,
+      "crewRatioMax": 1.5,
+      "regressionMaxPct": 20
+    },
+    "idle": {
+      "windowStartS": 1,
+      "windowEndS": 4,
+      "mainThreadMsPerS": 1
+    },
+    "hero": {
+      "readableAfterGlReadyMs": 3300,
+      "delayGlMs": 3000,
+      "print1VisibleAfterFcpMs": 2600,
+      "guardAfterFcpMs": 2500,
+      "motionCapMs": 5000,
+      "headScriptKb": 0.8,
+      "posterParityMax255": 4
+    },
+    "inputBlocking": {
+      "swupOutMs": 160
+    },
+    "layout": {
+      "overflowPx": 0,
+      "targetMinPx": 44,
+      "sharedTargetFloorPx": 24,
+      "textMinPx": 12,
+      "contactWithinScreensAt390x844": 5.0
+    },
+    "focusRing": {
+      "contrastMin": 3,
+      "coverageMinPct": 90
+    },
+    "soundKbAfterOptIn": 16
+  }
+}
+```
+
 ## Game (the Manor, in the Manor repo)
 
 - Hard limits per zone (frozen, ArtPlayTests): at most 120 batches and 60,000 tris. Batches here count audited MeshRenderers plus world-space Canvases; the M-QA guard adds the canvases.
