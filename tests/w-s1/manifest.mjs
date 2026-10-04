@@ -12,7 +12,6 @@
 import { createHash } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
-import os from 'node:os';
 import { H } from './lib.mjs';
 
 const opts = H.cliOpts();
@@ -80,7 +79,8 @@ for (const [sub, kind] of [['shoot', 'ges1:shoot'], ['a11y', 'ges1:a11y'], ['lig
     if (rerun) {
       // The first pass's Lighthouse step and its run log give way to the rerun's.
       const superseded = new Set(['ges1-lighthouse', 'runlog']);
-      metrics.superseded = list.filter((i) => superseded.has(i.kind)).map((i) => ({ path: i.path, pass: i.pass }));
+      // Listed as the first pass's result, not as items: the rerun is the harness's result.
+      metrics.superseded = list.filter((i) => superseded.has(i.kind)).map((i) => ({ path: i.path, firstPass: i.pass ? 'PASS' : 'FAIL' }));
       list = [...list.filter((i) => !superseded.has(i.kind)), ...rerun.items.map((i) => ({ ...i, path: `rerun-lighthouse/${i.path}` }))];
       metrics.lighthouse = rel(join(dirname(rf), 'lighthouse', 'manifest.json'));
       // The valid run's medians, one item of their own.
@@ -115,14 +115,24 @@ if (existsSync(probes)) {
   }
 }
 const gl = summary ? json(join(suite, 'gpu.json')) : null;
+// GES-1's host and tools fields, from the harness (a blank page's WebGL renderer and refresh rate; browser versions).
+let host;
+let tools;
+try {
+  host = await H.hostInfo();
+  tools = await H.toolVersions();
+} finally {
+  await H.closeBrowsers();
+}
 const manifest = {
   schema: 1,
   track: 'W',
   crew: 'W-S1',
   sha: H.gitSha(),
   createdAt: new Date().toISOString(),
-  host: { os: `${os.type()} ${os.release()}`, gpuRenderer: gl?.renderer ?? null, graphicsDeviceType: /D3D11/.test(gl?.renderer ?? '') ? 'Direct3D11' : null, cores: os.cpus().length },
-  agent: { model: 'claude-opus-5-5', effort: 'xhigh' },
+  host: { ...host, suiteRenderer: gl?.renderer ?? null },
+  tools,
+  agent: H.AGENT,
   command: 'tests/w-s1/run.mjs + node --test tests/w-s1 + scripts/check/run.mjs + scripts/check/ownership.mjs --crew W-S1 + scripts/crew.mjs shoot|a11y|lighthouse --routes / + tests/w-f/run.mjs (moved to w-f-harness/)' + (carry ? ` + tests/w-s1/dist-hash.mjs against ${carry} (carried: ${carry}'s shoot, a11y, lighthouse and w-f-harness)` : ''),
   ...(carry ? { carriedFrom: { sha: carry, dir: rel(carryDir), distIdentical } } : {}),
   role,
