@@ -35,7 +35,8 @@ is cut.
 1. **Identity (first 10 s):** who this is.
 2. **Best work (first 60 s):** the strongest projects, shown well.
 3. **Everything (3 min):** all projects, awards and medals.
-4. **Craft (10 min, desktop):** the Manor, its camera and the Painting Worlds, reached from the 2D site.
+4. **Depth (on demand, any device):** how a piece was made, on its project page: the lead exhibit, "Show the mesh"
+   and the process media. The home page ends on beat 3 (north star v1.2, D-023).
 
 ## Delete before adding
 

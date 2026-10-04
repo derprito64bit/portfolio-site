@@ -1,5 +1,5 @@
 {
-  "$comment": "Crew -> owned globs (Wave 2 lock). A crew may only change files matching its globs.",
+  "$comment": "Crew -> owned globs (Wave 2 lock). A crew may only change files matching its globs. D-023 (2026-10-04): W-C7 is merged into W-C5 and its door globs are retired. W-F's follow-up (crew/w-f-m2) takes the door off / before the content step and G3a, deleting the door and handoff stubs through its one-off globs; W-C2 takes the one-off drip removal and removes the door tokens after that follow-up. D-023 also gives W-S3 the content validator's sourced-field exception (W-D005) and the teaser field's retirement, and W-R the fork's FORK.md / and /manor/ rows and the deletion of the fork's site/index.html; D-024 gives W-S1 the hero drawing durations and heroTimelineMs; content/*.json is otherwise the orchestrator's, including the game's entry (the plan's content step).",
   "W": {
     "W-F": [
       "package.json",
@@ -31,14 +31,18 @@
       "tests/harness/**",
       "tests/w-f/**",
       "content/*.json (Wave 3a migration only; afterwards the orchestrator)",
-      "Stub files for every other crew's paths (initial commit only)"
+      "Stub files for every other crew's paths (initial commit only)",
+      "src/sections/door/** (D-023: delete, in the crew/w-f-m2 door removal only)",
+      "src/lib/handoff/** (D-023: delete, in the crew/w-f-m2 door removal only)"
     ],
     "W-R": [
       "scripts/release/**",
       "tests/w-r/**",
       "fork: scripts/fork/publish.ps1",
       "fork: scripts/fork/linkcheck.ps1",
-      "fork: scripts/fork/compose-check.ps1"
+      "fork: scripts/fork/compose-check.ps1",
+      "fork: docs/FORK.md (D-023: the / and /manor/ rows only)",
+      "fork: site/index.html (D-023: delete)"
     ],
     "W-S1": [
       "src/sections/hero/**",
@@ -48,7 +52,10 @@
       "src/gl/effects/develop/**",
       "src/motion/spring/**",
       "public/posters/camera/**",
-      "tests/w-s1/**"
+      "tests/w-s1/**",
+      "content/tokens.json (D-024: the three hero drawing durations and heroTimelineMs only)",
+      "src/styles/tokens.css (D-024: regenerated output only)",
+      "src/lib/tokens.js (D-024: regenerated output only)"
     ],
     "W-S2": [
       "src/sections/work/**",
@@ -62,7 +69,10 @@
       "src/pages/work/[slug].astro",
       "src/sections/project/**",
       "src/gl/flight/**",
-      "tests/w-s3/**"
+      "tests/w-s3/**",
+      "src/lib/content/validate.js (D-023: the sourced-field exception and the teaser retirement only)",
+      "src/lib/content/types.ts (D-023: the sourced-field exception and the teaser retirement only)",
+      "scripts/check/ph-gate.mjs (D-023: the same exception, only if it repeats the rule)"
     ],
     "W-C13": [
       "assets-src/3d/**",
@@ -76,7 +86,14 @@
       "src/gl/effects/**",
       "src/gl/shaders/**",
       "scripts/build/looks/**",
-      "tests/w-c2/**"
+      "tests/w-c2/**",
+      "src/stage/effects.ts (D-023: drip removal only)",
+      "src/stage/rail.ts (D-023: drip removal only)",
+      "src/styles/base.css (D-023: the drip rule only)",
+      "scripts/build/tokens.mjs (D-023: drip and handoff tokens only)",
+      "content/tokens.json (D-023: remove the door, drip and handoff keys only)",
+      "src/styles/tokens.css (D-023: regenerated output only)",
+      "src/lib/tokens.js (D-023: regenerated output only)"
     ],
     "W-C3": [
       "src/motion/**",
@@ -107,17 +124,14 @@
       "src/gl/flight/**",
       "src/pages/og/**",
       "scripts/build/og/**",
-      "tests/w-c5/**"
+      "tests/w-c5/**",
+      "src/components/play/**",
+      "src/lib/play/**"
     ],
     "W-C6": [
       "src/sections/honours/**",
       "src/sections/footer/**",
       "tests/w-c6/**"
-    ],
-    "W-C7": [
-      "src/sections/door/**",
-      "src/lib/handoff/**",
-      "tests/w-c7/**"
     ],
     "W-C8": [
       "src/pages/404.astro",
