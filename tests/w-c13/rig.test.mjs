@@ -9,9 +9,10 @@ import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { before, describe, test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { Box3, REVISION, Vector3 } from "three";
+import { Box3, REVISION } from "three";
 import { buildRig, LODS, SPEC } from "../../scripts/build/glb/rig.mjs";
 import { loadGlb, meshesOf } from "./lib/load-glb.mjs";
+import { bestRingGapDeg, RING } from "./lib/ring.mjs";
 
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const rig = JSON.parse(readFileSync(join(repo, "assets-src/3d/camera_xt/rig.json"), "utf8"));
@@ -95,41 +96,17 @@ for (const [lod, def] of Object.entries(LODS)) {
       }
     });
 
-    // A part spins (or is pressed) about its pivot's axis only if the axis is the axis of its turned body. Proof: some
-    // ring of at least 6 of the part's vertices lies on one circle round the axis (radii within 0.01 mm, above the
-    // 14-bit quantization) with no angular gap over 72 degrees. Tabs, fins and engravings never form such a ring;
-    // an off-axis pivot breaks every ring. Tilt verbs hinge on an edge and are not checked here.
+    // A part spins (or is pressed) about its pivot's axis only if the axis is the axis of its turned body: some ring
+    // of at least 8 of the part's vertices lies on one circle round the axis (radii within 4 micrometres) with no
+    // angular gap over 45 degrees (lib/ring.mjs). Tabs, fins and engravings never form such a ring; an off-axis pivot
+    // spreads every ring over twice its offset (the negative control moves dial_shutter's part 0.3 mm and fails).
+    // Tilt verbs hinge on an edge and are not checked here.
     test("spin and press axes are the axes of their turned part (a full ring of vertices round the axis)", () => {
       for (const name of def.pivots) {
         const verb = SPEC.pivots[name];
         if (verb.verb !== "spin" && verb.verb !== "press") continue;
-        const pivot = shipped.scene.getObjectByName(name);
-        const toPivot = pivot.matrixWorld.clone().invert();
-        const a = new Vector3(...verb.axis);
-        const u = Math.abs(a.y) > 0.9 ? new Vector3(1, 0, 0) : new Vector3(0, 1, 0);
-        const w = new Vector3().crossVectors(a, u);
-        const pts = [];
-        for (const m of meshesOf(pivot.getObjectByName(`${name}_mesh`))) {
-          const pos = m.geometry.attributes.position, M = toPivot.clone().multiply(m.matrixWorld), v = new Vector3();
-          for (let i = 0; i < pos.count; i++) {
-            v.fromBufferAttribute(pos, i).applyMatrix4(M);
-            const r = v.clone().sub(a.clone().multiplyScalar(v.dot(a)));
-            pts.push([r.length(), Math.atan2(r.dot(w), r.dot(u))]);
-          }
-        }
-        pts.sort((p, q) => p[0] - q[0]);
-        let best = 2 * Math.PI;
-        for (let i = 0, j = 0; i < pts.length && best > (2 * Math.PI) / 5; i++) {
-          while (pts[j][0] < pts[i][0] - 1e-5) j++;
-          if (i - j + 1 < 6 || pts[i][0] < 1e-4) continue;
-          const t = [...new Set(pts.slice(j, i + 1).map(([, a]) => +a.toFixed(4)))].sort((p, q) => p - q);
-          if (t.length < 6) continue;
-          let gap = t[0] + 2 * Math.PI - t[t.length - 1];
-          for (let k = 1; k < t.length; k++) gap = Math.max(gap, t[k] - t[k - 1]);
-          best = Math.min(best, gap);
-        }
-        assert.ok(best <= (2 * Math.PI) / 5 + 1e-9,
-          `${name}: no full ring of vertices round its ${verb.verb} axis (smallest gap ${((best * 180) / Math.PI).toFixed(1)} deg)`);
+        const gap = bestRingGapDeg(shipped.scene.getObjectByName(name), verb.axis);
+        assert.ok(gap <= RING.maxGapDeg + 1e-6, `${name}: no full ring of vertices round its ${verb.verb} axis (best gap ${gap.toFixed(1)} deg)`);
       }
     });
   });
