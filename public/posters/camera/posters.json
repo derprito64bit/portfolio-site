@@ -48,6 +48,30 @@
       "avifBytes": 21490
      },
      {
+      "w": 560,
+      "h": 436,
+      "avif": "camera-split-560.avif",
+      "webp": "camera-split-560.webp",
+      "webpBytes": 45496,
+      "avifBytes": 27304
+     },
+     {
+      "w": 640,
+      "h": 498,
+      "avif": "camera-split-640.avif",
+      "webp": "camera-split-640.webp",
+      "webpBytes": 56526,
+      "avifBytes": 34071
+     },
+     {
+      "w": 720,
+      "h": 561,
+      "avif": "camera-split-720.avif",
+      "webp": "camera-split-720.webp",
+      "webpBytes": 68386,
+      "avifBytes": 42815
+     },
+     {
       "w": 800,
       "h": 623,
       "avif": "camera-split-800.avif",
@@ -56,12 +80,36 @@
       "avifBytes": 49794
      },
      {
+      "w": 900,
+      "h": 701,
+      "avif": "camera-split-900.avif",
+      "webp": "camera-split-900.webp",
+      "webpBytes": 98740,
+      "avifBytes": 59884
+     },
+     {
+      "w": 1000,
+      "h": 779,
+      "avif": "camera-split-1000.avif",
+      "webp": "camera-split-1000.webp",
+      "webpBytes": 117160,
+      "avifBytes": 70716
+     },
+     {
       "w": 1200,
       "h": 934,
       "avif": "camera-split-1200.avif",
       "webp": "camera-split-1200.webp",
       "webpBytes": 157888,
       "avifBytes": 93804
+     },
+     {
+      "w": 1400,
+      "h": 1090,
+      "avif": "camera-split-1400.avif",
+      "webp": "camera-split-1400.webp",
+      "webpBytes": 200760,
+      "avifBytes": 118809
      },
      {
       "w": 1600,
@@ -74,6 +122,22 @@
     ],
     "lod1": [
      {
+      "w": 300,
+      "h": 234,
+      "avif": "camera-split-lod1-300.avif",
+      "webp": "camera-split-lod1-300.webp",
+      "webpBytes": 13870,
+      "avifBytes": 9392
+     },
+     {
+      "w": 330,
+      "h": 257,
+      "avif": "camera-split-lod1-330.avif",
+      "webp": "camera-split-lod1-330.webp",
+      "webpBytes": 16054,
+      "avifBytes": 10480
+     },
+     {
       "w": 360,
       "h": 280,
       "avif": "camera-split-lod1-360.avif",
@@ -82,12 +146,60 @@
       "avifBytes": 11808
      },
      {
+      "w": 400,
+      "h": 311,
+      "avif": "camera-split-lod1-400.avif",
+      "webp": "camera-split-lod1-400.webp",
+      "webpBytes": 21416,
+      "avifBytes": 13949
+     },
+     {
+      "w": 450,
+      "h": 350,
+      "avif": "camera-split-lod1-450.avif",
+      "webp": "camera-split-lod1-450.webp",
+      "webpBytes": 25450,
+      "avifBytes": 15977
+     },
+     {
+      "w": 500,
+      "h": 389,
+      "avif": "camera-split-lod1-500.avif",
+      "webp": "camera-split-lod1-500.webp",
+      "webpBytes": 29646,
+      "avifBytes": 18996
+     },
+     {
+      "w": 560,
+      "h": 436,
+      "avif": "camera-split-lod1-560.avif",
+      "webp": "camera-split-lod1-560.webp",
+      "webpBytes": 35014,
+      "avifBytes": 21482
+     },
+     {
       "w": 600,
       "h": 467,
       "avif": "camera-split-lod1-600.avif",
       "webp": "camera-split-lod1-600.webp",
       "webpBytes": 38252,
       "avifBytes": 23640
+     },
+     {
+      "w": 680,
+      "h": 530,
+      "avif": "camera-split-lod1-680.avif",
+      "webp": "camera-split-lod1-680.webp",
+      "webpBytes": 45336,
+      "avifBytes": 29342
+     },
+     {
+      "w": 760,
+      "h": 592,
+      "avif": "camera-split-lod1-760.avif",
+      "webp": "camera-split-lod1-760.webp",
+      "webpBytes": 52788,
+      "avifBytes": 33373
      },
      {
       "w": 900,
@@ -139,6 +251,30 @@
       "avifBytes": 22237
      },
      {
+      "w": 560,
+      "h": 431,
+      "avif": "camera-stacked-560.avif",
+      "webp": "camera-stacked-560.webp",
+      "webpBytes": 46544,
+      "avifBytes": 28521
+     },
+     {
+      "w": 640,
+      "h": 493,
+      "avif": "camera-stacked-640.avif",
+      "webp": "camera-stacked-640.webp",
+      "webpBytes": 57838,
+      "avifBytes": 35755
+     },
+     {
+      "w": 720,
+      "h": 554,
+      "avif": "camera-stacked-720.avif",
+      "webp": "camera-stacked-720.webp",
+      "webpBytes": 69956,
+      "avifBytes": 44243
+     },
+     {
       "w": 800,
       "h": 616,
       "avif": "camera-stacked-800.avif",
@@ -147,12 +283,36 @@
       "avifBytes": 51813
      },
      {
+      "w": 900,
+      "h": 693,
+      "avif": "camera-stacked-900.avif",
+      "webp": "camera-stacked-900.webp",
+      "webpBytes": 100972,
+      "avifBytes": 61895
+     },
+     {
+      "w": 1000,
+      "h": 770,
+      "avif": "camera-stacked-1000.avif",
+      "webp": "camera-stacked-1000.webp",
+      "webpBytes": 119526,
+      "avifBytes": 73008
+     },
+     {
       "w": 1200,
       "h": 924,
       "avif": "camera-stacked-1200.avif",
       "webp": "camera-stacked-1200.webp",
       "webpBytes": 160542,
       "avifBytes": 96770
+     },
+     {
+      "w": 1400,
+      "h": 1078,
+      "avif": "camera-stacked-1400.avif",
+      "webp": "camera-stacked-1400.webp",
+      "webpBytes": 202780,
+      "avifBytes": 120183
      },
      {
       "w": 1600,
@@ -165,6 +325,22 @@
     ],
     "lod1": [
      {
+      "w": 300,
+      "h": 231,
+      "avif": "camera-stacked-lod1-300.avif",
+      "webp": "camera-stacked-lod1-300.webp",
+      "webpBytes": 14750,
+      "avifBytes": 9894
+     },
+     {
+      "w": 330,
+      "h": 254,
+      "avif": "camera-stacked-lod1-330.avif",
+      "webp": "camera-stacked-lod1-330.webp",
+      "webpBytes": 17202,
+      "avifBytes": 11318
+     },
+     {
       "w": 360,
       "h": 277,
       "avif": "camera-stacked-lod1-360.avif",
@@ -173,12 +349,60 @@
       "avifBytes": 12599
      },
      {
+      "w": 400,
+      "h": 308,
+      "avif": "camera-stacked-lod1-400.avif",
+      "webp": "camera-stacked-lod1-400.webp",
+      "webpBytes": 22648,
+      "avifBytes": 14514
+     },
+     {
+      "w": 450,
+      "h": 347,
+      "avif": "camera-stacked-lod1-450.avif",
+      "webp": "camera-stacked-lod1-450.webp",
+      "webpBytes": 27186,
+      "avifBytes": 17065
+     },
+     {
+      "w": 500,
+      "h": 385,
+      "avif": "camera-stacked-lod1-500.avif",
+      "webp": "camera-stacked-lod1-500.webp",
+      "webpBytes": 31536,
+      "avifBytes": 19781
+     },
+     {
+      "w": 560,
+      "h": 431,
+      "avif": "camera-stacked-lod1-560.avif",
+      "webp": "camera-stacked-lod1-560.webp",
+      "webpBytes": 37258,
+      "avifBytes": 22650
+     },
+     {
       "w": 600,
       "h": 462,
       "avif": "camera-stacked-lod1-600.avif",
       "webp": "camera-stacked-lod1-600.webp",
       "webpBytes": 40862,
       "avifBytes": 24996
+     },
+     {
+      "w": 680,
+      "h": 524,
+      "avif": "camera-stacked-lod1-680.avif",
+      "webp": "camera-stacked-lod1-680.webp",
+      "webpBytes": 48346,
+      "avifBytes": 29306
+     },
+     {
+      "w": 760,
+      "h": 585,
+      "avif": "camera-stacked-lod1-760.avif",
+      "webp": "camera-stacked-lod1-760.webp",
+      "webpBytes": 55248,
+      "avifBytes": 35108
      },
      {
       "w": 900,
@@ -230,6 +454,30 @@
       "avifBytes": 23549
      },
      {
+      "w": 560,
+      "h": 430,
+      "avif": "camera-phone-560.avif",
+      "webp": "camera-phone-560.webp",
+      "webpBytes": 49368,
+      "avifBytes": 30272
+     },
+     {
+      "w": 640,
+      "h": 491,
+      "avif": "camera-phone-640.avif",
+      "webp": "camera-phone-640.webp",
+      "webpBytes": 61014,
+      "avifBytes": 37103
+     },
+     {
+      "w": 720,
+      "h": 553,
+      "avif": "camera-phone-720.avif",
+      "webp": "camera-phone-720.webp",
+      "webpBytes": 74120,
+      "avifBytes": 44531
+     },
+     {
       "w": 800,
       "h": 614,
       "avif": "camera-phone-800.avif",
@@ -238,12 +486,36 @@
       "avifBytes": 54063
      },
      {
+      "w": 900,
+      "h": 691,
+      "avif": "camera-phone-900.avif",
+      "webp": "camera-phone-900.webp",
+      "webpBytes": 106132,
+      "avifBytes": 65236
+     },
+     {
+      "w": 1000,
+      "h": 767,
+      "avif": "camera-phone-1000.avif",
+      "webp": "camera-phone-1000.webp",
+      "webpBytes": 125222,
+      "avifBytes": 76358
+     },
+     {
       "w": 1200,
       "h": 921,
       "avif": "camera-phone-1200.avif",
       "webp": "camera-phone-1200.webp",
       "webpBytes": 166866,
       "avifBytes": 100350
+     },
+     {
+      "w": 1400,
+      "h": 1074,
+      "avif": "camera-phone-1400.avif",
+      "webp": "camera-phone-1400.webp",
+      "webpBytes": 211274,
+      "avifBytes": 124950
      },
      {
       "w": 1600,
@@ -256,6 +528,22 @@
     ],
     "lod1": [
      {
+      "w": 300,
+      "h": 230,
+      "avif": "camera-phone-lod1-300.avif",
+      "webp": "camera-phone-lod1-300.webp",
+      "webpBytes": 15606,
+      "avifBytes": 10395
+     },
+     {
+      "w": 330,
+      "h": 253,
+      "avif": "camera-phone-lod1-330.avif",
+      "webp": "camera-phone-lod1-330.webp",
+      "webpBytes": 18086,
+      "avifBytes": 11579
+     },
+     {
       "w": 360,
       "h": 276,
       "avif": "camera-phone-lod1-360.avif",
@@ -264,12 +552,60 @@
       "avifBytes": 12875
      },
      {
+      "w": 400,
+      "h": 307,
+      "avif": "camera-phone-lod1-400.avif",
+      "webp": "camera-phone-lod1-400.webp",
+      "webpBytes": 24548,
+      "avifBytes": 15545
+     },
+     {
+      "w": 450,
+      "h": 345,
+      "avif": "camera-phone-lod1-450.avif",
+      "webp": "camera-phone-lod1-450.webp",
+      "webpBytes": 29254,
+      "avifBytes": 17938
+     },
+     {
+      "w": 500,
+      "h": 384,
+      "avif": "camera-phone-lod1-500.avif",
+      "webp": "camera-phone-lod1-500.webp",
+      "webpBytes": 33554,
+      "avifBytes": 20587
+     },
+     {
+      "w": 560,
+      "h": 430,
+      "avif": "camera-phone-lod1-560.avif",
+      "webp": "camera-phone-lod1-560.webp",
+      "webpBytes": 39550,
+      "avifBytes": 23669
+     },
+     {
       "w": 600,
       "h": 460,
       "avif": "camera-phone-lod1-600.avif",
       "webp": "camera-phone-lod1-600.webp",
       "webpBytes": 42922,
       "avifBytes": 25777
+     },
+     {
+      "w": 680,
+      "h": 522,
+      "avif": "camera-phone-lod1-680.avif",
+      "webp": "camera-phone-lod1-680.webp",
+      "webpBytes": 51358,
+      "avifBytes": 30412
+     },
+     {
+      "w": 760,
+      "h": 583,
+      "avif": "camera-phone-lod1-760.avif",
+      "webp": "camera-phone-lod1-760.webp",
+      "webpBytes": 59208,
+      "avifBytes": 36625
      },
      {
       "w": 900,

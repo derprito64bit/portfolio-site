@@ -1,16 +1,48 @@
-// W-S1 acceptance checks (issue #13), one function per acceptance line. Each returns { pass, ... } and never throws
-// for a failed expectation (only for a broken harness). run.mjs runs them and writes the JSON evidence.
+// W-S1 acceptance checks (issue #13 with Amendments A1 and A2), one function per acceptance line. Each returns
+// { pass, ... } and never throws for a failed expectation (only for a broken harness). run.mjs runs them and writes the
+// JSON evidence. Durations and budgets come from the tokens (A2: no literal duration or budget here).
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import sharp from 'sharp';
+import { durations, heroTimeline, springs } from '../../src/lib/tokens.js';
 import { H, context, heroAtRest, heroRects, median, open, profile, rectsIntersect } from './lib.mjs';
 
 const GES = ['D1', 'D2', 'D3', 'T1', 'T2', 'P1', 'P2', 'S1', 'S2'];
 const MOUSE = (p) => profile(p).input === 'mouse';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+/** The acceptance lines' own numbers that no token holds (W-D012's guards, the delayed-GL line, budgets.md). */
+const SPEC = {
+  /** "With the GL chunk delayed 3 s via page.route, a developed print 1 is visible by FCP + 2.6 s". */
+  delayGlMs: 3000,
+  printVisibleAfterFcpMs: 2600,
+  /** budgets.md: no automatic motion over 5 s. */
+  motionCapMs: 5000,
+  /** budgets.md: pre-GL JS <= 35 kB gz from the network log. */
+  preGlBytes: 35_000,
+  /** A2: the head script stays under 0.8 kB. */
+  headScriptBytes: 800,
+  /** Mean diff of a poster against the first GL frame (gate line 5), in 8-bit levels. */
+  parityMax: 4,
+};
+const GL_CHUNK = /\/_astro\/gl\.[^/]+\.js$/;
+/** The built client chunk that holds a source module (Vite manifest written by astro.config.mjs). */
+function chunkOf(module) {
+  const m = JSON.parse(readFileSync(join(H.ROOT, 'node_modules/.cache/portfolio-build/vite-manifest.json'), 'utf8'));
+  return Object.values(m).find((c) => c.modules.includes(module))?.file ?? null;
+}
 
 // The state of the first screen at the first contentful paint, recorded by a paint observer in the page, and the
-// final LCP candidate.
+// final LCP candidate. The camera at first paint is the drawing (data-cam='drawing': its strokes loaded and its ground
+// shown) or the finished-camera poster.
 const FCP_PROBE = () => {
-  window.__w1 = { fcp: null, lcp: [], heroShift: 0, shifts: [] };
+  window.__w1 = { fcp: null, lcp: [], heroShift: 0, shifts: [], camSeen: [] };
+  // Init scripts run before <html> exists: watch the document itself (subtree) for data-cam on the root.
+  const seeCam = () => {
+    const c = document.documentElement?.dataset.cam ?? null;
+    if (window.__w1.camSeen.at(-1) !== c) window.__w1.camSeen.push(c);
+  };
+  new MutationObserver(seeCam).observe(document, { attributes: true, subtree: true, attributeFilter: ['data-cam'] });
+  document.addEventListener('readystatechange', seeCam);
   // Layout shifts with a source inside the hero (the nav and the sections below are not the hero's).
   new PerformanceObserver((l) => {
     for (const e of l.getEntries()) {
@@ -28,19 +60,24 @@ const FCP_PROBE = () => {
     let o = 1;
     for (let e = el; e && e !== document.documentElement; e = e.parentElement) o *= Number(getComputedStyle(e).opacity);
     const img = el.tagName === 'IMG' ? el.complete && el.naturalWidth > 0 : true;
-    return { ok: inView && o > 0.99 && cs.visibility === 'visible' && img, inView, opacity: o, loaded: img, rect: [b.x, b.y, b.width, b.height].map(Math.round) };
+    return { ok: inView && o > 0.99 && cs.visibility === 'visible' && cs.display !== 'none' && img, inView, opacity: o, loaded: img, rect: [b.x, b.y, b.width, b.height].map(Math.round) };
   };
   new PerformanceObserver((l) => {
     const e = l.getEntriesByName('first-contentful-paint')[0];
     if (!e || window.__w1.fcp) return;
     const q = (s) => document.querySelector(s);
+    const html = document.documentElement;
+    const drawing = html.dataset.cam === 'drawing';
+    const lines = vis(q('.hero-lines'));
+    const ground = vis(q('.hero-ground'));
     window.__w1.fcp = {
       t: e.startTime,
+      cam: html.dataset.cam ?? null,
       h1: vis(q('h1')),
       lineSlot: vis(q('.hero-line .ph') || q('.hero-line')),
       cta: vis(q('.hero-cta a')),
       strip: vis(q('[data-camera-strip]')),
-      poster: vis(q('.hero-poster')),
+      camera: drawing ? { ok: lines.ok && ground.ok, drawing: true, lines, ground } : { ...vis(q('.hero-poster')), drawing: false },
       print: vis(q('[data-hero-print] img.hero-still')),
     };
   }).observe({ type: 'paint', buffered: true });
@@ -60,13 +97,28 @@ const LCP_AREAS = () => {
     for (const b of range.getClientRects()) h1Text += b.width * b.height;
   }
   const area = (s) => { const b = document.querySelector(s)?.getBoundingClientRect(); return b ? b.width * b.height : 0; };
-  return { h1Text: Math.round(h1Text), poster: Math.round(area('.hero-poster')), print: Math.round(area('[data-hero-print] img.hero-still')) };
+  return { h1Text: Math.round(h1Text), poster: Math.round(area('[data-hero-camera]')), print: Math.round(area('[data-hero-print] img.hero-still')) };
 };
 
-/** 1. FCP shows the h1, the line slot, the CTA, the strip and the camera poster; the LCP element per profile, with
- *  the poster below 85% of the h1's LCP area (mouse) or of the larger of the h1 and print 1 (touch), and no layout
- *  shift in the hero. A second pass holds every web font back 800 ms (the h1 paints in its fallback face first): the
- *  LCP element must not change and nothing in the hero may shift when the fonts arrive. */
+/** The made stills in the print slot: each absolutely positioned, the slot's size within 10%, inside the first screen. */
+const PLACEMENT = () => {
+  const slot = document.querySelector('[data-hero-print]');
+  const sr = slot.getBoundingClientRect();
+  return [...slot.querySelectorAll('img.hero-still')].map((img) => {
+    const b = img.getBoundingClientRect();
+    const cs = getComputedStyle(img);
+    const w = img.offsetWidth / slot.offsetWidth;
+    const h = img.offsetHeight / slot.offsetHeight;
+    const inScreen = b.left >= -8 && b.top >= -8 && b.right <= innerWidth + 8 && b.bottom <= innerHeight + 8;
+    const ok = cs.position === 'absolute' && Math.abs(w - 1) <= 0.1 && Math.abs(h - 1) <= 0.1 && inScreen && Number(cs.opacity) > 0.99;
+    return { slug: img.dataset.slug ?? 'print-1', ok, position: cs.position, size: [Math.round(w * 1000) / 1000, Math.round(h * 1000) / 1000], rect: [b.x, b.y, b.width, b.height].map(Math.round), slot: [sr.x, sr.y, sr.width, sr.height].map(Math.round), inScreen, opacity: Number(cs.opacity) };
+  });
+};
+
+/** 1. FCP shows the h1, the line slot, the CTA, the strip and the camera (the drawing on the first visit, else the
+ *  poster); the LCP element per profile (never the camera), with the camera below 85% of the h1's LCP area (mouse) or
+ *  of the larger of the h1 and print 1 (touch), and no layout shift in the hero. A second pass holds every web font
+ *  back 800 ms (the h1 paints in its fallback face first): the LCP element must not change and nothing may shift. */
 export async function fcp(base, { profiles = [...GES, 'WK-P2', 'WK-T2'], lateFont = ['D1', 'D2', 'D3', 'T2', 'P2'] } = {}) {
   const rows = [];
   const late = { match: /\.woff2(\?|$)/, handler: async (r) => { await sleep(800); await r.continue(); } };
@@ -78,18 +130,108 @@ export async function fcp(base, { profiles = [...GES, 'WK-P2', 'WK-T2'], lateFon
     const areas = await page.evaluate(LCP_AREAS);
     await ctx.close();
     const f = r?.fcp;
-    const shown = route ? true : f && ['h1', 'lineSlot', 'cta', 'strip', 'poster'].every((k) => f[k]?.ok);
+    const shown = route ? true : f && ['h1', 'lineSlot', 'cta', 'strip', 'camera'].every((k) => f[k]?.ok);
     const last = r?.lcp?.at(-1)?.el ?? null;
     const lcpOk = MOUSE(p) ? /^h1/.test(last ?? '') : /^h1/.test(last ?? '') || /data-lcp=print-1/.test(last ?? '');
+    const cameraLcp = (r?.lcp ?? []).filter((e) => /hero-(poster|lines)/.test(e.el ?? ''));
     const ref = MOUSE(p) ? areas.h1Text : Math.max(areas.h1Text, areas.print);
     const posterShare = ref ? Math.round((areas.poster / ref) * 1000) / 1000 : null;
     const capOk = posterShare !== null && posterShare <= 0.851;
-    // Nothing in the hero moves, with or without the late font (the fallback faces draw the same boxes).
     const heroShift = Math.round((r?.heroShift ?? 0) * 1e5) / 1e5;
     const stillOk = heroShift < 0.001;
-    rows.push({ profile: p, lateFont: Boolean(route), pass: Boolean(shown && lcpOk && capOk && stillOk), shown, lcpElement: last, lcpOk, areas, posterShare, capOk, heroShift, stillOk, shifts: r?.shifts, lcp: r?.lcp, ...(route ? {} : { fcp: f }) });
+    rows.push({ profile: p, lateFont: Boolean(route), pass: Boolean(shown && lcpOk && capOk && stillOk && !cameraLcp.length), shown, cam: f?.cam, lcpElement: last, lcpOk, cameraLcp, areas, posterShare, capOk, heroShift, stillOk, shifts: r?.shifts, lcp: r?.lcp, ...(route ? {} : { fcp: f }) });
   }
   return { pass: rows.every((r) => r.pass), rows };
+}
+
+/** A2. First paint follows W-D012, at every profile in auto, reduced, static and JS off, plus a reload, a /#sheet
+ *  arrival and a Back arrival: the drawing only on a first visit with motion full and tier full or lite; otherwise the
+ *  finished camera from first paint with no swap (data-cam never 'drawing'); JS off shows the finished camera. The
+ *  head script is measured under 0.8 kB. Shots hold the GL chunk and the camera poster back, so they show first paint. */
+export async function firstPaint(base, { out, profiles = GES } = {}) {
+  const html = readFileSync(join(H.ROOT, 'dist/index.html'), 'utf8');
+  const head = [...html.matchAll(/<script>([^<]*ion\.hero[^<]*)<\/script>/g)].map((m) => m[1])[0] ?? '';
+  const headBytes = Buffer.byteLength(head);
+  const hold = async (route) => { await sleep(6000); await route.continue().catch(() => {}); };
+  const rows = [];
+  const visit = async (p, mode, { url = '/', js = true, before } = {}) => {
+    const ctx = await context(p, mode === 'reduced' ? 'reduced' : 'auto', js ? {} : { context: { javaScriptEnabled: false } });
+    const page = await ctx.newPage();
+    if (js) await page.addInitScript(FCP_PROBE);
+    if (before) await before(page);
+    await page.route(GL_CHUNK, hold);
+    // On a first visit the poster is held too, so lite's crossfade cannot start before the shot.
+    if (mode === 'auto' && url === '/') await page.route(/\/posters\/camera\/camera-[^/]+\.(avif|webp)$/, hold);
+    const q = mode === 'static' ? (url.includes('?') ? '&' : '?') + 'tier=static' : '';
+    const [path, hash] = url.split('#');
+    // Not 'load': that waits for the held images. First paint, the fonts, then a beat.
+    await page.goto(`${base}${path}${q}${hash ? `#${hash}` : ''}`, { waitUntil: js ? 'domcontentloaded' : 'load' });
+    if (js) await page.waitForFunction(() => window.__w1?.fcp, null, { timeout: 10000 }).catch(() => {});
+    await page.evaluate(() => document.fonts?.ready).catch(() => {});
+    await sleep(300);
+    return { page, ctx };
+  };
+  const read = async (page) => page.evaluate(() => {
+    const vis = (s) => { const e = document.querySelector(s); if (!e) return false; const cs = getComputedStyle(e); const b = e.getBoundingClientRect(); return cs.display !== 'none' && cs.visibility !== 'hidden' && Number(cs.opacity) > 0.5 && b.width > 0 && !(e.closest('.hero-drawing') && getComputedStyle(e.closest('.hero-drawing')).display === 'none'); };
+    const loaded = (s) => { const e = document.querySelector(s); return Boolean(e && e.complete && e.naturalWidth > 0); };
+    return { cam: document.documentElement.dataset.cam ?? null, hero: document.documentElement.dataset.hero ?? null, camSeen: window.__w1?.camSeen ?? null, fcpCam: window.__w1?.fcp?.cam ?? null, drawingShown: vis('.hero-lines') && vis('.hero-ground'), posterShown: (vis('.hero-poster') && loaded('.hero-poster')) || (vis('.hero-poster-noscript') && loaded('.hero-poster-noscript')) || Boolean(window.__hero?.live) };
+  });
+  const record = async (name, p, mode, expect, page, ctx) => {
+    const s = await read(page);
+    if (out) await page.screenshot({ path: `${out}/${name}.png` });
+    await ctx.close();
+    const drawingOk = expect === 'drawing' ? s.fcpCam === 'drawing' && s.drawingShown : true;
+    const cameraOk = expect === 'camera' ? s.fcpCam === 'camera' && !(s.camSeen ?? []).includes('drawing') && !s.drawingShown && s.posterShown : true;
+    const jsOffOk = expect === 'none' ? s.cam === null && !s.drawingShown && s.posterShown : true;
+    rows.push({ name, profile: p, mode, expect, ...s, pass: drawingOk && cameraOk && jsOffOk });
+  };
+  for (const p of profiles) {
+    for (const mode of ['auto', 'reduced', 'static']) {
+      const { page, ctx } = await visit(p, mode);
+      await record(`${p}-${mode}`, p, mode, mode === 'auto' ? 'drawing' : 'camera', page, ctx);
+    }
+    const { page, ctx } = await visit(p, 'auto', { js: false });
+    await record(`${p}-jsoff`, p, 'jsoff', 'none', page, ctx);
+  }
+  for (const p of ['D2', 'P2']) {
+    // A reload in the same session, once the opening has started (ion.hero written).
+    {
+      const ctx = await context(p, 'auto');
+      const page = await ctx.newPage();
+      await page.addInitScript(FCP_PROBE);
+      await page.goto(`${base}/`, { waitUntil: 'load' });
+      await page.waitForFunction(() => sessionStorage.getItem('ion.hero'), null, { timeout: 15000 }).catch(() => {});
+      await page.reload({ waitUntil: 'load' });
+      await sleep(600);
+      await record(`${p}-reload`, p, 'reload', 'camera', page, ctx);
+    }
+    // An anchor arrival in a fresh session.
+    {
+      const { page, ctx } = await visit(p, 'auto', { url: '/#sheet' });
+      await page.evaluate(() => window.scrollTo(0, 0));
+      await sleep(200);
+      await record(`${p}-hash`, p, 'hash', 'camera', page, ctx);
+    }
+    // Back: away from home before the opening could start, then back (a back_forward navigation, or a page restored
+    // from the back/forward cache, whose 'back' guard cuts to the end state).
+    {
+      const ctx = await context(p, 'auto');
+      const page = await ctx.newPage();
+      await page.addInitScript(FCP_PROBE);
+      await page.route(GL_CHUNK, hold);
+      await page.goto(`${base}/`, { waitUntil: 'domcontentloaded' });
+      await page.goto(`${base}/work/project-01/`, { waitUntil: 'load' });
+      await page.goBack({ waitUntil: 'load' });
+      await sleep(800);
+      const nav = await page.evaluate(() => performance.getEntriesByType('navigation')[0]?.type ?? null);
+      const s = await read(page);
+      if (out) await page.screenshot({ path: `${out}/${p}-back.png` });
+      await ctx.close();
+      const pass = s.cam === 'camera' && !s.drawingShown;
+      rows.push({ name: `${p}-back`, profile: p, mode: 'back', expect: 'camera', navigationType: nav, ...s, pass });
+    }
+  }
+  return { pass: rows.every((r) => r.pass) && headBytes > 0 && headBytes < SPEC.headScriptBytes, headScriptBytes: headBytes, rows };
 }
 
 /** 2. Wordmark: one line at default spacing; never smaller as the width grows at a fixed height; text spacing and
@@ -109,10 +251,7 @@ export async function wordmark(base) {
     })) });
     await ctx.close();
   }
-  // One line box; the brackets' 0.07em rest offset may hang past the h1's own box into the gutter (by design), so
-  // the page overflow below is the clipping test, not the h1's scroll width.
   const oneLine = lines.every((l) => l.lines === 1);
-  // Monotonic: at each fixed height, sweep the width up and require the size never to drop by more than 5%.
   const heights = [...new Set([...GES, 'W960', 'L844'].map((p) => profile(p).viewport.height))];
   const sweeps = [];
   const ctx = await context('D2');
@@ -133,14 +272,13 @@ export async function wordmark(base) {
     sweeps.push({ height: h, worstRatio: Math.round(worst * 1000) / 1000, pass: worst >= 0.95, sizes });
   }
   await ctx.close();
-  // Text spacing (WCAG 1.4.12) and 200% zoom: no clipped text, overflow 0.
   const SPACING = '*{line-height:1.5!important;letter-spacing:.12em!important;word-spacing:.16em!important}p{margin-block-end:2em!important}';
   const stress = [];
   for (const [p, spacing] of [['D2', true], ['P2', true], ['S2', true], ['Z-D2', false], ['Z-P2', false]]) {
     const { page: pg, ctx: c } = await open(base, p);
     if (spacing) await pg.addStyleTag({ content: SPACING });
     await pg.evaluate(() => document.fonts.ready);
-    await sleep(400);
+    await sleep(450);
     const r = await pg.evaluate(() => {
       const clipped = [...document.querySelectorAll('.hero *')].filter((e) => {
         const cs = getComputedStyle(e);
@@ -155,15 +293,28 @@ export async function wordmark(base) {
   return { pass: oneLine && sweeps.every((s) => s.pass) && stress.every((s) => s.pass), oneLine, lines, sweeps, stress };
 }
 
+/** Samples __stage.bounds('hero-print').gl on every frame of the page (the acceptance's own log). */
+const BOUNDS_LOG = () => {
+  window.__noFly = [];
+  const tick = () => {
+    const b = window.__stage?.bounds?.('hero-print')?.gl;
+    if (b) window.__noFly.push({ t: Math.round(performance.now()), x: b.x, y: b.y, w: b.w, h: b.h });
+    if (window.__noFly.length < 20000) requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+};
+
 /** 3. First screen: the whole camera and print 1 in the viewport, the lens never covered, print size rules, no text
- *  over a GL rect at rest, and the flight never crosses the h1, lede or CTA. */
+ *  over a GL rect at rest, and the flight never crosses the h1, lede or CTA (the __stage.bounds log, every frame).
+ *  844 x 390: the line's 50%-of-content-width rule cannot hold in a 390 px tall viewport; the row is reported
+ *  BLOCKED pending the orchestrator's ruling (never exempted here), with the rule the manager proposed measured. */
 export async function firstScreen(base, { profiles = ['D1', 'D2', 'D3', 'S1', 'T1', 'T2', 'P1', 'P2', 'S2', 'L844'] } = {}) {
   const rows = [];
   for (const p of profiles) {
-    const { page, ctx } = await open(base, p);
+    const { page, ctx } = await open(base, p, 'auto', { init: BOUNDS_LOG });
     await heroAtRest(page).catch(() => {});
     const g = await heroRects(page);
-    const flight = await page.evaluate(() => (window.__hero ? window.__hero.flightLog.slice() : []));
+    const flight = await page.evaluate(() => window.__noFly.slice());
     const textOverGl = await page.evaluate(() => {
       const slots = [...document.querySelectorAll('[data-gl]')].map((s) => s.getBoundingClientRect()).filter((r) => r.width && r.height);
       const hits = [];
@@ -180,22 +331,27 @@ export async function firstScreen(base, { profiles = ['D1', 'D2', 'D3', 'S1', 'T
     });
     await ctx.close();
     const inView = (r) => r && r.x >= -0.5 && r.y >= -0.5 && r.x + r.w <= g.vw + 0.5 && r.y + r.h <= g.vh + 0.5;
-    // The lens disc: centred on the projected lens front, about a fifth of the camera's width in radius.
     const lens = { cx: g.camera.x + g.lens.x * g.camera.w, cy: g.camera.y + g.lens.y * g.camera.h, r: 0.17 * g.camera.w };
     const lensClear = g.print.x + g.print.w <= lens.cx - lens.r || g.print.y >= lens.cy + lens.r || g.print.x >= lens.cx + lens.r;
     const narrow = g.vw < 1024;
     const landscapePhone = g.vh <= 500 && g.vw > g.vh;
     const windowW = (g.printLayoutW * 46) / 54;
-    const sizeRule = narrow && !landscapePhone ? g.printLayoutW >= 0.5 * g.contentW - 0.5 : landscapePhone ? null : windowW >= 220;
+    const widthRule = g.printLayoutW >= 0.5 * g.contentW - 0.5;
+    const sizeRule = narrow && !landscapePhone ? widthRule : landscapePhone ? widthRule : windowW >= 220;
+    const proposed = landscapePhone ? { rule: 'print 1 at least 50% of the small viewport height (manager, round 1)', printH: Math.round(g.print.h), viewportH: g.vh, pass: g.print.h >= 0.5 * g.vh } : null;
     const noFly = [g.h1, g.line, g.cta];
     const crossings = flight.filter((b) => noFly.some((r) => rectsIntersect(r, { x: b.x, y: b.y, w: b.w, h: b.h })));
-    const pass = inView(g.camera) && inView(g.print) && lensClear && sizeRule !== false && textOverGl.length === 0 && crossings.length === 0;
-    rows.push({ profile: p, pass, cameraInView: inView(g.camera), printInView: inView(g.print), lensClear, sizeRule, printW: g.printLayoutW, contentW: g.contentW, windowW: Math.round(windowW), textOverGl, flightFrames: flight.length, crossings: crossings.slice(0, 5), geometry: g });
+    const rest = inView(g.camera) && inView(g.print) && lensClear && textOverGl.length === 0 && crossings.length === 0;
+    const pass = rest && sizeRule;
+    const status = pass ? 'PASS' : landscapePhone && rest && !widthRule ? 'BLOCKED' : 'FAIL';
+    rows.push({ profile: p, pass, status, cameraInView: inView(g.camera), printInView: inView(g.print), lensClear, sizeRule, widthRule, proposed, printW: g.printLayoutW, contentW: g.contentW, windowW: Math.round(windowW), textOverGl, boundsFrames: flight.length, crossings: crossings.slice(0, 5), geometry: g });
   }
-  return { pass: rows.every((r) => r.pass), rows };
+  const blocked = rows.filter((r) => r.status === 'BLOCKED').map((r) => r.profile);
+  return { pass: rows.every((r) => r.pass), status: rows.every((r) => r.pass) ? 'PASS' : rows.every((r) => r.pass || r.status === 'BLOCKED') ? 'BLOCKED' : 'FAIL', blocked, rows };
 }
 
-/** 4a. hero:readable minus stage:gl-ready, median of 3 cold loads (a fresh browser each). */
+/** 4a. hero:readable minus stage:gl-ready, median of 3 cold loads (a fresh browser each), against the token budget
+ *  (budgetAfterGlReady, the drawing included on this first full-tier visit). */
 export async function readable(base, { loads = 3, profileName = 'D2' } = {}) {
   const runs = [];
   for (let i = 0; i < loads; i++) {
@@ -204,31 +360,38 @@ export async function readable(base, { loads = 3, profileName = 'D2' } = {}) {
     await page.waitForFunction(() => performance.getEntriesByName('hero:readable').length || document.documentElement.dataset.hero === 'done', null, { timeout: 15000 }).catch(() => {});
     const m = await page.evaluate(() => {
       const t = (n) => performance.getEntriesByName(n, 'mark')[0]?.startTime ?? null;
-      return { glReady: t('stage:gl-ready'), t0: t('hero:t0'), readable: t('hero:readable'), camReady: t('hero:cam-ready'), renderer: window.__stage?.gl?.rendererName ?? null };
+      return { glReady: t('stage:gl-ready'), camReady: t('hero:cam-ready'), t0: t('hero:t0'), readable: t('hero:readable'), cam: document.documentElement.dataset.cam, renderer: window.__stage?.gl?.rendererName ?? null, guards: performance.getEntriesByType('mark').filter((x) => x.name.startsWith('hero:guard')).map((x) => x.name) };
     });
     await ctx.close();
-    runs.push({ ...m, delta: m.readable !== null && m.glReady !== null ? Math.round(m.readable - m.glReady) : null });
+    runs.push({ ...m, t0AfterGlReady: m.t0 !== null && m.glReady !== null ? Math.round(m.t0 - m.glReady) : null, delta: m.readable !== null && m.glReady !== null ? Math.round(m.readable - m.glReady) : null });
   }
   await H.closeBrowsers();
   const deltas = runs.map((r) => r.delta).filter((d) => d !== null);
   const med = median(deltas);
-  return { pass: deltas.length === loads && med <= 2100, medianMs: med, budgetMs: 2100, runs };
+  return { pass: deltas.length === loads && med <= heroTimeline.budgetAfterGlReady, medianMs: med, budgetMs: heroTimeline.budgetAfterGlReady, earliestMs: heroTimeline.readableAfterGlReady, runs };
 }
 
-/** 4b. With the GL chunk delayed 3 s, a developed print 1 is visible by FCP + 2.6 s. */
+/** 4b. With the GL chunk delayed 3 s, a developed print 1 is visible by FCP + 2.6 s: it appears when the late guard
+ *  fires, not at the end of the drawing's crossfade; the drawing then crossfades to the finished camera. */
 export async function delayedGl(base, { profileName = 'D2', out } = {}) {
   const ctx = await context(profileName);
   const page = await ctx.newPage();
-  await page.route(/\/_astro\/gl\.[^/]+\.js$/, async (route) => {
-    await sleep(3000);
+  await page.route(GL_CHUNK, async (route) => {
+    await sleep(SPEC.delayGlMs);
     await route.continue();
   });
   await page.addInitScript(() => {
-    window.__dg = { fcp: null, visibleAt: null };
+    window.__dg = { fcp: null, visibleAt: null, guardAt: null, camAt: null };
     new PerformanceObserver((l) => {
       const e = l.getEntriesByName('first-contentful-paint')[0];
       if (e) window.__dg.fcp = e.startTime;
     }).observe({ type: 'paint', buffered: true });
+    new PerformanceObserver((l) => {
+      for (const e of l.getEntries()) if (e.name.startsWith('hero:guard') && window.__dg.guardAt === null) window.__dg.guardAt = e.startTime;
+    }).observe({ type: 'mark', buffered: true });
+    new MutationObserver(() => {
+      if (document.documentElement?.dataset.cam === 'camera' && window.__dg.camAt === null) window.__dg.camAt = performance.now();
+    }).observe(document, { attributes: true, subtree: true, attributeFilter: ['data-cam'] });
     const poll = () => {
       const img = document.querySelector('[data-hero-print] img.hero-still');
       if (img && img.complete && Number(getComputedStyle(img).opacity) > 0.99 && !img.closest('.is-gl')) {
@@ -239,7 +402,6 @@ export async function delayedGl(base, { profileName = 'D2', out } = {}) {
     };
     addEventListener('DOMContentLoaded', poll);
   });
-  // The recording: frames every 250 ms from navigation until GL has arrived and the camera is live.
   const frames = [];
   const shoot = async () => {
     for (let i = 0; i < 18; i++) {
@@ -254,21 +416,26 @@ export async function delayedGl(base, { profileName = 'D2', out } = {}) {
   await page.goto(`${base}/`, { waitUntil: 'commit' });
   await shoot();
   await page.waitForFunction(() => window.__dg.visibleAt !== null, null, { timeout: 8000 }).catch(() => {});
-  const r = await page.evaluate(() => ({ ...window.__dg, hero: document.documentElement.dataset.hero, guard: performance.getEntriesByType('mark').filter((m) => m.name.startsWith('hero:guard')).map((m) => m.name) }));
-  if (out) await page.screenshot({ path: `${out}/delayed-gl-D2-end.png` });
+  await sleep(durations.heroDrawingFade + 300);
+  const r = await page.evaluate(() => ({ ...window.__dg, hero: document.documentElement.dataset.hero, cam: document.documentElement.dataset.cam, session: sessionStorage.getItem('ion.hero'), guard: performance.getEntriesByType('mark').filter((m) => m.name.startsWith('hero:guard')).map((m) => m.name) }));
+  if (out) await page.screenshot({ path: `${out}/delayed-gl-${profileName}-end.png` });
   await ctx.close();
-  const budget = r.fcp !== null ? r.fcp + 2600 : null;
-  return { pass: r.visibleAt !== null && budget !== null && r.visibleAt <= budget, fcp: r.fcp, visibleAt: r.visibleAt, budget, hero: r.hero, guard: r.guard, frames };
+  const budget = r.fcp !== null ? r.fcp + SPEC.printVisibleAfterFcpMs : null;
+  // The still is there when the guard fires (within a frame or two), not a crossfade later.
+  const atGuard = r.guardAt !== null && r.visibleAt !== null && r.visibleAt - r.guardAt < durations.heroDrawingFade / 2;
+  return { pass: r.visibleAt !== null && budget !== null && r.visibleAt <= budget && atGuard && r.cam === 'camera' && r.session === '1', fcp: r.fcp, visibleAt: r.visibleAt, guardAt: r.guardAt, camAt: r.camAt, budget, atGuard, hero: r.hero, cam: r.cam, session: r.session, guard: r.guard, frames };
 }
 
-/** 4c. The first keydown, focusin or pointerdown jumps the intro to its end state. */
+/** 4c. The first keydown, focusin or pointerdown jumps the intro to its end state; and (A2) a guard that fires
+ *  mid-drawing ends on the finished camera with print 1 developed and 'ion.hero' set, and a reload in the same
+ *  session paints the finished camera with no swap. */
 export async function inputGuard(base, { profileName = 'D2' } = {}) {
   const rows = [];
   for (const kind of ['keydown', 'focusin', 'pointerdown']) {
     const { page, ctx } = await open(base, profileName);
-    // Wait for the run to be under way (T0 passed, the print in flight), then interrupt it.
+    // Wait for the eject sequence to be under way (the drawing done, the print in flight), then interrupt it.
     await page.waitForFunction(() => performance.getEntriesByName('hero:t0').length > 0, null, { timeout: 15000 }).catch(() => {});
-    await sleep(700);
+    await sleep(durations.heroDrawingClay + durations.heroDrawingDevelop + heroTimeline.flight);
     const before = await page.evaluate(() => ({ hero: document.documentElement.dataset.hero, flying: Boolean(window.__hero?.flying) }));
     if (kind === 'keydown') await page.keyboard.press('Shift');
     if (kind === 'focusin') await page.evaluate(() => document.querySelector('.hero-cta a').focus());
@@ -281,58 +448,107 @@ export async function inputGuard(base, { profileName = 'D2' } = {}) {
     await ctx.close();
     rows.push({ kind, before, after, pass: before.hero === 'eject' && after.hero === 'done' && !after.flying && after.stillOpacity > 0.99 });
   }
-  return { pass: rows.every((r) => r.pass), rows };
+  // Mid-drawing: a key press while GL develops the camera out of the drawing.
+  const mid = {};
+  {
+    const ctx = await context(profileName);
+    const page = await ctx.newPage();
+    await page.addInitScript(FCP_PROBE);
+    await page.goto(`${base}/`, { waitUntil: 'load' });
+    await page.waitForFunction(() => performance.getEntriesByName('hero:t0').length > 0, null, { timeout: 15000 }).catch(() => {});
+    await sleep(durations.heroDrawingClay + durations.heroDrawingDevelop / 4);
+    mid.before = await page.evaluate(() => ({ cam: document.documentElement.dataset.cam, drawing: window.__hero?.drawingState }));
+    await page.keyboard.press('Shift');
+    await sleep(60);
+    mid.stillAtGuard = await page.evaluate(() => Number(getComputedStyle(document.querySelector('[data-hero-print] img.hero-still')).opacity));
+    await sleep(durations.heroDrawingFade + 200);
+    mid.after = await page.evaluate(() => ({ cam: document.documentElement.dataset.cam, drawing: window.__hero?.drawingState, hero: document.documentElement.dataset.hero, session: sessionStorage.getItem('ion.hero'), still: Number(getComputedStyle(document.querySelector('[data-hero-print] img.hero-still')).opacity), live: window.__hero?.live, log: (window.__motionLog ?? []).filter((e) => e.kind === 'drawing').map((e) => e.id) }));
+    await page.reload({ waitUntil: 'load' });
+    await sleep(600);
+    mid.reload = await page.evaluate(() => ({ fcpCam: window.__w1?.fcp?.cam ?? null, camSeen: window.__w1?.camSeen ?? null, hero: document.documentElement.dataset.hero }));
+    await ctx.close();
+    mid.pass = mid.before.cam === 'drawing' && mid.before.drawing === 'running' && mid.stillAtGuard > 0.99 && mid.after.cam === 'camera' && mid.after.drawing === 'done' && mid.after.session === '1' && mid.after.still > 0.99 && mid.after.live === true && mid.reload.fcpCam === 'camera' && !(mid.reload.camSeen ?? []).includes('drawing');
+  }
+  return { pass: rows.every((r) => r.pass) && mid.pass, rows, midDrawing: mid };
 }
 
 async function raw(buf) {
   const { data, info } = await sharp(buf).removeAlpha().raw().toBuffer({ resolveWithObject: true });
   return { data, w: info.width, h: info.height };
 }
+const meanDiff = (A, B) => {
+  let sum = 0;
+  for (let i = 0; i < A.data.length; i++) sum += Math.abs(A.data[i] - B.data[i]);
+  return sum / A.data.length;
+};
 
-/** 5. Poster vs first GL frame (mean diff <= 4/255) on the real camera slot; pose drift across a 40% hero scroll. */
-export async function parity(base, { profiles = [...GES, 'X1180', 'X600'], out } = {}) {
+/** 5. Poster vs first GL frame (mean diff <= 4/255) on the real camera slot, Chromium and WebKit; pose drift across a
+ *  40% hero scroll; and the drawing's own hand-over at T0 (the first-paint drawing against GL's first frame of it). */
+export async function parity(base, { profiles = [...GES, 'X1180', 'X600', 'WK-P2', 'WK-T2'], out } = {}) {
   const rows = [];
   for (const p of profiles) {
     // The poster this tier shows before GL: the same page with the GL chunk held back, so the poster stays up.
     const sctx = await context(p, 'reduced');
     const spage = await sctx.newPage();
-    await spage.route(/\/_astro\/gl\.[^/]+\.js$/, async (route) => {
+    await spage.route(GL_CHUNK, async (route) => {
       await sleep(20000);
       await route.continue().catch(() => {});
     });
     await spage.goto(`${base}/`, { waitUntil: 'load' });
-    const s = { page: spage, ctx: sctx };
-    await s.page.evaluate(() => document.fonts.ready);
-    await s.page.waitForFunction(() => document.querySelector('.hero-poster')?.complete, null, { timeout: 8000 });
+    await spage.evaluate(() => document.fonts.ready);
+    await spage.waitForFunction(() => document.querySelector('.hero-poster')?.complete, null, { timeout: 8000 });
     await sleep(300);
-    const clip = await s.page.evaluate(() => {
+    const clip = await spage.evaluate(() => {
       const b = document.querySelector('[data-hero-camera]').getBoundingClientRect();
       return { x: Math.round(b.x), y: Math.round(b.y), width: Math.round(b.width), height: Math.round(b.height) };
     });
-    const posterSrc = await s.page.evaluate(() => document.querySelector('.hero-poster').currentSrc.split('/').pop());
-    const a = await s.page.screenshot({ clip });
-    await s.ctx.close();
+    const posterSrc = await spage.evaluate(() => document.querySelector('.hero-poster').currentSrc.split('/').pop());
+    const a = await spage.screenshot({ clip });
+    await sctx.close();
     // The first GL frame: reduced motion (no intro), the camera live and the poster faded out.
     const g = await open(base, p, 'reduced');
     await g.page.waitForFunction(() => document.querySelector('[data-hero-camera]')?.classList.contains('is-gl'), null, { timeout: 15000 }).catch(() => {});
     await sleep(600);
+    const live = await g.page.evaluate(() => Boolean(window.__hero?.live));
     const b = await g.page.screenshot({ clip });
     await g.ctx.close();
-    const A = await raw(a);
-    const B = await raw(b);
-    let sum = 0;
-    for (let i = 0; i < A.data.length; i++) sum += Math.abs(A.data[i] - B.data[i]);
-    const mean = sum / A.data.length;
+    const mean = meanDiff(await raw(a), await raw(b));
     if (out) {
       await sharp(a).toFile(`${out}/parity-${p}-poster.png`);
       await sharp(b).toFile(`${out}/parity-${p}-gl.png`);
     }
-    rows.push({ profile: p, mean: Math.round(mean * 1000) / 1000, pass: mean <= 4, posterSrc, slot: clip });
+    rows.push({ profile: p, browser: profile(p).browser, mean: Math.round(mean * 1000) / 1000, live, pass: live && mean <= SPEC.parityMax, posterSrc, slot: clip });
+  }
+  // The drawing's hand-over at T0 (D2, full tier, manual clock): before T0 the DOM drawing on its DOM ground; at T0 the
+  // same strokes over GL's ground and the body in the ground's tone. The two must be the same picture.
+  const handover = {};
+  {
+    const ctx = await context('D2');
+    const page = await ctx.newPage();
+    await page.goto(`${base}/?t=0`, { waitUntil: 'load' });
+    await page.waitForFunction(() => window.__hero && window.__hero.flying, null, { timeout: 20000 });
+    await page.evaluate(() => document.fonts.ready);
+    const clip = await page.evaluate(() => {
+      const b = document.querySelector('[data-hero-camera]').getBoundingClientRect();
+      return { x: Math.round(b.x), y: Math.round(b.y), width: Math.round(b.width), height: Math.round(b.height) };
+    });
+    const before = await page.screenshot({ clip });
+    await page.evaluate(() => window.__stage.seek(0));
+    await page.evaluate(() => window.__stage.seek(0));
+    const at = await page.screenshot({ clip });
+    handover.state = await page.evaluate(() => ({ drawing: window.__hero.drawingState, ground: getComputedStyle(document.querySelector('.hero-ground')).opacity }));
+    await ctx.close();
+    handover.mean = Math.round(meanDiff(await raw(before), await raw(at)) * 1000) / 1000;
+    handover.pass = handover.state.drawing === 'running' && handover.mean <= SPEC.parityMax;
+    if (out) {
+      await sharp(before).toFile(`${out}/handover-D2-drawing.png`);
+      await sharp(at).toFile(`${out}/handover-D2-t0.png`);
+    }
   }
   // Pose drift: the camera's projected box and angle across a 40% scroll of the hero (D2).
   const { page, ctx } = await open(base, 'D2', 'reduced');
   await page.waitForFunction(() => document.querySelector('[data-hero-camera]')?.classList.contains('is-gl'), null, { timeout: 15000 }).catch(() => {});
-  await sleep(400);
+  await sleep(450);
   const at = async () => page.evaluate(() => {
     const b = window.__stage.bounds('camera');
     return { slot: b.slot, gl: b.gl };
@@ -347,10 +563,11 @@ export async function parity(base, { profiles = [...GES, 'X1180', 'X600'], out }
   const r0 = rel(top);
   const r1 = rel(scrolled);
   const drift = { angleDeg: Math.abs(r0.a - r1.a), px: Math.max(Math.abs(r0.dx - r1.dx), Math.abs(r0.dy - r1.dy), Math.abs(r0.w - r1.w), Math.abs(r0.h - r1.h)) };
-  return { pass: rows.every((r) => r.pass) && drift.angleDeg < 1, rows, drift, top, scrolled };
+  return { pass: rows.every((r) => r.pass) && drift.angleDeg < 1 && handover.pass, rows, handover, drift, top, scrolled };
 }
 
-/** 6. The strip: group 'Camera', targets >= 44 px without overlap at P2 touch, arrows = taps, swipe scrolls, tap prints. */
+/** 6. The strip: group 'Camera', targets >= 44 px without overlap at P2 touch, arrows = taps, swipe scrolls, tap prints;
+ *  every made still is placed in print 1's slot (1 to 4 presses, through the stack trim). */
 export async function strip(base) {
   const { page, ctx } = await open(base, 'P2');
   await page.evaluate(() => document.fonts.ready);
@@ -371,12 +588,10 @@ export async function strip(base) {
     look: document.querySelector('input[name="camera-look"]:checked').value,
     readout: [...document.querySelectorAll('[data-readout]')].map((e) => e.textContent).join(' | '),
   }));
-  // Taps: 135 mm, then Cyanotype.
   await page.tap('input[name="camera-lens"][value="135"]');
   await page.tap('input[name="camera-look"][value="cyanotype"]');
   const tapped = await state();
   await ctx.close();
-  // Keys on a fresh page: from 50 mm two steps right, from Standard four steps right.
   const k = await open(base, 'P2');
   await k.page.focus('input[name="camera-lens"]:checked');
   await k.page.keyboard.press('ArrowRight');
@@ -388,52 +603,63 @@ export async function strip(base) {
     look: document.querySelector('input[name="camera-look"]:checked').value,
     readout: [...document.querySelectorAll('[data-readout]')].map((e) => e.textContent).join(' | '),
   }));
-  // A vertical swipe on the camera stage scrolls the page (touch-action is never taken).
   const cam = await k.page.evaluate(() => {
     const b = document.querySelector('[data-hero-camera]').getBoundingClientRect();
-    return { x: b.x + b.width / 2, y: b.y + b.height / 2 };
+    return { x: b.x + b.width * 0.85, y: b.y + b.height / 2 };
   });
   const cdp = await k.ctx.newCDPSession(k.page);
   const y0 = await k.page.evaluate(() => scrollY);
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: cam.x, y: cam.y }] });
   for (let i = 1; i <= 10; i++) await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: cam.x, y: cam.y - i * 24 }] });
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
-  await sleep(1500); // the fling settles
+  await sleep(1500);
   const y1 = await k.page.evaluate(() => scrollY);
   await k.page.evaluate(() => window.scrollTo(0, 0));
   await sleep(800);
   await k.page.waitForFunction(() => !window.__hero || window.__hero.live, null, { timeout: 8000 }).catch(() => {});
-  // A tap on the camera presses the shutter: the next print is made and announced.
-  const before = await k.page.evaluate(() => document.querySelectorAll('[data-hero-print] img.hero-still').length);
-  await k.page.tap('[data-hero-camera]', { position: { x: 20, y: 20 } });
-  await sleep(4500);
-  const after = await k.page.evaluate(() => ({ stills: document.querySelectorAll('[data-hero-print] img.hero-still').length, status: document.getElementById('status')?.textContent ?? '' }));
+  // Taps on the camera press the shutter: each makes the next print (GL ejects it on lite), announced and placed.
+  const presses = [];
+  for (let n = 1; n <= 4; n++) {
+    const before = await k.page.evaluate(() => document.querySelectorAll('[data-hero-print] img.hero-still').length);
+    await k.page.tap('[data-hero-camera]', { position: { x: 20, y: 20 } });
+    await sleep(heroTimeline.developed + durations.glHandback + 600);
+    const after = await k.page.evaluate(() => ({ stills: document.querySelectorAll('[data-hero-print] img.hero-still').length, status: document.getElementById('status')?.textContent ?? '' }));
+    const placement = await k.page.evaluate(PLACEMENT);
+    presses.push({ n, before, after, placement, pass: after.stills === Math.min(before + 1, 3) && /Printed/.test(after.status) && placement.every((x) => x.ok) });
+  }
   await k.ctx.close();
   const same = tapped.lens === keyed.lens && tapped.look === keyed.look && tapped.readout === keyed.readout;
-  const pass = group === 1 && small.length === 0 && overlaps.length === 0 && same && y1 - y0 > 100 && after.stills === before + 1 && /Printed/.test(after.status);
-  return { pass, group, targets: targets.length, small, overlaps, tapped, keyed, identical: same, swipeScrolledPx: y1 - y0, tap: { before, after } };
+  const pass = group === 1 && small.length === 0 && overlaps.length === 0 && same && y1 - y0 > 100 && presses.every((p) => p.pass);
+  return { pass, group, targets: targets.length, small, overlaps, tapped, keyed, identical: same, swipeScrolledPx: y1 - y0, presses };
 }
 
-/** 7. __motionLog overshoots within +-0.5 points of the table; holding Space or Enter on the shutter: <= 1 flash a second. */
+/** 7. __motionLog overshoots (measured) within +-0.5 points of the table; the opening's phases logged in order and
+ *  all automatic motion under 5 s; holding Space or Enter on the shutter: <= 1 flash a second. */
 export async function motion(base) {
-  const table = { press: 4.6, detent: 9.5, settle: 1.1, lag: 2.8 };
+  const table = Object.fromEntries(Object.entries(springs).map(([k, v]) => [k, v.overshootPct]));
   const { page, ctx } = await open(base, 'D2');
   await page.waitForFunction(() => performance.getEntriesByName('hero:developed').length > 0, null, { timeout: 15000 }).catch(() => {});
   await sleep(500);
-  // Exercise every verb once more: a press, a Lens detent, a Look detent.
+  const marks = await page.evaluate(() => Object.fromEntries(['hero:t0', 'hero:developed'].map((n) => [n, performance.getEntriesByName(n)[0]?.startTime ?? null])));
   await page.click('input[name="camera-lens"][value="85"]');
   await page.click('input[name="camera-look"][value="vivid"]');
   await sleep(1200);
   await page.click('[data-shutter]');
-  await sleep(4500);
+  await sleep(heroTimeline.developed + 1000);
   const log = await page.evaluate(() => window.__motionLog.slice());
   await ctx.close();
   const springRows = log.filter((e) => e.spring && table[e.spring] !== undefined && e.to !== e.from).map((e) => {
     const os = Math.max(0, ((e.peak - e.to) / (e.to - e.from)) * 100);
-    return { id: e.id, spring: e.spring, overshootPct: Math.round(os * 100) / 100, table: table[e.spring], ok: Math.abs(os - table[e.spring]) <= 0.5 };
+    return { id: e.id, spring: e.spring, measured: Boolean(e.measured), overshootPct: Math.round(os * 100) / 100, table: table[e.spring], ok: Math.abs(os - table[e.spring]) <= 0.5 };
   });
   const kinds = new Set(springRows.map((r) => r.spring));
-  // Holding a key on the shutter for 5 s, in both schemes: no 1000 ms window holds more than one flash.
+  // The opening: clay, then silver, black, amber (each starts no earlier than the one before), and the lines fading.
+  const phase = (id) => log.find((e) => e.id === `hero:drawing:${id}`);
+  const order = ['clay', 'silver', 'black', 'amber'].map(phase);
+  const phasesOk = order.every(Boolean) && Boolean(phase('lines-fade')) && order.every((p, i) => i === 0 || p.t0 >= order[i - 1].t0) && order[3].t1 >= order[2].t1;
+  // All automatic motion: from T0 to print 1's handback.
+  const automaticMs = marks['hero:t0'] !== null && marks['hero:developed'] !== null ? Math.round(marks['hero:developed'] - marks['hero:t0'] + durations.glHandback) : null;
+  const capOk = automaticMs !== null && automaticMs < SPEC.motionCapMs;
   const holds = [];
   for (const scheme of ['light', 'dark']) {
     for (const key of ['Space', 'Enter']) {
@@ -451,7 +677,7 @@ export async function motion(base) {
         await sleep(33);
       }
       await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', ...code });
-      await sleep(4500);
+      await sleep(heroTimeline.developed + 1000);
       const flashes = await h.page.evaluate((from) => window.__motionLog.filter((e) => e.kind === 'flash' && e.t0 >= from).map((e) => e.t0), t0);
       await h.ctx.close();
       let worst = 0;
@@ -459,13 +685,15 @@ export async function motion(base) {
       holds.push({ scheme, key, flashes: flashes.length, worstPerSecond: worst, pass: worst <= 1 });
     }
   }
-  const pass = springRows.length > 0 && springRows.every((r) => r.ok) && ['press', 'detent', 'settle'].every((k) => kinds.has(k)) && holds.every((h) => h.pass);
-  return { pass, springs: springRows, kinds: [...kinds], holds, log };
+  const measuredOk = springRows.filter((r) => r.spring === 'settle' || r.id.includes(':dip')).every((r) => r.measured);
+  const pass = springRows.length > 0 && springRows.every((r) => r.ok) && ['press', 'detent', 'settle'].every((k) => kinds.has(k)) && measuredOk && phasesOk && capOk && holds.every((h) => h.pass);
+  return { pass, springs: springRows, kinds: [...kinds], measuredOk, phases: order.concat(phase('lines-fade')), phasesOk, automaticMs, capMs: SPEC.motionCapMs, capOk, holds, log };
 }
 
-/** 7b. Seeked filmstrip of the intro (?t=0) for the WCAG 2.3.1 flash analyser, in both schemes; frames on disk. */
-export async function flashFilm(base, { out, profileName = 'D2', scheme = 'light', ms = 2000, fps = 60, save = [] } = {}) {
+/** 7b. Seeked filmstrip of the opening (?t=0) for the WCAG 2.3.1 flash analyser, in both schemes; frames on disk. */
+export async function flashFilm(base, { out, profileName = 'D2', scheme = 'light', fps = 60, save = [] } = {}) {
   const { analyse } = await import('../harness/flash/analyse.mjs');
+  const ms = durations.heroDrawingClay + durations.heroDrawingDevelop + heroTimeline.landingDip;
   const ctx = await context(profileName, 'auto', { colorScheme: scheme });
   const page = await ctx.newPage();
   await page.goto(`${base}/?t=0`, { waitUntil: 'load' });
@@ -481,10 +709,11 @@ export async function flashFilm(base, { out, profileName = 'D2', scheme = 'light
   }
   await ctx.close();
   const r = analyse(frames, fps);
-  return { pass: r.pass, scheme, profile: profileName, ...r };
+  return { pass: r.pass, scheme, profile: profileName, ms, ...r };
 }
 
-/** 8. Reduced motion and static: print 1 developed at FCP, a shutter press swaps with a 200 ms fade, 0 px shift vs auto. */
+/** 8. Reduced motion and static: print 1 developed at FCP, the finished camera from first paint (no drawing), a
+ *  shutter press swaps prints with a 200 ms fade, every made still placed (1 to 4 presses), 0 px shift vs auto. */
 export async function reducedStatic(base) {
   const rows = [];
   for (const p of ['D2', 'P2', 'T2', 'S1']) {
@@ -496,7 +725,9 @@ export async function reducedStatic(base) {
       else await sleep(800);
       const g = await heroRects(page);
       const fcp = await page.evaluate(() => window.__w1.fcp);
+      const camSeen = await page.evaluate(() => window.__w1.camSeen);
       let swap = null;
+      const presses = [];
       if (mode !== 'auto') {
         await page.click('[data-shutter]');
         await sleep(60);
@@ -506,19 +737,100 @@ export async function reducedStatic(base) {
           const anims = img.getAnimations().map((a) => ({ duration: a.effect.getTiming().duration, props: a.effect.getKeyframes().map((k) => Object.keys(k).filter((x) => !['offset', 'computedOffset', 'easing', 'composite'].includes(x))).flat() }));
           return { stills: imgs.length, anims, flying: Boolean(window.__hero?.flying), fx: document.querySelector('[data-hero-section]').hasAttribute('data-fx') };
         });
+        await sleep(durations.reduced + 100);
+        presses.push({ n: 1, placement: await page.evaluate(PLACEMENT) });
+        for (let n = 2; n <= 4; n++) {
+          await page.click('[data-shutter]');
+          await sleep(durations.reduced + 100);
+          presses.push({ n, placement: await page.evaluate(PLACEMENT) });
+        }
       }
-      geo[mode] = { g, printAtFcp: fcp?.print, swap };
+      geo[mode] = { g, printAtFcp: fcp?.print, camAtFcp: fcp?.cam, camSeen, swap, presses: presses.map((x) => ({ ...x, pass: x.placement.length === Math.min(x.n + 1, 3) && x.placement.every((s) => s.ok) })) };
       await ctx.close();
     }
     const keys = ['h1', 'line', 'cta', 'camera', 'print', 'strip'];
     const shift = (a, b) => Math.max(...keys.map((k) => Math.max(Math.abs(a[k].x - b[k].x), Math.abs(a[k].y - b[k].y), Math.abs(a[k].w - b[k].w), Math.abs(a[k].h - b[k].h))));
     const shiftReduced = shift(geo.auto.g, geo.reduced.g);
     const shiftStatic = shift(geo.auto.g, geo.static.g);
-    const fade = (s) => s && s.anims.some((a) => a.duration === 200 && a.props.includes('opacity')) && !s.flying && !s.fx;
-    const pass = geo.reduced.printAtFcp?.ok && geo.static.printAtFcp?.ok && fade(geo.reduced.swap) && fade(geo.static.swap) && shiftReduced <= 0.5 && shiftStatic <= 0.5;
-    rows.push({ profile: p, pass: Boolean(pass), shiftReducedPx: shiftReduced, shiftStaticPx: shiftStatic, reduced: { printAtFcp: geo.reduced.printAtFcp, swap: geo.reduced.swap }, static: { printAtFcp: geo.static.printAtFcp, swap: geo.static.swap } });
+    const fade = (s) => s && s.anims.some((a) => a.duration === durations.reduced && a.props.includes('opacity')) && !s.flying && !s.fx;
+    const noDrawing = (m) => geo[m].camAtFcp === 'camera' && !(geo[m].camSeen ?? []).includes('drawing');
+    const placed = (m) => geo[m].presses.length === 4 && geo[m].presses.every((x) => x.pass);
+    const pass = geo.reduced.printAtFcp?.ok && geo.static.printAtFcp?.ok && noDrawing('reduced') && noDrawing('static') && fade(geo.reduced.swap) && fade(geo.static.swap) && placed('reduced') && placed('static') && shiftReduced <= 0.5 && shiftStatic <= 0.5;
+    rows.push({ profile: p, pass: Boolean(pass), shiftReducedPx: shiftReduced, shiftStaticPx: shiftStatic, reduced: { printAtFcp: geo.reduced.printAtFcp, camAtFcp: geo.reduced.camAtFcp, swap: geo.reduced.swap, presses: geo.reduced.presses }, static: { printAtFcp: geo.static.printAtFcp, camAtFcp: geo.static.camAtFcp, swap: geo.static.swap, presses: geo.static.presses } });
   }
   return { pass: rows.every((r) => r.pass), rows };
+}
+
+/** Pre-GL bytes (budgets.md) from the network log, with the hero on the page: the JavaScript delivered before
+ *  stage:gl-start at D2 (full) and P2 (lite), and the camera chunk, three and the camera model never requested
+ *  before it (review must-fix 4: size-limit's static closure cannot see the hero's dynamic imports). */
+export async function preGl(base, { runs = 3 } = {}) {
+  const camChunk = chunkOf('src/gl/camera/index.ts');
+  const rows = [];
+  for (const p of ['D2', 'P2']) {
+    for (let i = 0; i < runs; i++) {
+      await H.closeBrowsers();
+      const ctx = await context(p);
+      const page = await ctx.newPage();
+      const cdp = await ctx.newCDPSession(page);
+      await cdp.send('Network.enable');
+      const reqs = new Map();
+      cdp.on('Network.requestWillBeSent', (e) => reqs.set(e.requestId, { url: e.request.url, type: e.type }));
+      cdp.on('Network.responseReceived', (e) => { const r = reqs.get(e.requestId); if (r) r.type = e.type; });
+      cdp.on('Network.loadingFinished', (e) => { const r = reqs.get(e.requestId); if (r) r.bytes = e.encodedDataLength; });
+      await page.goto(`${base}/`, { waitUntil: 'load' });
+      await page.waitForFunction(() => ['ready', 'failed'].includes(window.__stage?.glState), null, { timeout: 15000 }).catch(() => {});
+      await sleep(1500);
+      const t = await page.evaluate(() => ({ glStart: performance.getEntriesByName('stage:gl-start')[0]?.startTime ?? null, resources: performance.getEntriesByType('resource').map((r) => ({ url: r.name, start: r.startTime })) }));
+      await ctx.close();
+      const startOf = (url) => t.resources.find((r) => r.url === url)?.start ?? Infinity;
+      const scripts = [...reqs.values()].filter((r) => r.type === 'Script' && r.bytes);
+      const before = scripts.filter((r) => t.glStart === null || startOf(r.url) < t.glStart);
+      const bytes = before.reduce((n, r) => n + r.bytes, 0);
+      const early = [...reqs.values()].filter((r) => (r.url.includes(camChunk ?? '\0') || /three\.module|camera_xt_lod\d\.glb/.test(r.url)) && startOf(r.url) < (t.glStart ?? Infinity)).map((r) => r.url.replace(base, ''));
+      rows.push({ profile: p, run: i + 1, glStartMs: t.glStart === null ? null : Math.round(t.glStart), preGlBytes: bytes, early, scripts: scripts.map((r) => ({ url: r.url.replace(base, ''), bytes: r.bytes, startedMs: Math.round(startOf(r.url)), preGL: before.includes(r) })), pass: t.glStart !== null && bytes > 0 && bytes <= SPEC.preGlBytes && early.length === 0 });
+    }
+  }
+  await H.closeBrowsers();
+  return { pass: rows.every((r) => r.pass), cameraChunk: camChunk, budgetBytes: SPEC.preGlBytes, rows };
+}
+
+/** A2. On lite, the drawing's crossfade never makes the finished-camera poster the LCP element: the LCP stays the h1
+ *  or print 1's still (5-run LCP element log, P2 and T2). */
+export async function liteLcp(base, { runs = 5, profiles = ['P2', 'T2'] } = {}) {
+  const rows = [];
+  for (const p of profiles) {
+    for (let i = 0; i < runs; i++) {
+      const { page, ctx } = await open(base, p, 'auto', { init: FCP_PROBE });
+      await page.waitForFunction(() => document.documentElement.dataset.cam === 'camera', null, { timeout: 8000 }).catch(() => {});
+      await sleep(800);
+      const r = await page.evaluate(() => ({ lcp: window.__w1.lcp, camSeen: window.__w1.camSeen, tier: document.documentElement.dataset.tier, crossfade: (window.__motionLog ?? []).find((e) => e.id === 'hero:drawing:crossfade') ?? null }));
+      await ctx.close();
+      const last = r.lcp.at(-1)?.el ?? null;
+      const poster = r.lcp.filter((e) => /hero-(poster|lines)/.test(e.el ?? ''));
+      rows.push({ profile: p, run: i + 1, tier: r.tier, lcpElement: last, lcp: r.lcp, crossfade: Boolean(r.crossfade), camSeen: r.camSeen, pass: r.tier === 'lite' && Boolean(r.crossfade) && poster.length === 0 && (/^h1/.test(last ?? '') || /data-lcp=print-1/.test(last ?? '')) });
+    }
+  }
+  return { pass: rows.every((r) => r.pass), rows };
+}
+
+/** A2: no literal duration or budget in src/ or tests/w-s1/: the hero drawing durations and heroTimelineMs values do
+ *  not appear as numbers in the hero's code (comments aside); they are read from the tokens. */
+export async function tokensOnly() {
+  const files = ['src/sections/hero/hero.ts', 'src/sections/hero/layout.ts', 'src/sections/hero/Hero.astro', 'src/gl/camera/index.ts', 'src/gl/camera/drawing.ts', 'src/gl/effects/develop/index.ts', 'src/gl/effects/develop/camera.ts', 'tests/w-s1/checks.mjs', 'tests/w-s1/lib.mjs', 'tests/w-s1/run.mjs'];
+  const values = [durations.heroDrawingClay, durations.heroDrawingDevelop, durations.heroDrawingFade, heroTimeline.readableAfterGlReady, heroTimeline.budgetAfterGlReady, heroTimeline.developed, heroTimeline.readable, heroTimeline.landingDip, heroTimeline.flight, heroTimeline.developStart, heroTimeline.eject];
+  const hits = [];
+  for (const f of files) {
+    const code = readFileSync(join(H.ROOT, f), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
+    for (const v of values) {
+      for (const m of code.matchAll(new RegExp(`(?<![\\w.])${v}(?![\\w.])`, 'g'))) {
+        // Not a time: a font weight, a viewport or profile size (X1180, width: 1180).
+        if (/(font(-weight)?:\s*|width:\s*|height:\s*|X)$/.test(code.slice(Math.max(0, m.index - 14), m.index))) continue;
+        hits.push({ file: f, value: v, line: code.slice(0, m.index).split('\n').length, text: code.slice(Math.max(0, m.index - 30), m.index + 10).replace(/\s+/g, ' ') });
+      }
+    }
+  }
+  return { pass: hits.length === 0, values, hits };
 }
 
 /** 9. Hero wet GPU <= 1.5x the prototype median at D2: /bench/ hero3 (the prototype's wet stand-in) against the
@@ -549,12 +861,17 @@ export async function gpu(base, { loads = 5 } = {}) {
   return { pass: Boolean(valid) && hm <= 1.5 * pm, renderer, valid, prototypeMedianMs: pm, heroMedianMs: hm, ratio: Math.round((hm / pm) * 1000) / 1000, proto, hero };
 }
 
-/** Evidence: seeked hero filmstrips on the manual clock (?t=0). Full: the W-D012 keys of the intro. Reduced: a
- *  shutter press and its 200 ms fade. Frames on disk plus one contact sheet per strip. */
+/** Evidence: seeked hero filmstrips on the manual clock (?t=0). Full: the opening (drawing, clay, the develop) and
+ *  the W-D012 keys of the eject sequence after it. Reduced: a shutter press and its 200 ms fade. Frames on disk plus
+ *  one contact sheet per strip. */
 export async function filmstrips(base, { out, profileName = 'D2' } = {}) {
   const strips = [];
   {
-    const keys = [0, 120, 250, 380, 780, 1000, 1180, 1400, 1620, 1804, 2600, 3380, 3600];
+    const D = durations.heroDrawingClay + durations.heroDrawingDevelop;
+    const T = heroTimeline;
+    const drawingKeys = [0, durations.heroDrawingClay / 2, durations.heroDrawingClay, durations.heroDrawingClay + durations.heroDrawingDevelop * 0.15, durations.heroDrawingClay + durations.heroDrawingDevelop * 0.3, durations.heroDrawingClay + durations.heroDrawingDevelop * 0.5, durations.heroDrawingClay + durations.heroDrawingDevelop * 0.75];
+    const seqKeys = [T.brackets, T.shutter, T.flash, T.eject, T.developStart, T.flight, T.landingDip, T.readable, T.developed, T.developed + durations.glHandback + 100].map((k) => D + k);
+    const keys = [...drawingKeys, ...seqKeys].map(Math.round);
     const ctx = await context(profileName, 'auto');
     const page = await ctx.newPage();
     await page.goto(`${base}/?t=0`, { waitUntil: 'load' });
@@ -571,7 +888,7 @@ export async function filmstrips(base, { out, profileName = 'D2' } = {}) {
     strips.push({ mode: 'full', keys, files });
   }
   {
-    const keys = [0, 50, 100, 150, 200, 260];
+    const keys = [0, 0.25, 0.5, 0.75, 1, 1.3].map((f) => Math.round(f * durations.reduced));
     const ctx = await context(profileName, 'reduced');
     const page = await ctx.newPage();
     await page.goto(`${base}/?t=0`, { waitUntil: 'load' });

@@ -28,6 +28,7 @@ export async function context(name, mode = 'auto', extra = {}) {
     reducedMotion: mode === 'reduced' ? 'reduce' : 'no-preference',
     colorScheme: extra.colorScheme ?? 'light',
     serviceWorkers: 'block',
+    ...extra.context,
   });
 }
 

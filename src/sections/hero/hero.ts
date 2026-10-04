@@ -124,16 +124,17 @@ function drawingDone(): void {
 
 let crossfading = false;
 /**
- * The drawing to the finished-camera poster in the DOM: lite's opening, a guard before GL has the camera, the 6 s
- * safety. `ms` 0 cuts. The poster decodes first, so the crossfade never shows a half-loaded camera, and it starts
- * from the drawing's state when it was called.
+ * The drawing to the finished-camera poster in the DOM: lite's opening, a guard before GL has the camera, the tier
+ * dropping to static. `ms` 0 cuts. It starts after first paint, once the poster is decoded (so it never shows a
+ * half-loaded camera), from the drawing's state at that moment; 'ion.hero' is written as it starts.
  */
 async function drawingToPoster(ms: number, trigger: string): Promise<void> {
   if (!drawingOn() || crossfading) return;
   crossfading = true;
-  writeSession();
-  await posterDecoded();
+  // First paint is the drawing's (A2): nothing crossfades before it, however fast the poster decodes.
+  await Promise.all([posterDecoded(), firstPaint()]);
   if (!drawingOn()) return;
+  writeSession();
   const { ground, lines, poster } = drawingParts();
   const t0 = performance.now();
   if (ms > 0 && poster) {
@@ -404,7 +405,8 @@ function finishIntro(why: string): void {
   // A drawing still on screen crossfades to the finished camera (at once under reduced motion; a cut when the tier
   // drops to static, which has no motion at all).
   html.dataset.heroCut = '';
-  const fade = reduced() || tier() === 'static' ? 0 : durations.heroDrawingFade;
+  // Back (a page restored from the back/forward cache) lands on the end state as it is shown: no crossfade either.
+  const fade = reduced() || tier() === 'static' || why === 'back' ? 0 : durations.heroDrawingFade;
   if (cam?.drawingLive) cam.finishIntro(fade);
   else {
     cam?.finishIntro(0);

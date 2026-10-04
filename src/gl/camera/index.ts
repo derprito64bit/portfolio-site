@@ -21,7 +21,6 @@
 import {
   Box3,
   CanvasTexture,
-  HalfFloatType,
   LinearFilter,
   MathUtils,
   Matrix4,
@@ -295,10 +294,10 @@ interface Flight {
   resolve: () => void;
 }
 
-/** The lite tier's anti-aliasing target: the camera drawn into a 4x MSAA half-float target in linear light (three's
- *  normal output for a render target), then composited onto its view by a quad that does the canvas's own output:
- *  Neutral tone mapping and the sRGB encode (three's tonemapping and colorspace chunks), premultiplied. No reliance
- *  on three's XR paths. A depth-only proxy of the model keeps the print's occlusion. */
+/** The lite tier's anti-aliasing (its canvas has no MSAA, W-D017): the camera drawn into a 4x MSAA 8-bit target by
+ *  materials that write the canvas's own output (displayOut: Neutral tone mapping and the sRGB encode, in the shader,
+ *  as three does for the screen), so samples resolve in display space as the antialiased poster's did; a quad copies
+ *  it onto the view. No reliance on three's XR paths. A depth-only proxy of the model keeps the print's occlusion. */
 interface AA {
   scene: any;
   rt: any;
@@ -512,6 +511,8 @@ class HeroCamera implements CameraController {
     const devWas = dev?.value;
     if (dev) dev.value = 1;
     const aspectWas = camera.aspect;
+    const viewWas = camera.view?.enabled ? { ...camera.view } : null;
+    camera.clearViewOffset();
     camera.aspect = aspect;
     camera.updateProjectionMatrix();
     try {
@@ -540,6 +541,7 @@ class HeroCamera implements CameraController {
       r.setScissorTest(false);
       r.setViewport(0, 0, f.W, f.Hc);
       camera.aspect = aspectWas;
+      if (viewWas) camera.setViewOffset(viewWas.fullWidth, viewWas.fullHeight, viewWas.offsetX, viewWas.offsetY, viewWas.width, viewWas.height);
       camera.updateProjectionMatrix();
       if (ground) ground.visible = Boolean(groundWas);
       if (dev) dev.value = devWas as number;
@@ -561,33 +563,69 @@ class HeroCamera implements CameraController {
 
   private createAA(): AA {
     const scene = new Scene();
-    const rt = new WebGLRenderTarget(2, 2, { samples: 4, type: HalfFloatType, depthBuffer: true });
+    // 8-bit, multisampled: the materials write display-space colour into it (displayOut), so its samples resolve in
+    // the same space as the poster's (and the full tier canvas's) MSAA, and the quad below only copies.
+    const rt = new WebGLRenderTarget(2, 2, { samples: 4, depthBuffer: true });
     const quad = new Mesh(
       new PlaneGeometry(2, 2),
       new ShaderMaterial({
         uniforms: { tColor: { value: rt.texture } },
         vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }',
-        fragmentShader: [
-          'uniform sampler2D tColor;',
-          'varying vec2 vUv;',
-          'void main() {',
-          '  vec4 c = texture2D(tColor, vUv);',
-          '  gl_FragColor = vec4(c.a > 0.0 ? c.rgb / c.a : vec3(0.0), 1.0);',
-          '  #include <tonemapping_fragment>',
-          '  #include <colorspace_fragment>',
-          '  gl_FragColor = vec4(gl_FragColor.rgb * c.a, c.a);',
-          '}',
-        ].join('\n'),
+        fragmentShader: 'uniform sampler2D tColor; varying vec2 vUv; void main() { gl_FragColor = texture2D(tColor, vUv); }',
         transparent: true,
         premultipliedAlpha: true,
         depthTest: false,
         depthWrite: false,
+        toneMapped: false,
       }),
     );
     quad.frustumCulled = false;
     quad.renderOrder = -1;
     this.camView.scene.add(quad);
     return { scene, rt, quad, proxy: null, proxyNodes: {}, dirty: true };
+  }
+
+  /**
+   * The canvas's own output, written by the materials themselves when they draw into the lite target: three applies
+   * tone mapping and the sRGB encode only when it draws to the screen, so for a render target the fragment shader
+   * gets them here (the same Neutral curve as three's NeutralToneMapping, at the renderer's exposure, then the sRGB
+   * transfer), right after <colorspace_fragment>. One program key, so materials of a type share their program.
+   */
+  private displayOut(root: any): void {
+    const exposure = { value: this.gl.renderer.toneMappingExposure ?? 1 };
+    const pars = `uniform float uIonExposure;
+vec3 ionNeutral(vec3 color) {
+  const float startCompression = 0.8 - 0.04;
+  const float desaturation = 0.15;
+  color *= uIonExposure;
+  float x = min(color.r, min(color.g, color.b));
+  float offset = x < 0.08 ? x - 6.25 * x * x : 0.04;
+  color -= offset;
+  float peak = max(color.r, max(color.g, color.b));
+  if (peak < startCompression) return color;
+  float d = 1. - startCompression;
+  float newPeak = 1. - d * d / (peak + d - startCompression);
+  color *= newPeak / peak;
+  float g = 1. - 1. / (desaturation * (peak - newPeak) + 1.);
+  return mix(color, vec3(newPeak), g);
+}`;
+    const seen = new Set<any>();
+    root.traverse((o: any) => {
+      if (!o.isMesh) return;
+      for (const m of Array.isArray(o.material) ? o.material : [o.material]) {
+        if (seen.has(m)) continue;
+        seen.add(m);
+        m.onBeforeCompile = (shader: any) => {
+          if (!shader.fragmentShader.includes('#include <colorspace_fragment>')) return;
+          shader.uniforms.uIonExposure = exposure;
+          shader.fragmentShader = shader.fragmentShader
+            .replace('void main()', `${pars}\nvoid main()`)
+            .replace('#include <colorspace_fragment>', '#include <colorspace_fragment>\ngl_FragColor = sRGBTransferOETF(vec4(clamp(ionNeutral(gl_FragColor.rgb), 0.0, 1.0), gl_FragColor.a));');
+        };
+        m.customProgramCacheKey = () => 'ion-cam-lite-out-1';
+        m.needsUpdate = true;
+      }
+    });
   }
 
   /** Lite: redraw the camera into the MSAA target when it changed, then give the frame back to the stage untouched. */
@@ -618,6 +656,7 @@ class HeroCamera implements CameraController {
     this.model = root;
     this.drawScene().add(root);
     if (this.aa) {
+      this.displayOut(root);
       // The depth proxy: the same geometry, depth only, posed with the rig, so the print hides behind the body.
       const depthOnly = new MeshBasicMaterial({ colorWrite: false });
       const proxy = root.clone(true);
@@ -793,6 +832,7 @@ class HeroCamera implements CameraController {
     const camera = this.camView.camera;
     if (cam) {
       camera.aspect = cam.w / cam.h;
+      this.registerToSlot(f);
       camera.updateProjectionMatrix();
     }
     camera.updateMatrixWorld();
@@ -817,6 +857,44 @@ class HeroCamera implements CameraController {
       u.uRoll.value = p.roll;
       u.uShadow.value = p.shadow;
     }
+  }
+
+  /**
+   * Registration to the poster, below a pixel. W-F's render() puts the view on its slot's box snapped to the DPR grid
+   * and rounded by three to whole buffer pixels, and the canvas buffer can be a fraction of a pixel smaller than its
+   * CSS box times the DPR (the buffer is floored, and the compositor stretches it over the box): together up to about
+   * a CSS pixel off the slot, where the poster sits exactly (object-fit: contain in the slot's own box). A view offset
+   * (it survives W-F's updateProjectionMatrix) draws the framing's frustum on the slot's true box, in buffer pixels,
+   * with that viewport as the window onto it. The predicted viewport matches the one W-F sets (verified in-page).
+   */
+  private registerToSlot(f: FrameInfo): void {
+    const s = this.camSlot;
+    const camera = this.camView.camera;
+    const r = this.gl.renderer;
+    const canvas = r?.domElement as HTMLCanvasElement | undefined;
+    if (!s || !s.w || !s.h || !canvas?.width || !f.W || !f.Hc) return;
+    const pr = r.getPixelRatio();
+    const bx = canvas.width / f.W;
+    const by = canvas.height / f.Hc;
+    // The viewport W-F's render() will set (src/stage/gl/index.ts), in buffer pixels from the top.
+    const snap = (n: number) => Math.round(n * pr) / pr;
+    const x = snap(s.cx - s.w / 2 - window.scrollX);
+    const top = snap(s.cy - s.h / 2);
+    const w = snap(s.w);
+    const h = snap(s.h);
+    const vx = Math.round(x * pr);
+    const vw = Math.round(w * pr);
+    const vh = Math.round(h * pr);
+    const vy = canvas.height - Math.round((f.Hc - (top - f.anchor) - h) * pr) - vh;
+    // The slot's true box in buffer pixels, and the poster inside it (the framing's aspect, contained).
+    const tx = (s.cx - s.w / 2 - window.scrollX) * bx;
+    const ty = (s.cy - s.h / 2 - f.anchor) * by;
+    const tw = s.w * bx;
+    const th = s.h * by;
+    const A = BANDS[this.band ?? 'stacked'].aspect;
+    const ch = tw / th > A ? th : tw / A;
+    const fullW = ch * (w / h); // the full frustum at the aspect W-F gives the camera, square pixels
+    camera.setViewOffset(fullW, ch, vx - (tx + tw / 2 - fullW / 2), vy - (ty + th / 2 - ch / 2), vw, vh);
   }
 
   /** Model-space corners of a print quad (with its shadow margin when padded): BL, BR, TL, TR. */
