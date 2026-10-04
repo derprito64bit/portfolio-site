@@ -189,7 +189,9 @@ const heroHead = `(function(h,c){if(matchMedia('(pointer: fine) and (hover: hove
     aspect-ratio: 54 / 86;
     rotate: -2.2deg;
   }
-  .hero-still {
+  /* Global inside the print slot: the shutter adds stills at runtime (hero.ts addStill), and those carry no scope
+     attribute, so a scoped rule would leave them in flow, unsized, under print 1. */
+  .hero-print :global(.hero-still) {
     position: absolute;
     inset: 0;
     inline-size: 100%;
@@ -229,8 +231,8 @@ const heroHead = `(function(h,c){if(matchMedia('(pointer: fine) and (hover: hove
   .hero[data-laid][data-arrangement='flow'] :global(.camera-strip) { margin-block-start: calc(var(--row-h) + var(--space-3)); }
 
   /* Print 1 waits for the eject on the full tier (W-D012); everywhere else it is developed from first paint. */
-  :global(html[data-hero='eject']) .hero-still { opacity: 0; transition: none; }
-  :global(html[data-hero-cut]) .hero-still { transition: none; }
+  :global(html[data-hero='eject']) .hero-print :global(.hero-still) { opacity: 0; transition: none; }
+  :global(html[data-hero-cut]) .hero-print :global(.hero-still) { transition: none; }
 
   /* Drag hit areas over the Look dial and the lens ring: fine pointer and full tier only, aria-hidden bonuses. */
   @media (pointer: fine) and (hover: hover) {
