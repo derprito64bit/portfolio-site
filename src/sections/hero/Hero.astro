@@ -63,8 +63,8 @@ const queue = content.featured.slice(1).map((p) => ({
 // The pre-paint layout run: layout.ts serialised, called on this section. Until hero.ts takes over, a ResizeObserver
 // on the row runs it again in the same frame when the row's width changes: a classic scrollbar appears once the rest
 // of the page has parsed and narrows the row by its width; re-laid out from the resize event instead, a frame later,
-// that would be a layout shift.
-const layoutScript = `(function(h,L){L(h);var r=h.querySelector('.hero-row');if(!r||!window.ResizeObserver)return;var w=r.clientWidth;h.__heroRo=new ResizeObserver(function(){if(r.clientWidth!==w){w=r.clientWidth;L(h)}});h.__heroRo.observe(r)})(document.currentScript.closest('.hero'),${heroLayout.toString()});`;
+// that would be a layout shift. Where scrollbars take room, the page keeps their gutter from the start (CSS below).
+const layoutScript = `(function(h,L){var d=document.documentElement,p=document.createElement('div');p.style.cssText='position:absolute;top:-200px;width:100px;height:100px;overflow:scroll;visibility:hidden';d.appendChild(p);if(p.offsetWidth-p.clientWidth>0)d.setAttribute('data-hero-gutter','');p.remove();L(h);var r=h.querySelector('.hero-row');if(!r||!window.ResizeObserver)return;var w=r.clientWidth;h.__heroRo=new ResizeObserver(function(){if(r.clientWidth!==w){w=r.clientWidth;L(h)}});h.__heroRo.observe(r)})(document.currentScript.closest('.hero'),${heroLayout.toString()});`;
 // data-hero (W-D012): no fetch, under 0.5 kB. A runtime that never arrives still reveals print 1 (6 s safety).
 const heroHead = `(function(h,c){if(matchMedia('(pointer: fine) and (hover: hover)').matches&&window.WebGL2RenderingContext&&h.dataset.motion!=='reduced'&&h.dataset.tier==='full'&&!(c&&c.saveData)){h.dataset.hero='eject';setTimeout(function(){if(h.dataset.hero==='eject'&&!h.dataset.heroRun)h.dataset.hero='done'},6e3)}else h.dataset.hero='still'})(document.documentElement,navigator.connection)`;
 ---
@@ -124,8 +124,10 @@ const heroHead = `(function(h,c){if(matchMedia('(pointer: fine) and (hover: hove
   /* The pre-paint layout measures the row once, mid-parse: with classic scrollbars the bar would appear only when
      the rest of the page has parsed, narrow the row by its width and move the camera, print 1 and the strip (a
      layout shift in Lighthouse's desktop runs). Keeping the gutter from the start makes that first width the final
-     one. Scoped to pages with the hero; requested for every page in base.css (W-F). */
-  :global(html:has([data-hero-section])) { scrollbar-gutter: stable; }
+     one. Only where scrollbars take room (the layout script sets the attribute): a gutter without a bar (hidden
+     scrollbars) leaves the root's clientWidth and the stage's canvas width disagreeing. Requested for every page
+     (W-F, #59). */
+  :global(html[data-hero-gutter]) { scrollbar-gutter: stable; }
 
   .hero {
     /* Breathing room above the wordmark on tall screens only: 0 at 640 px, 28 px from about 1100 px. */

@@ -139,19 +139,33 @@ export function heroLayout(hero: HTMLElement, nudge = false): void {
     g = Math.min(g, cap[0]);
     if (area * g * g > cap[1]) g = Math.sqrt(cap[1] / area);
   }
-  // The stage measures slots with offsetWidth/Height (whole px), so the size is whole px too: the width that lands
-  // closest to whole canvas pixels, and the height rounded down, so the poster fits by height exactly as GL does.
-  // Only ever down from the computed width, so the LCP cap above still holds after the snap.
+  // The stage measures slots with offsetWidth/Height (whole px), so the size is whole px too, the height at or just
+  // under width / aspect (the poster fits by height exactly as GL does). three.js floors the scissored viewport to
+  // whole canvas pixels, so of the sizes up to 3 px under the computed width, the one whose width and height land
+  // closest to whole canvas pixels (at a fractional effective DPR, a floored height draws GL up to a pixel short of
+  // the poster). Only ever down from the computed width, so the LCP cap above still holds after the snap.
   const grid = (v: number) => Math.round(v * g) / g;
   const left = rowBox.left + win.scrollX;
+  const off = (v: number) => Math.abs(v * g - Math.round(v * g));
   let camW = Math.floor(cam.w);
-  for (const c of [camW - 1, camW - 2]) if (Math.abs(c * g - Math.round(c * g)) < Math.abs(camW * g - Math.round(camW * g)) - 1e-6) camW = c;
+  let camH = Math.floor(camW / A);
+  let best = Infinity;
+  for (let c = Math.floor(cam.w); c >= Math.floor(cam.w) - 3 && c > 0; c--) {
+    for (const hh of [Math.floor(c / A), Math.floor(c / A) - 1]) {
+      const e = off(c) + off(hh);
+      if (hh > 0 && e < best - 1e-6) {
+        best = e;
+        camW = c;
+        camH = hh;
+      }
+    }
+  }
   const camX = grid(left + cam.x) - left;
   const camY = grid(rowTop + cam.y) - rowTop;
   s.setProperty('--cam-x', camX + 'px');
   s.setProperty('--cam-y', camY + 'px');
   s.setProperty('--cam-w', camW + eps + 'px');
-  s.setProperty('--cam-h', Math.floor(camW / A) + 'px');
+  s.setProperty('--cam-h', camH + 'px');
   px('--pr-x', pr.x);
   px('--pr-y', pr.y);
   px('--pr-w', pr.w);
