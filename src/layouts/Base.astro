@@ -1,0 +1,87 @@
+---
+// The one page frame (W-F). Every route renders through it: skip link, the riding canvas outside #swup, a header
+// that scrolls away, #swup > main, the footer, one polite status region and the one stage module.
+import '../styles/tokens.css';
+import '../styles/base.css';
+import '../styles/motion.css';
+import '../styles/interaction.css';
+import '../styles/tier-static.css';
+import Footer from '../sections/footer/Footer.astro';
+
+export type PageKind = 'home' | 'project' | 'notfound' | 'bench';
+
+interface Props {
+  /** Document title without the site suffix; ' · derprito64bit' is appended (W-D027). */
+  title: string;
+  /** Route path with a trailing slash, used for the canonical URL. */
+  path: string;
+  page: PageKind;
+  /** Pages that hold a token, /bench/ and the 404 ship noindex (W-D027). */
+  noindex: boolean;
+  description?: string;
+  /** false keeps WebGL off for this page (the 404, W-D029). */
+  gl?: boolean;
+}
+
+const { title, path, page, noindex, description = 'The portfolio of derprito64bit.', gl = true } = Astro.props;
+const SITE = 'https://derprito64bit.github.io';
+const canonical = new URL(path, SITE).href;
+const docTitle = `${title} · derprito64bit`;
+---
+<!doctype html>
+<html lang="en" data-page={page} data-gl-page={gl ? 'on' : 'off'}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>{docTitle}</title>
+    <meta name="description" content={description} />
+    {noindex && <meta name="robots" content="noindex" />}
+    <link rel="canonical" href={canonical} />
+    <meta name="color-scheme" content="light dark" />
+    <link rel="icon" href="/favicon.ico" sizes="32x32" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="preload" href="/fonts/bricolage-mark.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/bricolage-text.woff2" as="font" type="font/woff2" crossorigin />
+    <script is:inline>
+      // Render tier and motion before first paint (W-D017). Never reads core or touch-point counts.
+      (function (d, w) {
+        var h = d.documentElement, q = new URLSearchParams(location.search), t = q.get('tier'), m, c = navigator.connection;
+        try { m = localStorage.getItem('ion.motion'); } catch (e) {}
+        h.dataset.motion = m === 'reduced' || (m !== 'full' && matchMedia('(prefers-reduced-motion: reduce)').matches) ? 'reduced' : 'full';
+        if (!/^(full|lite|static)$/.test(t || '')) {
+          t = !w.WebGL2RenderingContext ? 'static' : matchMedia('(pointer: fine) and (hover: hover)').matches && !(c && c.saveData) ? 'full' : 'lite';
+          try { if (sessionStorage.getItem('ion.gl-off')) t = 'static'; } catch (e) {}
+        }
+        h.dataset.tier = t;
+        h.classList.add('js');
+      })(document, window);
+    </script>
+    <slot name="head" />
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to content</a>
+    <div id="rail" aria-hidden="true"><canvas id="gl" width="1" height="1"></canvas></div>
+    <header class="site-header">
+      <a class="site-mark" href="/"><span class="br" aria-hidden="true">[</span>derprito64bit<span class="br" aria-hidden="true">]</span></a>
+      <nav class="site-nav" aria-label="Site">
+        <ul>
+          <li><a href="/#work">Work</a></li>
+          <li><a href="#contact">Contact</a></li>
+          <li><a href="/#door">The Manor</a></li>
+        </ul>
+      </nav>
+      <div data-mount="header-tools"></div>
+    </header>
+    <div id="swup">
+      <main id="main" tabindex="-1" data-page={page} data-title={docTitle}>
+        <slot />
+      </main>
+    </div>
+    <Footer />
+    <div id="status" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
+    <script>
+      import '../stage/index.ts';
+    </script>
+  </body>
+</html>

@@ -1,0 +1,25 @@
+---
+// STUB by W-F (Wave 3a). Owner: W-S1, then W-C14. The [derprito64bit] logotype fitted to the content width
+// (W-D009): max(3rem, min(100cqi / 6.14, 24svh)). Brackets are aria-hidden, so the name reads as one word.
+interface Props {
+  id: string;
+}
+const { id } = Astro.props;
+---
+<div class="wordmark-fit">
+  <h1 id={id} class="wordmark"><span class="br" aria-hidden="true">[</span>derprito64bit<span class="br" aria-hidden="true">]</span></h1>
+</div>
+
+<style>
+  .wordmark-fit { container-type: inline-size; }
+  .wordmark {
+    font-family: var(--font-mark);
+    font-weight: 540;
+    font-size: var(--type-wordmark);
+    letter-spacing: -0.012em;
+    line-height: 0.9;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .br { color: var(--accent); font-weight: 800; }
+</style>

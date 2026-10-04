@@ -1,0 +1,21 @@
+---
+// A GL slot (W-D013): the DOM owns the box, GL borrows its pixels only while something moves, then hands back.
+// Pages declare slots and never scripts; the stage scans [data-gl][data-gl-id] after every swap.
+// - kind 'print' uses the page camera (1 GL unit = 1 CSS px); kind 'object' gets a stage-local scissored view.
+// - id is the GL entity key; the same id on the next page is where a lifted print docks (W-D015).
+// - Put the poster (the baked still) inside with data-poster; .is-gl hides that poster only.
+import type { HTMLAttributes } from 'astro/types';
+
+type Tag = 'a' | 'div' | 'figure' | 'li';
+interface Props extends HTMLAttributes<'div'> {
+  kind: 'print' | 'object';
+  id: string;
+  as?: Tag;
+  href?: string;
+  /** Test fixtures on /bench/ only: 'cube' (stage-local object) or 'quad' (flat print). */
+  fixture?: 'cube' | 'quad';
+}
+
+const { kind, id, as: Tag = 'div', href, fixture, class: className, ...rest } = Astro.props;
+---
+<Tag class:list={['slot', className]} data-gl={kind} data-gl-id={id} data-gl-fixture={fixture} href={href} {...rest}><slot /></Tag>

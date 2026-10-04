@@ -1,0 +1,38 @@
+{
+  "schema": 2,
+  "owner": "derprito64bit",
+  "awards": [
+    {
+      "slug": "award-01",
+      "title": "[PLACEHOLDER: award name]",
+      "event": "[PLACEHOLDER: DECA event and level]",
+      "placement": "[PLACEHOLDER: placing]",
+      "year": "[PLACEHOLDER: year]",
+      "kind": "",
+      "metal": "",
+      "photo": "",
+      "photoAlt": "",
+      "project": "",
+      "hero": true,
+      "placeholder": true,
+      "source": "owner-voice.md (deca glass and medals, 2026-10-02; details TO CONFIRM)"
+    }
+  ],
+  "medals": [
+    {
+      "slug": "medal-01",
+      "title": "[PLACEHOLDER: medal name]",
+      "event": "[PLACEHOLDER: event and level]",
+      "placement": "[PLACEHOLDER: placing]",
+      "year": "[PLACEHOLDER: year]",
+      "kind": "",
+      "metal": "",
+      "photo": "",
+      "photoAlt": "",
+      "project": "",
+      "hero": false,
+      "placeholder": true,
+      "source": "owner-voice.md (deca glass and medals, 2026-10-02; details TO CONFIRM)"
+    }
+  ]
+}

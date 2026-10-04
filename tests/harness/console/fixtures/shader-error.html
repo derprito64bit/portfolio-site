@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Fixture: shader error</title>
+<script type="importmap">{ "imports": { "three": "/vendor/three.module.js" } }</script>
+</head>
+<body><h1>Fault: a shader that does not compile</h1>
+<canvas id="c" width="64" height="64"></canvas>
+<script type="module">
+  import { WebGLRenderer, Scene, OrthographicCamera, Mesh, PlaneGeometry, ShaderMaterial } from 'three';
+  const renderer = new WebGLRenderer({ canvas: document.getElementById('c') });
+  const scene = new Scene();
+  const bad = new ShaderMaterial({
+    vertexShader: 'void main() { gl_Position = vec4(position, 1.0); }',
+    fragmentShader: 'void main() { gl_FragColor = vec4(undefinedThing, 1.0); }',
+  });
+  scene.add(new Mesh(new PlaneGeometry(2, 2), bad));
+  renderer.render(scene, new OrthographicCamera(-1, 1, 1, -1, 0, 1));
+</script>
+</body></html>

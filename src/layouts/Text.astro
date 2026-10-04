@@ -1,0 +1,11 @@
+---
+// Renders a content string, turning every [PLACEHOLDER: ...] token into a visible placeholder slot (W-D022).
+import { splitTokens } from '../lib/content/index.ts';
+
+interface Props {
+  value: string;
+}
+const { value } = Astro.props;
+const parts = splitTokens(value);
+---
+{parts.map((p) => (p.token ? <span class="ph">{p.text}</span> : p.text))}
