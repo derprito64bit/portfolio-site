@@ -95,7 +95,9 @@ Agents cannot message each other. Issues are the channel.
    `review:approved` or `review:changes-requested` (labels, because one account cannot approve its own PR).
    The verdict lists each finding with file:line or a screenshot path, and what must change.
 4. On `changes-requested`, the crew fixes, pushes, posts a checkpoint and swaps back to `status:needs-review`.
-5. At most 3 rounds. After that the manager adds `needs:orchestrator` and `status:blocked`.
+5. At most 4 code rounds, 2 evidence-only rounds and 3 re-gates (a re-gate checks the same head again without crew
+   work, for example after a host-blocked or missing row). A round counts once its review completes. When a cap is
+   reached, the manager adds `needs:orchestrator` and `status:blocked`; the orchestrator may grant more rounds.
 6. Only the orchestrator merges. After the merge the issue is `status:done`.
 
 ## 7. Resuming from an issue
@@ -116,3 +118,25 @@ account.
 - Only the dispatcher creates issues in bulk.
 - Batch checkpoints; do not comment for every commit.
 - On HTTP 403 or 429, back off with jitter (2 s, 4 s, 8 s, …, up to 5 tries), then report it in a checkpoint.
+
+## 9. Heavy jobs and capacity
+
+Every agent shares one PC: 6 cores / 12 threads and one RX 6700 XT. A timed number is valid only on a quiet host
+([`budgets.md`](budgets.md) "Measurement validity" R1-R5), so heavy jobs stay within these limits, machine-wide:
+
+| Job | At once | While the `perf` lane is held |
+|---|---|---|
+| Perf measurement (Lighthouse, traces, frame counts, GPU timing) | 1 (the `perf` lane) | n/a |
+| Blender render or build (GPU only) | 1 (the `blender` lane) | none starts |
+| Unity tests or builds | 1 | none starts |
+| Browser suites (`crew.mjs shoot` or `a11y`, `tests/*/run.mjs`) | 2 | none starts |
+| `npm ci` or build | 2 | none starts |
+
+- Before starting a Blender, Unity, browser-suite, `npm ci` or build job, run `scripts/fleet/lane.ps1 status`. While
+  `perf` is held, wait and check again.
+- A timed measurement takes `perf`, then `blender` (that blocks new Blender jobs and waits out a running one), then
+  passes the `scripts/fleet/hostload.ps1` precheck (R1). A lane or precheck timeout makes the row blocked (host),
+  never pass or fail. Renew both lanes every 20 minutes and release both when done.
+- Agents that only read, write and call GitHub are not heavy jobs.
+- After every workflow, `lane.ps1 status` shows every lane free, and the fork's `scripts/fork/reap-browsers.ps1`
+  reaps leftover automation browsers.
