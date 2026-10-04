@@ -5,11 +5,11 @@
  "models": {
   "lod0": {
    "file": "public/models/camera_xt_lod0.glb",
-   "sha256": "f7e5f42d0e2a16dfa6be19e3178ded9c275d12656843d41e591e39a03b173160"
+   "sha256": "8ab453593dbd2b7431df7adbc885cac3e6ef96e3879ac14c28337d7ce8b56366"
   },
   "lod1": {
    "file": "public/models/camera_xt_lod1.glb",
-   "sha256": "13cbbb048293b35e661ff093d5870c7b34fbc7630f9c2d679a4a893fd4b59dfe"
+   "sha256": "f3cd7d0925305add83aaafa40fd1dd395c361b61544cb671d67ebff43bd5d735"
   }
  },
  "look": "src/gl/camera/look.js",
@@ -23,11 +23,11 @@
     "pitchDeg": 12
    },
    "fovDeg": 28,
-   "aspect": 1.3490323,
+   "aspect": 1.2841652,
    "position": [
-    -0.0959438,
-    0.087002,
-    0.2117692
+    -0.112349,
+    0.0905783,
+    0.2207253
    ],
    "quaternion": [
     -0.1022443,
@@ -35,75 +35,75 @@
     -0.0217327,
     0.9727892
    ],
-   "near": 0.0795976,
-   "far": 0.3624683,
+   "near": 0.0878069,
+   "far": 0.3812605,
    "posters": {
     "lod0": [
      {
       "w": 480,
-      "h": 356,
+      "h": 374,
       "avif": "camera-split-480.avif",
       "webp": "camera-split-480.webp",
-      "webpBytes": 19828,
-      "avifBytes": 12156
+      "webpBytes": 34690,
+      "avifBytes": 21490
      },
      {
       "w": 800,
-      "h": 593,
+      "h": 623,
       "avif": "camera-split-800.avif",
       "webp": "camera-split-800.webp",
-      "webpBytes": 39904,
-      "avifBytes": 24769
+      "webpBytes": 81222,
+      "avifBytes": 49794
      },
      {
       "w": 1200,
-      "h": 890,
+      "h": 934,
       "avif": "camera-split-1200.avif",
       "webp": "camera-split-1200.webp",
-      "webpBytes": 66366,
-      "avifBytes": 37714
+      "webpBytes": 157888,
+      "avifBytes": 93804
      },
      {
       "w": 1600,
-      "h": 1186,
+      "h": 1246,
       "avif": "camera-split-1600.avif",
       "webp": "camera-split-1600.webp",
-      "webpBytes": 93494,
-      "avifBytes": 51884
+      "webpBytes": 245814,
+      "avifBytes": 144199
      }
     ],
     "lod1": [
      {
       "w": 360,
-      "h": 267,
+      "h": 280,
       "avif": "camera-split-lod1-360.avif",
       "webp": "camera-split-lod1-360.webp",
-      "webpBytes": 11276,
-      "avifBytes": 7672
+      "webpBytes": 18262,
+      "avifBytes": 11808
      },
      {
       "w": 600,
-      "h": 445,
+      "h": 467,
       "avif": "camera-split-lod1-600.avif",
       "webp": "camera-split-lod1-600.webp",
-      "webpBytes": 23146,
-      "avifBytes": 14332
+      "webpBytes": 38252,
+      "avifBytes": 23640
      },
      {
       "w": 900,
-      "h": 667,
+      "h": 701,
       "avif": "camera-split-lod1-900.avif",
       "webp": "camera-split-lod1-900.webp",
-      "webpBytes": 40138,
-      "avifBytes": 25821
+      "webpBytes": 66222,
+      "avifBytes": 41029
      },
      {
       "w": 1200,
-      "h": 890,
+      "h": 934,
       "avif": "camera-split-lod1-1200.avif",
       "webp": "camera-split-lod1-1200.webp",
-      "webpBytes": 57930,
-      "avifBytes": 35218
+      "webpBytes": 92544,
+      "avifBytes": 57572
      }
     ]
    }
@@ -114,11 +114,11 @@
     "pitchDeg": 10
    },
    "fovDeg": 28,
-   "aspect": 1.3595763,
+   "aspect": 1.2985469,
    "position": [
-    -0.0804028,
-    0.0791621,
-    0.2144825
+    -0.09634,
+    0.0817088,
+    0.2231494
    ],
    "quaternion": [
     -0.0858317,
@@ -126,75 +126,75 @@
     -0.0151344,
     0.9810603
    ],
-   "near": 0.0743908,
-   "far": 0.3572615,
+   "near": 0.0820621,
+   "far": 0.3755158,
    "posters": {
     "lod0": [
      {
       "w": 480,
-      "h": 353,
+      "h": 370,
       "avif": "camera-stacked-480.avif",
       "webp": "camera-stacked-480.webp",
-      "webpBytes": 19894,
-      "avifBytes": 12474
+      "webpBytes": 35642,
+      "avifBytes": 22237
      },
      {
       "w": 800,
-      "h": 588,
+      "h": 616,
       "avif": "camera-stacked-800.avif",
       "webp": "camera-stacked-800.webp",
-      "webpBytes": 39960,
-      "avifBytes": 24506
+      "webpBytes": 83560,
+      "avifBytes": 51813
      },
      {
       "w": 1200,
-      "h": 883,
+      "h": 924,
       "avif": "camera-stacked-1200.avif",
       "webp": "camera-stacked-1200.webp",
-      "webpBytes": 66502,
-      "avifBytes": 37315
+      "webpBytes": 160542,
+      "avifBytes": 96770
      },
      {
       "w": 1600,
-      "h": 1177,
+      "h": 1232,
       "avif": "camera-stacked-1600.avif",
       "webp": "camera-stacked-1600.webp",
-      "webpBytes": 92920,
-      "avifBytes": 51860
+      "webpBytes": 246796,
+      "avifBytes": 145645
      }
     ],
     "lod1": [
      {
       "w": 360,
-      "h": 265,
+      "h": 277,
       "avif": "camera-stacked-lod1-360.avif",
       "webp": "camera-stacked-lod1-360.webp",
-      "webpBytes": 11522,
-      "avifBytes": 7837
+      "webpBytes": 19400,
+      "avifBytes": 12599
      },
      {
       "w": 600,
-      "h": 441,
+      "h": 462,
       "avif": "camera-stacked-lod1-600.avif",
       "webp": "camera-stacked-lod1-600.webp",
-      "webpBytes": 24354,
-      "avifBytes": 14690
+      "webpBytes": 40862,
+      "avifBytes": 24996
      },
      {
       "w": 900,
-      "h": 662,
+      "h": 693,
       "avif": "camera-stacked-lod1-900.avif",
       "webp": "camera-stacked-lod1-900.webp",
-      "webpBytes": 41912,
-      "avifBytes": 26261
+      "webpBytes": 69942,
+      "avifBytes": 43132
      },
      {
       "w": 1200,
-      "h": 883,
+      "h": 924,
       "avif": "camera-stacked-lod1-1200.avif",
       "webp": "camera-stacked-lod1-1200.webp",
-      "webpBytes": 59032,
-      "avifBytes": 34072
+      "webpBytes": 97434,
+      "avifBytes": 60122
      }
     ]
    }
@@ -205,11 +205,11 @@
     "pitchDeg": 8
    },
    "fovDeg": 28,
-   "aspect": 1.3481503,
+   "aspect": 1.3030441,
    "position": [
-    -0.0660295,
-    0.0713227,
-    0.2188495
+    -0.0805457,
+    0.0734477,
+    0.2249824
    ],
    "quaternion": [
     -0.0690776,
@@ -217,75 +217,75 @@
     -0.0097082,
     0.9878558
    ],
-   "near": 0.0724239,
-   "far": 0.3552946,
+   "near": 0.0772797,
+   "far": 0.3707333,
    "posters": {
     "lod0": [
      {
       "w": 480,
-      "h": 356,
+      "h": 368,
       "avif": "camera-phone-480.avif",
       "webp": "camera-phone-480.webp",
-      "webpBytes": 19976,
-      "avifBytes": 12609
+      "webpBytes": 37422,
+      "avifBytes": 23549
      },
      {
       "w": 800,
-      "h": 593,
+      "h": 614,
       "avif": "camera-phone-800.avif",
       "webp": "camera-phone-800.webp",
-      "webpBytes": 40520,
-      "avifBytes": 24634
+      "webpBytes": 88264,
+      "avifBytes": 54063
      },
      {
       "w": 1200,
-      "h": 890,
+      "h": 921,
       "avif": "camera-phone-1200.avif",
       "webp": "camera-phone-1200.webp",
-      "webpBytes": 67306,
-      "avifBytes": 37959
+      "webpBytes": 166866,
+      "avifBytes": 100350
      },
      {
       "w": 1600,
-      "h": 1187,
+      "h": 1228,
       "avif": "camera-phone-1600.avif",
       "webp": "camera-phone-1600.webp",
-      "webpBytes": 93372,
-      "avifBytes": 50846
+      "webpBytes": 253336,
+      "avifBytes": 151715
      }
     ],
     "lod1": [
      {
       "w": 360,
-      "h": 267,
+      "h": 276,
       "avif": "camera-phone-lod1-360.avif",
       "webp": "camera-phone-lod1-360.webp",
-      "webpBytes": 12382,
-      "avifBytes": 8258
+      "webpBytes": 20846,
+      "avifBytes": 12875
      },
      {
       "w": 600,
-      "h": 445,
+      "h": 460,
       "avif": "camera-phone-lod1-600.avif",
       "webp": "camera-phone-lod1-600.webp",
-      "webpBytes": 25524,
-      "avifBytes": 15433
+      "webpBytes": 42922,
+      "avifBytes": 25777
      },
      {
       "w": 900,
-      "h": 668,
+      "h": 691,
       "avif": "camera-phone-lod1-900.avif",
       "webp": "camera-phone-lod1-900.webp",
-      "webpBytes": 43782,
-      "avifBytes": 25871
+      "webpBytes": 74596,
+      "avifBytes": 44709
      },
      {
       "w": 1200,
-      "h": 890,
+      "h": 921,
       "avif": "camera-phone-lod1-1200.avif",
       "webp": "camera-phone-lod1-1200.webp",
-      "webpBytes": 61952,
-      "avifBytes": 35425
+      "webpBytes": 107554,
+      "avifBytes": 62202
      }
     ]
    }
