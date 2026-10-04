@@ -686,8 +686,11 @@ const MID_DEVELOP = (heroTimeline.landingDip + heroTimeline.readable) / 2 - hero
  *   from the slot before the press and from it after the handback, each by more than the parity tolerance (a still
  *   left over the develop, or a print that arrives developed, matches one of them);
  * - end with every still shown (computed opacity 1, no inline opacity, none pending) and placed in the slot.
+ * On Playwright's WebKit build the W-F governor steps lite down to static about 2.6 s into any press (#61): the flight is
+ * then cut before its handback, so it logs no flight row (a cut motion is not logged). That row is then not required,
+ * and the tier drop is recorded. WebKit runs one press per load (`presses: 1`), so every press it checks is on lite.
  */
-export async function restPress(base, p, { out } = {}) {
+export async function restPress(base, p, { out, presses: count = 2, run = 1 } = {}) {
   const { page, ctx } = await open(base, p, 'auto', { init: REST_PROBE });
   const touch = !MOUSE(p);
   const live = await page.waitForFunction(() => window.__hero?.live, null, { timeout: WAIT.patience }).then(() => true, () => false);
@@ -697,7 +700,7 @@ export async function restPress(base, p, { out } = {}) {
   const clip = { x: g.print.x, y: g.print.y, width: g.print.w, height: g.print.h };
   const T = heroTimeline;
   const presses = [];
-  for (let n = 1; n <= 2; n++) {
+  for (let n = 1; n <= count; n++) {
     // The rest: the stage detaches after an idle detach of nothing moving, then two more of them asleep.
     await page.waitForFunction(() => window.__stage?.settled === true, null, { timeout: WAIT.patience }).catch(() => {});
     const ticksAtRest = await page.evaluate(() => window.__stage.stats.ticks);
@@ -720,10 +723,11 @@ export async function restPress(base, p, { out } = {}) {
     const status = await page.evaluate(() => document.getElementById('status')?.textContent ?? '');
     const frames = await page.evaluate((at) => window.__noFly.filter((f) => f.t >= at), pressedAt);
     const log = await page.evaluate((i) => window.__motionLog.slice(i), logFrom);
+    const drops = await page.evaluate((at) => (window.__stage?.tierLog ?? []).filter((e) => e.at >= at).map((e) => ({ tier: e.tier, reason: e.reason, afterPressMs: Math.round(e.at - at) })), pressedAt);
     const midRaw = await raw(midShot);
     const afterRaw = await raw(afterShot);
     if (out) {
-      for (const [name, buf] of [['before', beforeShot], ['mid', midShot], ['after', afterShot]]) await sharp(buf).toFile(`${out}/rest-${p}-press${n}-${name}.png`);
+      for (const [name, buf] of [['before', beforeShot], ['mid', midShot], ['after', afterShot]]) await sharp(buf).toFile(`${out}/rest-${p}-run${run}-press${n}-${name}.png`);
     }
     // The frame: the page's own frame interval while the print flies (median of the logged frames' gaps).
     const gaps = frames.slice(1).map((f, i) => f.t - frames[i].t);
@@ -752,7 +756,8 @@ export async function restPress(base, p, { out } = {}) {
       landed: firstInSlot >= 0,
       noFly: crossings.length === 0,
       pressT0: within(pressT0),
-      flightT0: within(flightPress),
+      // A flight cut by a tier drop logs no flight row (#61 on WebKit): then only the drop is recorded.
+      flightT0: flightRow ? within(flightPress) : drops.length > 0,
       midHidden,
       developInView: diffBefore > SPEC.parityMax && diffAfter > SPEC.parityMax,
       shown,
@@ -762,6 +767,7 @@ export async function restPress(base, p, { out } = {}) {
       n,
       pass: Object.values(checks).every(Boolean),
       checks,
+      tierDrops: drops,
       restMs: rest.idleAt === null ? null : Math.round(pressedAt - rest.idleAt),
       frameMs: frameMs === null ? null : Math.round(frameMs * 100) / 100,
       firstFrameAfterPressMs: frames.length ? Math.round(frames[0].t - pressedAt) : null,
@@ -782,8 +788,9 @@ export async function restPress(base, p, { out } = {}) {
       status,
     });
   }
+  const tierLog = await page.evaluate(() => (window.__stage?.tierLog ?? []).map((e) => `${e.tier}:${e.reason}@${e.at}`));
   await ctx.close();
-  return { profile: p, live, tier: g.tier, pass: live && presses.every((x) => x.pass), presses };
+  return { profile: p, run, live, tier: g.tier, tierLog, pass: live && presses.every((x) => x.pass), presses };
 }
 
 export async function strip(base, { out } = {}) {
@@ -856,7 +863,10 @@ export async function strip(base, { out } = {}) {
   const thrown = [await pressRow(base, 'P2', { failDecode: true })];
   // Presses after a rest (round 3 must-fixes 1 and 2): the eject, the press's clock and the develop in view.
   const rested = [];
-  for (const p of REST_PROFILES) rested.push(await restPress(base, p, { out }));
+  for (const p of REST_PROFILES) {
+    if (profile(p).browser === 'webkit') for (let run = 1; run <= 2; run++) rested.push(await restPress(base, p, { out, presses: 1, run }));
+    else rested.push(await restPress(base, p, { out }));
+  }
   const same = tapped.lens === keyed.lens && tapped.look === keyed.look && tapped.readout === keyed.readout;
   const pass = group === 1 && small.length === 0 && overlaps.length === 0 && same && y1 - y0 > 100 && presses.every((p) => p.pass) && [...early, ...dropped, ...thrown, ...rested].every((r) => r.pass);
   return { pass, group, targets: targets.length, small, overlaps, tapped, keyed, identical: same, swipeScrolledPx: y1 - y0, presses, early, dropped, thrown, rested };
