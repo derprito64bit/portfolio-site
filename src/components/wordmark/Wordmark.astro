@@ -1,13 +1,17 @@
 ---
-// STUB by W-F (Wave 3a). Owner: W-S1, then W-C14. The [derprito64bit] logotype fitted to the content width
-// (W-D009): max(3rem, min(100cqi / 6.14, 24svh)). Brackets are aria-hidden, so the name reads as one word.
+// The [derprito64bit] logotype, fitted to the content width at every width (W-D009): max(3rem, min(100cqi / 6.14,
+// 24svh)). The name is wght 540, wdth 100; the brackets wght 800 in amber (W-D007: a logotype, aria-hidden, so the
+// name reads as one word). One line at default spacing; under user text spacing or zoom it wraps instead of clipping
+// (overflow-wrap anywhere). 0 JS for the fit.
+// The brackets are the viewfinder: they rest 0.07em outside the name and close on it (detent spring) when the camera
+// fires, at T0 and on every shutter press, never under reduced motion. hero.ts toggles [data-close].
 interface Props {
   id: string;
 }
 const { id } = Astro.props;
 ---
 <div class="wordmark-fit">
-  <h1 id={id} class="wordmark"><span class="br" aria-hidden="true">[</span>derprito64bit<span class="br" aria-hidden="true">]</span></h1>
+  <h1 id={id} class="wordmark"><span class="br br-l" aria-hidden="true">[</span>derprito64bit<span class="br br-r" aria-hidden="true">]</span></h1>
 </div>
 
 <style>
@@ -15,11 +19,31 @@ const { id } = Astro.props;
   .wordmark {
     font-family: var(--font-mark);
     font-weight: 540;
+    font-stretch: 100%;
     font-size: var(--type-wordmark);
     letter-spacing: -0.012em;
-    line-height: 0.9;
+    /* 0.86: the ascenders stay inside the box and the one descender (p) hangs 0.13em below it; the hero row's gap
+       below the h1 clears it. */
+    line-height: 0.86;
+    padding-block-end: 0.13em;
     white-space: normal;
     overflow-wrap: anywhere;
+    text-wrap: wrap;
   }
-  .br { color: var(--accent); font-weight: 800; }
+  /* Inline, offset by relative position (not inline-block): the name and its brackets stay one line box. */
+  .br {
+    position: relative;
+    color: var(--accent);
+    font-weight: 800;
+    transition: inset-inline-start var(--spring-detent-ms) var(--spring-detent);
+  }
+  .br-l { inset-inline-start: -0.07em; }
+  .br-r { inset-inline-start: 0.07em; }
+  /* Close on the name: the detent spring in, the settle spring back out (set and cleared by hero.ts). */
+  .wordmark[data-close] .br { inset-inline-start: 0; }
+  .wordmark:not([data-close]) .br { transition-duration: var(--spring-settle-ms); transition-timing-function: var(--spring-settle); }
+  :global(html[data-motion='reduced']) .br { transition: none; }
+  @media (forced-colors: active) {
+    .br { color: CanvasText; }
+  }
 </style>

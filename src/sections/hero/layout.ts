@@ -1,0 +1,130 @@
+// Hero stage layout (W-D009, W-D013): where the camera, print 1, the strip and the effects slot sit, per band.
+// It runs twice: inlined before first paint (Hero.astro serialises this function into an inline script, so the first
+// frame is already laid out and nothing shifts), and from hero.ts on width, font and text-spacing changes.
+// It must stay self-contained (no imports, no outer references): it is stringified.
+//
+// Rules it enforces, from the plan and the brief:
+// - stage height = min(content width, 100svh minus the measured text stack) (W-D009);
+// - print 1 is at least 50% of the content width below 64rem, and its image window is at least 220 px at 64rem and
+//   wider (window = 46/54 of the print width);
+// - the whole camera and print 1 sit in the first screen; print 1 overlaps the grip side, never the lens;
+// - the h1, lede and CTA are no-fly rects: nothing GL sits on them, and the eject has headroom below them;
+// - no text box over a GL rect at rest (the strip never touches the camera or the print);
+// - the LCP element stays the h1 on mouse profiles (the camera poster is kept below 85% of the h1's area) and the h1
+//   or print 1's still on touch (the poster stays below 85% of the print's area).
+export function heroLayout(hero: HTMLElement): void {
+  const doc = hero.ownerDocument;
+  const win = doc.defaultView as Window;
+  const row = hero.querySelector('.hero-row') as HTMLElement | null;
+  const h1 = hero.querySelector('h1') as HTMLElement | null;
+  const copy = hero.querySelector('.hero-copy') as HTMLElement | null;
+  if (!row || !h1 || !copy) return;
+  const mm = (q: string) => win.matchMedia(q).matches;
+  const W = row.clientWidth;
+  const vh = win.innerHeight;
+  const split = mm('(min-width: 64rem), (orientation: landscape) and (max-height: 500px)');
+  const band = split ? 'split' : mm('(max-width: 479px)') ? 'phone' : 'stacked';
+  const touch = !mm('(pointer: fine) and (hover: hover)');
+  const A = Number(hero.getAttribute('data-aspect-' + band)) || 1.35;
+  // The strip is a fixed two-row block (W-D032 targets): row 1 Shutter + Lens, row 2 Look + readout.
+  const SW = 344;
+  const SH = 96;
+  const GS = 8; // gap between the camera and the strip
+  const PR = 54 / 86; // print width / height
+  const WIN = 46 / 54; // image window / print width
+  const HEAD = 0.12; // eject headroom above the camera, as a share of its width
+  const OVER = 0.32; // most of the camera's width print 1 may cover (the grip side; the lens starts near 44%)
+  const r = (n: number) => Math.round(n);
+  const rowBox = row.getBoundingClientRect();
+  const rowTop = rowBox.top + win.scrollY;
+  const h1Box = h1.getBoundingClientRect();
+  const h1Area = h1Box.width * h1Box.height;
+  let textRight = 0;
+  let copyBottom = 0;
+  copy.querySelectorAll('.hero-line, .hero-cta a').forEach((el) => {
+    const b = el.getBoundingClientRect();
+    textRight = Math.max(textRight, b.right - rowBox.left);
+    copyBottom = Math.max(copyBottom, b.bottom - rowBox.top);
+  });
+  const fits = W >= SW;
+  let arrangement: 'beside' | 'below' | 'short';
+  let rowH: number;
+  let cam: { x: number; y: number; w: number; h: number };
+  let pr: { x: number; y: number; w: number; h: number };
+  let strip: { x: number; y: number } | null;
+  const capArea = (printArea: number) => 0.85 * (touch ? Math.max(h1Area, printArea) : h1Area);
+  if (split) {
+    const avail = vh - rowTop - 12;
+    const short = avail < SH + 260 || !fits;
+    arrangement = short ? 'short' : 'beside';
+    rowH = Math.max(avail, 200);
+    const stripRoom = short ? 0 : SH + GS;
+    // Print 1: as tall as the row allows, at least a 220 px window, about a quarter of the content width.
+    let pw = Math.min(rowH * PR, Math.max(258.4, 0.24 * W));
+    if (short) pw = Math.min(rowH * PR, 0.3 * W);
+    // Where the row is tall enough, print 1 may sit under the copy; otherwise it keeps clear of the lede and CTA.
+    const under = rowH - copyBottom - 16 >= pw / PR;
+    const left = under ? 0 : textRight + 24;
+    let cw = Math.min((rowH - stripRoom) / (HEAD + 1 / A), Math.sqrt(capArea(pw * (pw / PR)) * A), 0.46 * W, 760);
+    // The print sits left of the strip and over the grip side.
+    let right = Math.min(short ? W : W - SW - 8, W - cw + OVER * cw);
+    if (right - left < pw) {
+      // Not enough room between the copy and the camera: shrink the camera until the print fits, then the print.
+      const need = pw - (right - left);
+      cw = Math.max(160, cw - need / (1 - OVER));
+      right = Math.min(short ? W : W - SW - 8, W - cw + OVER * cw);
+      pw = Math.max(Math.min(pw, right - left), 100);
+    }
+    const ch = cw / A;
+    // Compact the row to what it holds (a tall portrait split, like a 1024 x 1366 tablet, would otherwise leave a
+    // gap between the copy and the camera), keeping everything bottom-aligned.
+    rowH = Math.min(rowH, Math.max(pw / PR + (under ? copyBottom + 16 : 0), HEAD * cw + ch + stripRoom, copyBottom + 24));
+    cam = { x: W - cw, y: rowH - stripRoom - ch, w: cw, h: ch };
+    pr = { x: right - pw, y: rowH - pw / PR, w: pw, h: pw / PR };
+    strip = short ? { x: W - SW, y: rowH + 12 } : { x: W - SW, y: rowH - SH };
+    if (short) rowH += 12 + SH;
+  } else {
+    arrangement = 'below';
+    const stageTop = copyBottom + 20;
+    const pw = Math.max(0.5 * W, 140);
+    const ph = pw / PR;
+    const room = vh - (rowTop + stageTop) - GS - SH - 12;
+    const areaH = Math.max(Math.min(W, room), ph);
+    let cw = Math.min(0.5 * W / (1 - OVER), Math.sqrt(capArea(pw * ph) * A), areaH / (HEAD + 1 / A), W - 24);
+    cw = Math.max(cw, 120);
+    const ch = cw / A;
+    cam = { x: W - cw, y: stageTop + Math.min(HEAD * cw, areaH - ch), w: cw, h: ch };
+    pr = { x: 0, y: stageTop + areaH - ph, w: pw, h: ph };
+    strip = fits ? { x: W - SW, y: stageTop + areaH + GS } : null;
+    rowH = stageTop + areaH + (fits ? GS + SH : 0);
+  }
+  // The effects slot covers everything GL draws during a print's flight: the camera with its eject headroom and the
+  // print. Hidden at rest, so no text ever sits over a GL rect while nothing moves.
+  const fxTop = Math.max(0, Math.min(cam.y - HEAD * cam.w, pr.y) - 8);
+  const fxLeft = Math.max(0, Math.min(cam.x, pr.x) - 16);
+  const fxBottom = Math.max(cam.y + cam.h, pr.y + pr.h) + 16;
+  const s = hero.style;
+  const px = (k: string, v: number) => s.setProperty(k, r(v) + 'px');
+  px('--row-h', rowH);
+  px('--cam-x', cam.x);
+  px('--cam-y', cam.y);
+  px('--cam-w', cam.w);
+  px('--cam-h', cam.h);
+  px('--pr-x', pr.x);
+  px('--pr-y', pr.y);
+  px('--pr-w', pr.w);
+  px('--pr-h', pr.h);
+  px('--fx-x', fxLeft);
+  px('--fx-y', fxTop);
+  px('--fx-w', W - fxLeft);
+  px('--fx-h', fxBottom - fxTop);
+  if (strip) {
+    px('--strip-x', strip.x);
+    px('--strip-y', strip.y);
+  }
+  hero.setAttribute('data-band', band);
+  hero.setAttribute('data-arrangement', strip ? arrangement : 'flow');
+  hero.setAttribute('data-laid', '');
+  void doc;
+  void WIN;
+}
