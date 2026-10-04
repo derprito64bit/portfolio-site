@@ -3,8 +3,25 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import * as H from '../harness/lib.mjs';
+import { durations, heroTimeline } from '../../src/lib/tokens.js';
 
 export { H };
+
+/**
+ * The harness's waits, each a count of the tokens it waits on (A2: no literal duration in tests/w-s1). They are
+ * patience and settling, not acceptance numbers: a check that waits longer only takes longer.
+ */
+export const WAIT = {
+  /** The stage's idle detach: a page with nothing moving has gone to sleep after it (W-D012 'sleeps 1 s later'). */
+  settle: durations.idleDetach,
+  /** One press on GL, whole: the sequence to developed, the handback, and the loop asleep. */
+  press: heroTimeline.developed + durations.glHandback + durations.idleDetach,
+  /** A press on static or reduced motion: its fade swap, twice over. */
+  fade: 2 * durations.reduced,
+  /** Patience before a wait is called failed: five hero budgets. */
+  patience: 5 * heroTimeline.budgetAfterGlReady,
+};
+export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /** GES-1 profiles plus the extra sizes the brief names (landscape phone, 960 x 900, 1180 x 820, 600 x 900). */
 export const EXTRA = {
@@ -48,7 +65,7 @@ export async function open(base, name, mode = 'auto', { query = '', colorScheme,
 }
 
 /** Wait until the hero is at rest: the intro (if any) handed back and the stage settled. */
-export async function heroAtRest(page, timeout = 15000) {
+export async function heroAtRest(page, timeout = WAIT.patience) {
   await page.waitForFunction(() => {
     const h = document.documentElement.dataset.hero;
     const cam = window.__hero;

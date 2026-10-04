@@ -118,8 +118,9 @@ function drawingDone(): void {
   html.dataset.cam = 'camera';
   const { ground, lines } = drawingParts();
   for (const el of [ground, lines]) el?.getAnimations().forEach((a) => a.cancel());
-  // GL draws the finished camera; its poster loads behind it (a context loss hands the slot back to the poster).
-  if (hero && cam?.live) heroPoster(hero, true);
+  // GL draws the finished camera and its poster loads behind it (a context loss hands the slot back to the poster);
+  // without GL (the tier dropped to static mid-drawing) the poster is the camera. Already loaded: a no-op.
+  if (hero) heroPoster(hero, true);
 }
 
 let crossfading = false;

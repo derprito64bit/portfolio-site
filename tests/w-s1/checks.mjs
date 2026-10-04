@@ -5,11 +5,10 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import sharp from 'sharp';
 import { durations, heroTimeline, springs } from '../../src/lib/tokens.js';
-import { H, context, heroAtRest, heroRects, median, open, profile, rectsIntersect } from './lib.mjs';
+import { H, WAIT, context, heroAtRest, heroRects, median, open, profile, rectsIntersect, sleep } from './lib.mjs';
 
 const GES = ['D1', 'D2', 'D3', 'T1', 'T2', 'P1', 'P2', 'S1', 'S2'];
 const MOUSE = (p) => profile(p).input === 'mouse';
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 /** The acceptance lines' own numbers that no token holds (W-D012's guards, the delayed-GL line, budgets.md). */
 const SPEC = {
   /** "With the GL chunk delayed 3 s via page.route, a developed print 1 is visible by FCP + 2.6 s". */
@@ -571,6 +570,85 @@ export async function parity(base, { profiles = [...GES, 'X1180', 'X600', 'WK-P2
 
 /** 6. The strip: group 'Camera', targets >= 44 px without overlap at P2 touch, arrows = taps, swipe scrolls, tap prints;
  *  every made still is placed in print 1's slot (1 to 4 presses, through the stack trim). */
+/** A viewport point on the camera that hit-tests to the camera (not print 1, not a drag hit area). */
+const CAMERA_SPOT = () => {
+  const cam = document.querySelector('[data-hero-camera]');
+  const b = cam.getBoundingClientRect();
+  for (const fy of [0.5, 0.35, 0.65, 0.2, 0.8]) {
+    for (const fx of [0.6, 0.75, 0.45, 0.9, 0.3]) {
+      const x = Math.round(b.left + fx * b.width);
+      const y = Math.round(b.top + fy * b.height);
+      const el = document.elementFromPoint(x, y);
+      if (el && cam.contains(el) && !el.closest('[data-drag]')) return { x, y };
+    }
+  }
+  return { x: Math.round(b.left + b.width / 2), y: Math.round(b.top + b.height / 2) };
+};
+
+/** The hero's print state: the made stills, the newest one's opacity, GL's hold on the prints, the status, the tier. */
+const PRINT_STATE = () => {
+  const imgs = [...document.querySelectorAll('[data-hero-print] img.hero-still')];
+  const last = imgs.at(-1);
+  return {
+    stills: imgs.length,
+    lastSlug: last?.dataset.slug ?? 'print-1',
+    lastOpacity: last ? Number(getComputedStyle(last).opacity) : null,
+    flying: Boolean(window.__hero?.flying),
+    fx: document.querySelector('[data-hero-section]').hasAttribute('data-fx'),
+    printIsGl: document.querySelector('[data-hero-print]').classList.contains('is-gl'),
+    status: document.getElementById('status')?.textContent ?? '',
+    tier: document.documentElement.dataset.tier,
+    tierLog: (window.__stage?.tierLog ?? []).map((e) => `${e.tier}:${e.reason}@${e.at}`),
+    governorSteps: window.__stage?.stats?.governorSteps ?? null,
+  };
+};
+
+/**
+ * A press `delay` ms after the camera went GL (__hero.live), then the next press. Options: `demoteAt` forces the tier
+ * to static that long after the first press (mid-flight); `failDecode` makes the next print's GL copy fail to decode
+ * (a throw inside printNext). Each press must end on its end state: the made still visible, GL let go of the prints
+ * (no flight, no data-fx), the status naming it; the next press then prints too (W-D012: presses are never lost).
+ */
+export async function pressRow(base, p, { delay = 0, demoteAt = null, failDecode = false, run = 1 } = {}) {
+  const { page, ctx } = await open(base, p);
+  const touch = !MOUSE(p);
+  // A point on the camera that the camera itself receives (print 1 overlaps the grip side by design, W-D009).
+  const spot = touch ? await page.evaluate(CAMERA_SPOT) : null;
+  const press = () => (touch ? page.touchscreen.tap(spot.x, spot.y) : page.click('[data-shutter]'));
+  // On the full tier the opening runs first; a press waits for it (an early press is a guard, inputGuard's line).
+  if (!touch) await heroAtRest(page).catch(() => {});
+  const live = await page.waitForFunction(() => window.__hero?.live, null, { timeout: WAIT.patience }).then(() => true, () => false);
+  const liveAt = await page.evaluate(() => performance.now());
+  await sleep(delay);
+  if (failDecode) {
+    // Only images outside the document fail: the camera's GL copies (stillTexture), not the page's own.
+    await page.evaluate(() => {
+      const decode = (window.__decode = HTMLImageElement.prototype.decode);
+      HTMLImageElement.prototype.decode = function () {
+        return this.isConnected ? decode.call(this) : Promise.reject(new DOMException('test: no decode', 'EncodingError'));
+      };
+    });
+  }
+  const pressedAt = await page.evaluate(() => performance.now());
+  await press();
+  let demoted = null;
+  if (demoteAt !== null) {
+    await sleep(demoteAt);
+    demoted = await page.evaluate(() => ({ during: { flying: Boolean(window.__hero?.flying), fx: document.querySelector('[data-hero-section]').hasAttribute('data-fx') }, changed: window.__stage.demote('static', 'test') }));
+  }
+  await sleep(demoteAt !== null ? WAIT.fade + WAIT.settle : WAIT.press);
+  const first = await page.evaluate(PRINT_STATE);
+  if (failDecode) await page.evaluate(() => { HTMLImageElement.prototype.decode = window.__decode; });
+  await press();
+  await sleep(first.tier === 'static' ? WAIT.fade + WAIT.settle : WAIT.press);
+  const second = await page.evaluate(PRINT_STATE);
+  const placement = await page.evaluate(PLACEMENT);
+  await ctx.close();
+  const ended = (s) => s.lastOpacity === 1 && !s.flying && !s.fx && !s.printIsGl && /Printed/.test(s.status);
+  const pass = live && ended(first) && first.stills === 2 && ended(second) && second.stills === 3 && second.lastSlug !== first.lastSlug && second.status !== first.status && placement.every((x) => x.ok) && (demoteAt === null || (demoted?.during.flying && second.tier === 'static'));
+  return { profile: p, run, delayMs: delay, demoteAtMs: demoteAt, failDecode, live, pressedAfterLiveMs: Math.round(pressedAt - liveAt), demoted, first, second, placement, pass };
+}
+
 export async function strip(base) {
   const { page, ctx } = await open(base, 'P2');
   await page.evaluate(() => document.fonts.ready);
@@ -631,10 +709,22 @@ export async function strip(base) {
     presses.push({ n, before, after, placement, pass: after.stills === Math.min(before + 1, 3) && /Printed/.test(after.status) && placement.every((x) => x.ok) });
   }
   await k.ctx.close();
+  // Early taps (gate, round 2: on WebKit lite a tap within about 0.7 s of the camera going GL was lost when the
+  // governor dropped the tier mid-flight). Taps at 0, 3/8 and 7/8 of an eject after __hero.live, twice each.
+  const early = [];
+  for (const p of ['WK-P2', 'WK-T2']) for (const f of EARLY_TAPS) for (let run = 1; run <= 2; run++) early.push(await pressRow(base, p, { delay: f * durations.eject, run }));
+  // The tier forced to static mid-flight (Chromium and WebKit), and a print whose GL copy fails to decode.
+  const dropped = [];
+  for (const p of ['P2', 'WK-P2']) dropped.push(await pressRow(base, p, { demoteAt: MID_FLIGHT }));
+  const thrown = [await pressRow(base, 'P2', { failDecode: true })];
   const same = tapped.lens === keyed.lens && tapped.look === keyed.look && tapped.readout === keyed.readout;
-  const pass = group === 1 && small.length === 0 && overlaps.length === 0 && same && y1 - y0 > 100 && presses.every((p) => p.pass);
-  return { pass, group, targets: targets.length, small, overlaps, tapped, keyed, identical: same, swipeScrolledPx: y1 - y0, presses };
+  const pass = group === 1 && small.length === 0 && overlaps.length === 0 && same && y1 - y0 > 100 && presses.every((p) => p.pass) && [...early, ...dropped, ...thrown].every((r) => r.pass);
+  return { pass, group, targets: targets.length, small, overlaps, tapped, keyed, identical: same, swipeScrolledPx: y1 - y0, presses, early, dropped, thrown };
 }
+/** Fractions of an eject after the camera goes GL: the window where early taps were lost (gate, round 2). */
+const EARLY_TAPS = [0, 3 / 8, 7 / 8];
+/** After a press: the print is in the air (the flight's start plus half the time to its landing dip). */
+const MID_FLIGHT = heroTimeline.flight - heroTimeline.shutter + (heroTimeline.landingDip - heroTimeline.flight) / 2;
 
 /** 7. __motionLog overshoots (measured) within +-0.5 points of the table; the opening's phases logged in order and
  *  all automatic motion under 5 s; holding Space or Enter on the shutter: <= 1 flash a second. */
@@ -761,7 +851,11 @@ export async function reducedStatic(base) {
     const pass = geo.reduced.printAtFcp?.ok && geo.static.printAtFcp?.ok && noDrawing('reduced') && noDrawing('static') && fade(geo.reduced.swap) && fade(geo.static.swap) && placed('reduced') && placed('static') && shiftReduced <= 0.5 && shiftStatic <= 0.5;
     rows.push({ profile: p, pass: Boolean(pass), shiftReducedPx: shiftReduced, shiftStaticPx: shiftStatic, reduced: { printAtFcp: geo.reduced.printAtFcp, camAtFcp: geo.reduced.camAtFcp, swap: geo.reduced.swap, presses: geo.reduced.presses }, static: { printAtFcp: geo.static.printAtFcp, camAtFcp: geo.static.camAtFcp, swap: geo.static.swap, presses: geo.static.presses } });
   }
-  return { pass: rows.every((r) => r.pass), rows };
+  // The tier dropping to static during a flight (full on D2, lite on P2): the flying print ends on its still at
+  // once, and the next press prints with the static fade.
+  const dropped = [];
+  for (const p of ['D2', 'P2']) dropped.push(await pressRow(base, p, { demoteAt: MID_FLIGHT }));
+  return { pass: rows.every((r) => r.pass) && dropped.every((r) => r.pass), rows, dropped };
 }
 
 /** Pre-GL bytes (budgets.md) from the network log, with the hero on the page: the JavaScript delivered before

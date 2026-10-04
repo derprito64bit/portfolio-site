@@ -262,7 +262,11 @@ class GLPrint {
   shadow = 1;
   roll = 0;
   clip = false;
+  /** The DOM still this is the GL copy of (the keeper's: print 1's), and the shader variant it was made for. */
+  el: HTMLImageElement | null = null;
+  readonly lite: boolean;
   constructor(scene: any, texture: any, lite: boolean, seed: number, order: number, grain: [number, number]) {
+    this.lite = lite;
     this.material = (develop as typeof Develop).createDevelopMaterial({ map: texture, lite, screenClip: true, clipBody: true, pad: PAD, seed, grain });
     this.material.depthTest = true;
     this.mesh = new Mesh(new PlaneGeometry(1, 1), this.material);
@@ -353,6 +357,18 @@ class HeroCamera implements CameraController {
   private aa: AA | null = null;
   private confirming: ((ok: boolean) => void) | null = null;
   private readonly printReady: Promise<unknown>;
+  /** GL is gone for this visit (the stage was torn down: the tier dropped to static). See leaveGL. */
+  private gone = false;
+  /**
+   * Print 1's GL copy, kept for the visit, one per shader variant: compiled before the camera takes its slot when
+   * there is no opening (on the full tier's opening it is the intro's print), so a press never compiles the print
+   * program in the frames of its eject (WebKit compiles on first use: one long frame lifts the 45-frame average W-F's
+   * governor reads, and an early tap on lite was demoted to static mid-flight). Never disposed with a flight, so the
+   * program outlives every flight; it is print 1's copy in a press's stack.
+   */
+  private readonly keepers: { full?: Promise<GLPrint | null>; lite?: Promise<GLPrint | null> } = {};
+  /** The kept prints that are made and compiled. */
+  private readonly kept = new Set<GLPrint>();
 
   constructor(gl: GLApi, opts: CameraOptions) {
     this.gl = gl;
@@ -379,6 +395,31 @@ class HeroCamera implements CameraController {
       match: (s: Slot) => s.id === 'camera' || s.id === 'hero-fx' || s.id === 'hero-print',
       create: (s: Slot) => this.entityFor(s.id),
     });
+    // W-F tears the stage down when the tier drops to static (the governor's second step, two context losses): it
+    // disposes the entities (entityFor), and the tier attribute says so too. A step down to lite keeps GL: a print
+    // made from then on uses the lite shader, so its program is warmed at once.
+    new MutationObserver(() => {
+      const t = tierNow();
+      if (t === 'static') this.leaveGL();
+      else if (t === 'lite' && this.live) void this.keeper(true);
+    }).observe(html, { attributes: true, attributeFilter: ['data-tier'] });
+  }
+
+  /**
+   * GL is gone for this visit (the stage was torn down). Frames stop, so nothing may wait on one: a flight cuts to its
+   * end state (its still shows, data-fx clears, printNext settles, so the next press prints with the 200 ms fade), and
+   * a first frame still being confirmed resolves empty (the poster stays). The opening's DOM side ends through
+   * hero.ts's tier guard.
+   */
+  private leaveGL(): void {
+    if (this.gone) return;
+    this.gone = true;
+    this.live = false;
+    const confirm = this.confirming;
+    this.confirming = null;
+    confirm?.(false);
+    if (this.flying) this.handback(this.flying, true);
+    else this.letGo();
   }
 
   get drawingLive(): boolean {
@@ -412,7 +453,8 @@ class HeroCamera implements CameraController {
       step: isCam ? (dt: number, time: number) => this.step(dt, time) : undefined,
       place: isCam ? (f: FrameInfo) => this.place(f) : () => {},
       visible: () => (isCam ? Boolean(this.confirming || (this.camSlot?.near && this.live)) : false),
-      dispose: () => {},
+      // Persistent entities are disposed only when the stage is torn down (src/stage/gl teardown).
+      dispose: () => this.leaveGL(),
       snap: isCam ? () => this.snap() : undefined,
       bounds: isCam ? () => this.cameraBounds() : id === 'hero-print' ? () => this.printBounds() : undefined,
     };
@@ -471,6 +513,10 @@ class HeroCamera implements CameraController {
       this.drawing.finish();
       this.drawingState = 'done';
     }
+    // No opening: the print program is compiled (and used once, in the confirming frame) before the camera takes
+    // its slot, so the first press never compiles it. The opening makes its print in intro(), alongside this boot.
+    if (html.dataset.hero !== 'eject') await this.keeper(tierNow() !== 'full');
+    if (this.gone) return false;
     // The first frame, drawn inside a stage frame on the canvas itself and read back (see confirmInFrame).
     // On the manual clock (?t=) frames run only on a seek, so it is drawn and read back right here instead.
     const view = this.stageHooks()?.view;
@@ -531,6 +577,7 @@ class HeroCamera implements CameraController {
       r.render(this.camView.scene, camera);
       const px = new Uint8Array(dw * dh * 4);
       ctx.readPixels(0, 0, dw, dh, ctx.RGBA, ctx.UNSIGNED_BYTE, px);
+      this.useKeepers();
       r.clear();
       let covered = 0;
       for (let i = 3; i < px.length; i += 4) if (px[i] > 16) covered++;
@@ -1019,36 +1066,104 @@ vec3 ionNeutral(vec3 color) {
     this.hero.querySelector('[data-hero-print]')?.classList.remove('is-gl');
     this.invalidate();
     const release = () => {
-      for (const p of this.prints.splice(0)) p.dispose(this.fxView.scene);
-      this.fxView.visible = false;
-      this.hero.removeAttribute('data-fx');
+      this.letGo();
       if (this.flying === fl) this.flying = null;
       fl.resolve();
-      this.invalidate();
     };
-    // A guard cuts to the end state at once; the natural handback crossfades for 120 ms.
+    // A guard (and GL going away) cuts to the end state at once; the natural handback crossfades for 120 ms.
     if (cut) release();
     else setTimeout(release, durations.glHandback);
   }
 
-  private async newPrint(src: string, slug: string, order: number): Promise<GLPrint> {
+  /** GL lets go of the prints: the effects view hides and data-fx clears. A kept print stays, hidden, unposed. */
+  private letGo(): void {
+    for (const p of this.prints.splice(0)) {
+      if (!this.kept.has(p)) {
+        p.dispose(this.fxView.scene);
+        continue;
+      }
+      p.pose = null;
+      p.mesh.visible = false;
+      p.d = 1;
+      p.shadow = 1;
+      p.roll = 0;
+      p.clip = false;
+    }
+    this.fxView.visible = false;
+    this.hero.removeAttribute('data-fx');
+    this.hero.querySelector('[data-hero-print]')?.classList.remove('is-gl');
+    this.invalidate();
+  }
+
+  /** A print's GL copy of `src` for a shader variant (not yet in the drawn set). */
+  private async makePrint(src: string, slug: string, order: number, lite: boolean): Promise<GLPrint> {
     const w = Math.min(1024, Math.max(256, (this.printSlot?.w ?? 300) * this.dpr()));
     const tex = await stillTexture(src, w, w * (PRINT_H / PRINT_W));
     let seed = 0;
     for (let i = 0; i < slug.length; i++) seed = (seed * 31 + slug.charCodeAt(i)) >>> 0;
     // The grain cell is fixed per print: 2 device px at the print's size in its landing slot (D-026).
     const grain = (develop as typeof Develop).grainScale((this.printSlot?.w ?? 300) * this.dpr());
-    const p = new GLPrint(this.fxView.scene, tex, tierNow() !== 'full', (seed % 997) / 997, order, grain);
+    const p = new GLPrint(this.fxView.scene, tex, lite, (seed % 997) / 997, order, grain);
     this.gl.renderer.initTexture(tex);
+    return p;
+  }
+
+  private async newPrint(src: string, slug: string, order: number): Promise<GLPrint> {
+    const p = await this.makePrint(src, slug, order, tierNow() !== 'full');
     this.prints.push(p);
     return p;
+  }
+
+  private print1(): HTMLImageElement | null {
+    return this.hero.querySelector<HTMLImageElement>('[data-hero-print] img.hero-still');
+  }
+
+  /** Print 1's kept GL copy for a shader variant, made and compiled once (see keepers). */
+  private keeper(lite: boolean): Promise<GLPrint | null> {
+    const key = lite ? 'lite' : 'full';
+    this.keepers[key] ??= (async () => {
+      await this.printReady;
+      const still = this.print1();
+      if (!still || this.gone) return null;
+      const slug = this.hero.querySelector<HTMLElement>('[data-hero-print]')?.dataset.slug || 'print-1';
+      const p = await this.makePrint(still.getAttribute('src') || '', slug, 10, lite);
+      p.el = still;
+      const r = this.gl.renderer;
+      if (r.compileAsync) await r.compileAsync(this.fxView.scene, this.fxView.camera);
+      this.kept.add(p);
+      return p;
+    })().catch(() => null);
+    return this.keepers[key] as Promise<GLPrint | null>;
+  }
+
+  /** Draw every kept print once, inside the confirming frame's corner, which is cleared before anything is presented
+   *  (a program's first use is when WebKit finishes linking it). Unposed, their corners are all zero: no pixel. */
+  private useKeepers(): void {
+    const shown = [...this.kept].filter((p) => !p.mesh.visible);
+    if (!shown.length) return;
+    for (const p of shown) p.mesh.visible = true;
+    try {
+      this.gl.renderer.render(this.fxView.scene, this.fxView.camera);
+    } catch {
+      /* a warm-up only: the press compiles instead */
+    } finally {
+      for (const p of shown) p.mesh.visible = false;
+    }
   }
 
   /** The prints already on the table, drawn by GL at their exact DOM boxes while a new one flies in over them. */
   private async stackPrints(stills: HTMLImageElement[]): Promise<void> {
     let order = 1;
+    const lite = tierNow() !== 'full';
+    const spare = [...this.kept].find((k) => k.lite === lite && !this.prints.includes(k)) ?? null;
     for (const img of stills) {
-      const p = await this.newPrint(img.currentSrc || img.src, img.dataset.slug || 'print', order++);
+      let p: GLPrint;
+      if (spare && spare.el === img) {
+        p = spare;
+        p.mesh.renderOrder = order;
+        this.prints.push(p);
+      } else p = await this.newPrint(img.currentSrc || img.src, img.dataset.slug || 'print', order);
+      order++;
       p.pose = this.landingPose(img.style.translate ? img : null);
     }
   }
@@ -1059,16 +1174,35 @@ vec3 ionNeutral(vec3 color) {
   }
 
   async printNext(item: QueueItem, addStill: () => HTMLImageElement | null): Promise<void> {
-    if (!(await this.ready) || this.flying) {
+    if (!(await this.ready) || this.flying || this.gone) {
       addStill()?.style.setProperty('opacity', '1');
       return;
     }
-    const stack = [...this.hero.querySelectorAll<HTMLImageElement>('[data-hero-print] img.hero-still')];
-    this.showFx();
-    await this.stackPrints(stack);
-    // The new still exists from the press (hidden), so the flight knows the exact box it lands on.
-    const still = addStill();
-    const print = await this.newPrint(item.still, item.slug, 10);
+    let still: HTMLImageElement | null = null;
+    let added = false;
+    let print: GLPrint;
+    try {
+      const stack = [...this.hero.querySelectorAll<HTMLImageElement>('[data-hero-print] img.hero-still')];
+      this.showFx();
+      await this.stackPrints(stack);
+      // The new still exists from the press (hidden), so the flight knows the exact box it lands on.
+      still = addStill();
+      added = true;
+      print = await this.newPrint(item.still, item.slug, 10);
+    } catch (e) {
+      // A still that cannot be decoded, say: the press ends on its end state at once, and the next one works.
+      if (!added) still = addStill();
+      if (still) still.style.opacity = '1';
+      this.letGo();
+      if (!this.gone) console.warn('[hero] the print could not fly; its still is shown', e);
+      return;
+    }
+    if (this.gone) {
+      // GL went away while the print was being made.
+      if (still) still.style.opacity = '1';
+      this.letGo();
+      return;
+    }
     this.hero.querySelector('[data-hero-print]')?.classList.add('is-gl');
     const t0 = this.time;
     return new Promise<void>((resolve) => {
@@ -1086,21 +1220,14 @@ vec3 ionNeutral(vec3 color) {
 
   async intro(t0: number, hooks: IntroHooks): Promise<IntroResult> {
     this.introHooks = hooks;
-    // Print 1's GL copy is made while the camera boots, so it never holds T0 back.
-    const preparePrint = (async () => {
-      await this.printReady;
-      const still = this.hero.querySelector<HTMLImageElement>('[data-hero-print] img.hero-still');
-      const print = await this.newPrint(still?.getAttribute('src') || '', this.hero.querySelector<HTMLElement>('[data-hero-print]')?.dataset.slug || 'print-1', 10);
-      const r = this.gl.renderer;
-      if (r.compileAsync) await r.compileAsync(this.fxView.scene, this.fxView.camera);
-      return { print, still };
-    })();
-    const [ok, { print, still }] = await Promise.all([this.ready, preparePrint]);
-    if (!ok) return 'failed';
-    if (this.introCancelled) {
-      for (const p of this.prints.splice(0)) p.dispose(this.fxView.scene);
-      return 'done';
-    }
+    // Print 1's GL copy (its kept copy, see keepers) is made and compiled while the camera boots, so it never holds
+    // T0 back.
+    const [ok, print] = await Promise.all([this.ready, this.keeper(tierNow() !== 'full')]);
+    const still = this.print1();
+    if (!ok || !print || this.gone) return 'failed';
+    if (this.introCancelled) return 'done';
+    print.mesh.renderOrder = 10;
+    if (!this.prints.includes(print)) this.prints.push(print);
     // T0: the later of stage:gl-ready + 200 ms (t0) and now (the camera loaded, patched and compiled). On the manual
     // clock (?t=) T0 is stage time 0, so seek(ms) shows T0 + ms.
     const start = manualClock ? 0 : Math.max(t0, performance.now());
@@ -1174,7 +1301,7 @@ vec3 ionNeutral(vec3 color) {
   private takeCamera(): void {
     if (this.live) return;
     this.ready.then((ok) => {
-      if (this.live || !ok) return;
+      if (this.live || !ok || this.gone) return;
       this.live = true;
       this.tail = PRESENT_TAIL;
       this.hero.querySelector('[data-hero-camera]')?.classList.add('is-gl');
