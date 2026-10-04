@@ -1,0 +1,1343 @@
+{
+ "$comment": "X-T5 control map (positions and sizes in mm, refs frame: +X camera left, +Y up, +Z out of the lens; X=0 lens axis, Y=0 base, Z=0 sensor plane). Measured by the W-C13 m2 reference pass on calibrated official renders; see references.json.",
+ "frame": {
+  "units": "mm",
+  "origin": "On the optical axis (X=0), at the base plane (Y=0, underside of the bottom plate, feet excluded), in the focal/sensor plane (Z=0, marked on the body by the phi symbol on the hump's left flank).",
+  "axes": {
+   "+X": "camera's own left (port side; viewer's right when looking at the front)",
+   "+Y": "up",
+   "+Z": "forward, out of the lens"
+  },
+  "handedness": "right-handed, glTF/three.js compatible (+Y up, asset front faces +Z); matches W-C13 m1 rig note '+X is the camera's own left'",
+  "optical_axis": {
+   "x": 0.0,
+   "y": 35.0,
+   "direction": "+Z"
+  },
+  "flange_plane_z": 17.7,
+  "flange_note": "X-mount flange focal distance is 17.7 mm (Fujifilm X-mount standard); top view puts the bayonet front face at Z +18.4.",
+  "datums": {
+   "body_x": [
+    -76.85,
+    52.65
+   ],
+   "body_y": [
+    0.0,
+    91.0
+   ],
+   "body_z_total": [
+    -37.0,
+    26.9
+   ],
+   "strap_lug_tips_x": [
+    -80.4,
+    57.8
+   ],
+   "front_face_z": 14.0,
+   "hump_front_face_z": 15.0,
+   "mount_front_z": 18.4,
+   "grip_front_z": 26.9,
+   "lcd_rear_face_z": -24.0,
+   "thumb_rest_rear_z": -28.0,
+   "eyecup_rear_z": -37.0,
+   "top_plate_shoulder_y": 73.3,
+   "top_plate_lower_edge_y": 64.4,
+   "leatherette_band_y": [
+    3.9,
+    64.3
+   ],
+   "base_band_y": [
+    0.0,
+    3.9
+   ],
+   "thinnest_depth": "front face Z +14.0 to LCD rear Z -24.0 = 38.0 (spec 37.9)",
+   "top_plate_lower_edge_y_by_face": {
+    "front_face": 63.15,
+    "port_side_+X": 64.3,
+    "grip_side_-X": 63.65,
+    "rear_grip_side_x_-74_to_-52": 63.2,
+    "rear_x_-50_to_-32 (AF-ON / rear-dial lip)": 60.9,
+    "rear_port_side_x_26_to_50": 63.2
+   },
+   "base_band_top_y_by_face": {
+    "front_body": 3.5,
+    "front_grip_x_-72_to_-56": 3.1,
+    "port_side": 3.6,
+    "grip_side": 3.5,
+    "rear_grip_side_x_-74_to_-36": 3.25,
+    "rear_port_side_x_48_to_50": 3.5
+   }
+  },
+  "scale_check": "Top view: grip front to eyecup rear = 636 px at 9.946 px/mm = 63.9 mm (spec 63.8); front view: 1358 x 955 px at 10.49 px/mm = 129.5 x 91.0 mm. Official W excludes the strap lugs (lug tip to lug tip is 138.2 mm)."
+ },
+ "control_map": [
+  {
+   "id": "iso_dial",
+   "name": "Sensitivity (ISO) dial",
+   "group": "top",
+   "pos": {
+    "x": 36.0,
+    "y": 80.0,
+    "z": -2.5
+   },
+   "shape": "cylinder dial, vertical axis",
+   "size": {
+    "dia": 23.6,
+    "knurl_band_y": [
+     77.8,
+     82.5
+    ],
+    "top_face_y": 82.5
+   },
+   "knurl": "pyramid cross-knurl, 72 pyramids round (pitch 1.04 mm measured), 5 rows",
+   "engraving": "A (orange), 125, 200, 400, 800, 1600, 3200, 6400, 12800, C; 1/3-stop ticks between; numerals radial, bottoms to centre, cap ~1.5 mm",
+   "index_mark": {
+    "pos": {
+     "x": 20.1,
+     "z": -2.9
+    },
+    "note": "white bar on the hump flank; dial reads on the hump side"
+   },
+   "lock_release": {
+    "pos": {
+     "x": 36.0,
+     "y": 83.8,
+     "z": -2.5
+    },
+    "dia": 6.0,
+    "note": "press-to-lock/unlock button at dial centre (dial lock release, manual item 5)"
+   },
+   "sources": [
+    "ortho/top_mm.png",
+    "ortho/front_mm.png",
+    "ortho/back_mm.png",
+    "raw/manual_pdf_p28_parts_front.png #9"
+   ]
+  },
+  {
+   "id": "drive_dial",
+   "name": "Drive dial (ring under the ISO dial)",
+   "group": "top",
+   "pos": {
+    "x": 36.0,
+    "y": 75.5,
+    "z": -2.5
+   },
+   "shape": "ring with lever tab",
+   "size": {
+    "dia": 23.8,
+    "band_y": [
+     73.3,
+     77.8
+    ],
+    "tab": {
+     "x": 35.7,
+     "z_front": 14.6,
+     "w": 4.2,
+     "h": 3.6,
+     "ridges": 4
+    }
+   },
+   "engraving": "[panorama icon] ADV. BKT CH CL S HDR around the ring side, black on the silver ring (white on black on the black body), cap 2.0 mm, condensed sans; read from the rear/left",
+   "sources": [
+    "ortho/back_mm.png",
+    "raw/manual_drive_dial.png",
+    "raw/fujirumors_leaked-6.jpg"
+   ]
+  },
+  {
+   "id": "shutter_speed_dial",
+   "name": "Shutter speed dial",
+   "group": "top",
+   "pos": {
+    "x": -33.6,
+    "y": 80.0,
+    "z": -2.3
+   },
+   "shape": "cylinder dial, vertical axis",
+   "size": {
+    "dia": 24.0,
+    "knurl_band_y": [
+     77.6,
+     82.3
+    ],
+    "top_face_y": 82.3
+   },
+   "knurl": "pyramid cross-knurl, 72 pyramids round (pitch 1.04 mm measured), 5 rows",
+   "engraving": "A (orange), B, T, 1, 2, 4, 8, 15, 30, 60, 125, 250X, 500, 1000, 2000, 4000, 8000; cap ~1.5 mm",
+   "index_mark": {
+    "pos": {
+     "x": -20.2,
+     "z": -2.8
+    },
+    "note": "white bar on the hump flank"
+   },
+   "lock_release": {
+    "pos": {
+     "x": -33.7,
+     "y": 83.3,
+     "z": -1.9
+    },
+    "dia": 6.0
+   },
+   "sources": [
+    "ortho/top_mm.png",
+    "ortho/front_mm.png",
+    "raw/manual_shutter_dial.png"
+   ]
+  },
+  {
+   "id": "still_movie_dial",
+   "name": "STILL/MOVIE mode dial (ring under the shutter dial)",
+   "group": "top",
+   "pos": {
+    "x": -33.6,
+    "y": 75.6,
+    "z": -2.3
+   },
+   "shape": "ring with lever tab",
+   "size": {
+    "dia": 24.0,
+    "band_y": [
+     73.6,
+     77.6
+    ],
+    "tab": {
+     "x": -28.6,
+     "z_front": 12.3,
+     "w": 5.0,
+     "h": 4.0,
+     "ridges": 5
+    }
+   },
+   "engraving": "'STILL' + white dot, orange-red dot + 'MOVIE' on the ring's rear face; cap 2.0 mm",
+   "note": "The X-T5 has NO metering ring here (that was X-T3); metering is menu-only. This ring is the STILL/MOVIE switch.",
+   "sources": [
+    "ortho/back_mm.png",
+    "raw/manual_still_movie.png",
+    "https://fujifilm-dsc.com/en/manual/x-t5/about_this_camera/parts/"
+   ]
+  },
+  {
+   "id": "ev_comp_dial",
+   "name": "Exposure compensation dial",
+   "group": "top",
+   "pos": {
+    "x": -64.3,
+    "y": 76.0,
+    "z": -5.5
+   },
+   "shape": "cylinder dial, vertical axis",
+   "size": {
+    "dia": 21.0,
+    "knurl_band_y": [
+     73.7,
+     77.8
+    ],
+    "top_face_y": 78.0
+   },
+   "knurl": "pyramid cross-knurl, 72 pyramids round (pitch 0.92 mm measured), 4 rows",
+   "finish": "top face concentric spun (circular-brushed) metal",
+   "engraving": "0 (at index), +1, +2, +3, C (opposite 0), -3, -2, -1; 1/3 ticks; cap ~1.7 mm",
+   "index_mark": {
+    "pos": {
+     "x": -52.3,
+     "z": -5.6
+    }
+   },
+   "sources": [
+    "ortho/top_mm.png",
+    "raw/manual_ev_dial.png"
+   ]
+  },
+  {
+   "id": "shutter_button",
+   "name": "Shutter release button",
+   "group": "top",
+   "pos": {
+    "x": -52.4,
+    "y": 79.2,
+    "z": 12.5
+   },
+   "shape": "round push button with threaded cable-release socket",
+   "size": {
+    "dia": 6.7,
+    "chrome_ring_dia": 10.0,
+    "socket_dia": 2.2,
+    "travel": 1.2
+   },
+   "sources": [
+    "ortho/top_mm.png",
+    "raw/commons_xt5_silver_xf33_mullowitsch.jpg"
+   ]
+  },
+  {
+   "id": "on_off_switch",
+   "name": "ON/OFF switch (collar round the shutter button)",
+   "group": "top",
+   "pos": {
+    "x": -52.4,
+    "y": 75.2,
+    "z": 12.5
+   },
+   "shape": "rotating collar with front finger tab",
+   "size": {
+    "dia": 13.6,
+    "band_y": [
+     73.5,
+     76.8
+    ],
+    "finger_tab_z": [
+     18.8,
+     20.5
+    ],
+    "pointer_z": [
+     6.2,
+     7.9
+    ]
+   },
+   "engraving": "'ON' at (x -48.6, z 2.9) and 'OFF' at (x -53.6, z 2.5) with dots, on the top plate behind the collar; cap 1.6 mm",
+   "sources": [
+    "ortho/top_mm.png"
+   ]
+  },
+  {
+   "id": "front_command_dial",
+   "name": "Front command dial",
+   "group": "top",
+   "pos": {
+    "x": -52.5,
+    "y": 67.25,
+    "z": 12.7
+   },
+   "shape": "toothed wheel, vertical axis, rim exposed at the grip front",
+   "size": {
+    "dia": 20.5,
+    "y": [
+     65.0,
+     69.5
+    ],
+    "exposed_rim_z": [
+     16.5,
+     23.2
+    ],
+    "teeth_pitch": 1.3
+   },
+   "axis": "Y",
+   "note": "Circle fit through rim points from top and bottom views (residual <0.6 mm); coaxial with the shutter button. Push = button. Silver on the silver body.",
+   "sources": [
+    "ortho/top_mm.png",
+    "ortho/bottom_mm.png",
+    "ortho/front_mm.png"
+   ]
+  },
+  {
+   "id": "fn1_button",
+   "name": "Fn1 button",
+   "group": "top",
+   "pos": {
+    "x": -65.15,
+    "y": 73.8,
+    "z": 10.65
+   },
+   "shape": "round button",
+   "size": {
+    "ring_dia": 6.5,
+    "button_dia": 4.4
+   },
+   "sources": [
+    "ortho/top_mm.png"
+   ]
+  },
+  {
+   "id": "hot_shoe",
+   "name": "Hot shoe",
+   "group": "top",
+   "pos": {
+    "x": 0.3,
+    "y": 91.0,
+    "z": -13.5
+   },
+   "shape": "ISO shoe with centre + 4 dedicated contacts",
+   "size": {
+    "plate_x": [
+     -10.4,
+     11.0
+    ],
+    "plate_z": [
+     -22.9,
+     -4.1
+    ],
+    "centre_contact_dia": 3.6
+   },
+   "sources": [
+    "ortho/top_mm.png",
+    "ortho/back_mm.png"
+   ],
+   "note": "the camera ships with a black plastic shoe cover fitted (real photos, raw/dpr_shutter_exp_comp_dials.jpeg); renders show the bare shoe with gold contacts"
+  },
+  {
+   "id": "viewmode_button",
+   "name": "VIEW MODE button",
+   "group": "top",
+   "pos": {
+    "x": -16.8,
+    "y": 85.2,
+    "z": -18.5
+   },
+   "shape": "small round button on the hump's right (-X) flank",
+   "size": {
+    "dia": 3.2
+   },
+   "engraving": "'VIEWMODE' running front-to-back beside it, cap 1.3 mm",
+   "sources": [
+    "ortho/top_mm.png",
+    "ortho/right_mm.png"
+   ]
+  },
+  {
+   "id": "diopter",
+   "name": "Diopter adjustment control (lockable, pull up)",
+   "group": "top",
+   "pos": {
+    "x": 21.8,
+    "y": 83.6,
+    "z": -15.95
+   },
+   "shape": "knurled knob on the hump's left-rear flank, axis tilted out",
+   "size": {
+    "dia": 8.4,
+    "thickness": 3.4,
+    "axis": "(cos 35, sin 35, 0): out of the +X flank, 35 deg above horizontal",
+    "pos_is": "centre of the flat outer face"
+   },
+   "engraving": "'+' and '-' on the top plate beside it (x 16.3, z -13 / -18)",
+   "note": "Corrected in W-C13 round 2: y 86.0 was ~2 mm high. Top view: flat outer face ellipse centred at x 21.95, z -15.95, aspect 0.56 (axis ~34 deg); front view: rim diameter at ~39 deg, centre x ~20.5-21.2, y ~83.2-84.",
+   "sources": [
+    "ortho/top_mm.png",
+    "ortho/front_mm.png",
+    "ortho/left_mm.png",
+    "raw/manual_diopter_01.png"
+   ]
+  },
+  {
+   "id": "microphones",
+   "name": "Stereo microphone holes",
+   "group": "top",
+   "pos": {
+    "x": 0.0,
+    "y": 83.0,
+    "z": 8.3
+   },
+   "shape": "two small holes, one per front corner of the hump",
+   "size": {
+    "holes_x": [
+     -20.7,
+     20.7
+    ],
+    "top_view_footprint": [
+     0.9,
+     1.45
+    ],
+    "dia": 0.9
+   },
+   "confidence": "medium: X/Z from the silver top view (12.39 px/mm), Y +-1.5 mm",
+   "sources": [
+    "closeups/top_hump_hotshoe.png",
+    "ortho/silver2k/top_mm.png",
+    "ortho/top_mm.png",
+    "raw/manual_pdf_p28_parts_front.png #7"
+   ]
+  },
+  {
+   "id": "focal_plane_mark",
+   "name": "Focal plane mark (phi)",
+   "group": "top",
+   "pos": {
+    "x": 18.1,
+    "y": 86.0,
+    "z": 0.0
+   },
+   "shape": "engraved symbol",
+   "size": {
+    "size": 1.2
+   },
+   "sources": [
+    "ortho/top_mm.png",
+    "ortho/left_mm.png"
+   ]
+  },
+  {
+   "id": "evf_hump",
+   "name": "EVF hump",
+   "group": "top",
+   "pos": {
+    "x": 0.0,
+    "y": 82.0,
+    "z": -5.0
+   },
+   "shape": "prism housing",
+   "size": {
+    "base_x": [
+     -24.0,
+     24.0
+    ],
+    "front_face_z": 15.0,
+    "front_face_y": [
+     64.5,
+     82.5
+    ],
+    "front_facet": "slopes ~27 deg from (y 82.5, z +15) up to the ridge (y 91, z -2.3)",
+    "flat_top_y": 91.0,
+    "flat_top_z": [
+     -25.4,
+     -2.3
+    ],
+    "flat_top_x": [
+     -13.0,
+     13.5
+    ]
+   },
+   "sources": [
+    "ortho/top_mm.png",
+    "ortho/front_mm.png",
+    "ortho/right_mm.png"
+   ]
+  },
+  {
+   "id": "strap_lug_right",
+   "name": "Strap lug (camera right, grip side)",
+   "group": "side",
+   "pos": {
+    "x": -79.5,
+    "y": 68.4,
+    "z": 2.3
+   },
+   "shape": "D-shaped eyelet plate",
+   "size": {
+    "protrusion": 3.6,
+    "hole_dia": 3.5,
+    "plate_y": [
+     64.0,
+     72.5
+    ]
+   },
+   "sources": [
+    "ortho/front_mm.png",
+    "ortho/top_mm.png",
+    "ortho/back_mm.png"
+   ]
+  },
+  {
+   "id": "strap_lug_left",
+   "name": "Strap lug (camera left, port side)",
+   "group": "side",
+   "pos": {
+    "x": 55.0,
+    "y": 68.3,
+    "z": 1.8
+   },
+   "shape": "D-shaped eyelet plate",
+   "size": {
+    "protrusion": 5.1,
+    "hole_dia": 3.5,
+    "plate_y": [
+     64.0,
+     72.5
+    ]
+   },
+   "sources": [
+    "ortho/front_mm.png",
+    "ortho/top_mm.png"
+   ]
+  },
+  {
+   "id": "af_assist_lamp",
+   "name": "AF-assist illuminator / self-timer / tally lamp",
+   "group": "front",
+   "pos": {
+    "x": -34.3,
+    "y": 68.2,
+    "z": 14.0
+   },
+   "shape": "round lens in a bezel",
+   "size": {
+    "bezel_dia": 6.0,
+    "lens_dia": 3.0
+   },
+   "face": "+Z",
+   "colour": "amber-yellow translucent lens (real photo #7e7019)",
+   "sources": [
+    "ortho/front_mm.png"
+   ]
+  },
+  {
+   "id": "fn2_button",
+   "name": "Fn2 button (front)",
+   "group": "front",
+   "pos": {
+    "x": -34.4,
+    "y": 55.75,
+    "z": 14.0
+   },
+   "shape": "round button in a chrome ring",
+   "size": {
+    "ring_dia": 7.9,
+    "button_dia": 5.5
+   },
+   "face": "+Z",
+   "sources": [
+    "ortho/front_mm.png"
+   ]
+  },
+  {
+   "id": "lens_release",
+   "name": "Lens release button",
+   "group": "front",
+   "pos": {
+    "x": -27.5,
+    "y": 11.9,
+    "z": 14.0
+   },
+   "shape": "round button in a chrome ring with a triangular guard fin",
+   "size": {
+    "ring_dia": 9.8,
+    "button_dia": 7.1
+   },
+   "face": "+Z",
+   "sources": [
+    "ortho/front_mm.png"
+   ]
+  },
+  {
+   "id": "focus_mode_selector",
+   "name": "Focus mode selector (M / C / S)",
+   "group": "front",
+   "pos": {
+    "x": 39.0,
+    "y": 13.6,
+    "z": 14.0
+   },
+   "shape": "round base with rotary lever ring and a ridged tab",
+   "size": {
+    "base_dia": 13.1,
+    "lever_ring_dia": 9.3,
+    "tab_y": [
+     8.0,
+     10.5
+    ]
+   },
+   "face": "+Z",
+   "engraving": "M, C, S in white on an arc at the upper left: M (34.6, 17.4), C (36.9, 18.8), S (39.0, 19.3); cap 1.5 mm; white index line on the knob",
+   "sources": [
+    "ortho/front_mm.png"
+   ]
+  },
+  {
+   "id": "sync_terminal",
+   "name": "Flash sync terminal (capped)",
+   "group": "front",
+   "pos": {
+    "x": 41.25,
+    "y": 54.1,
+    "z": 15.0
+   },
+   "shape": "round screw cap with knurled edge",
+   "size": {
+    "cap_dia": 8.5,
+    "protrusion": 2.0
+   },
+   "face": "+Z",
+   "sources": [
+    "ortho/front_mm.png",
+    "ortho/top_mm.png"
+   ]
+  },
+  {
+   "id": "lens_mount",
+   "name": "X-mount bayonet",
+   "group": "front",
+   "pos": {
+    "x": 0.0,
+    "y": 35.0,
+    "z": 18.4
+   },
+   "shape": "bayonet ring",
+   "size": {
+    "throat_dia": 43.6,
+    "bayonet_outer_dia": 54.6,
+    "surround_ring_dia": 61.0,
+    "screw_circle_r": 25.0,
+    "screws_deg": [
+     0,
+     60,
+     120,
+     180,
+     240,
+     300
+    ],
+    "contacts": 10,
+    "contacts_arc": "bottom of the throat, ~y 15-18",
+    "lock_pin": {
+     "x": -17.7,
+     "y": 17.2
+    },
+    "index_dot": {
+     "x": -20.9,
+     "y": 48.5,
+     "dia": 1.9,
+     "colour": "#e15409"
+    }
+   },
+   "face": "+Z",
+   "note": "Angles measured counter-clockwise from +X as seen from the front.",
+   "sources": [
+    "ortho/front_mm.png"
+   ]
+  },
+  {
+   "id": "delete_button",
+   "name": "Delete button (trash icon)",
+   "group": "rear",
+   "pos": {
+    "x": 41.7,
+    "y": 68.1,
+    "z": -20.5
+   },
+   "shape": "round button in a ring",
+   "size": {
+    "ring_dia": 6.8,
+    "button_dia": 5.0
+   },
+   "face": "-Z",
+   "sources": [
+    "ortho/back_mm.png",
+    "ortho/top_mm.png"
+   ]
+  },
+  {
+   "id": "playback_button",
+   "name": "Playback button",
+   "group": "rear",
+   "pos": {
+    "x": 31.0,
+    "y": 68.1,
+    "z": -20.5
+   },
+   "shape": "round button in a ring",
+   "size": {
+    "ring_dia": 6.8,
+    "button_dia": 5.0
+   },
+   "face": "-Z",
+   "sources": [
+    "ortho/back_mm.png",
+    "ortho/top_mm.png"
+   ]
+  },
+  {
+   "id": "evf_eyepiece",
+   "name": "EVF eyepiece and eye cup (lockable)",
+   "group": "rear",
+   "pos": {
+    "x": 0.0,
+    "y": 72.3,
+    "z": -37.0
+   },
+   "shape": "wide rounded-rectangle rubber eyecup with round eyepiece",
+   "size": {
+    "eyecup_x": [
+     -24.3,
+     24.0
+    ],
+    "eyecup_y": [
+     58.8,
+     87.5
+    ],
+    "eyecup_z": [
+     -37.0,
+     -25.5
+    ],
+    "eyepiece_glass_dia": 18.6,
+    "eye_sensor": {
+     "x": [
+      -6.0,
+      6.0
+     ],
+     "y": [
+      64.0,
+      66.5
+     ]
+    }
+   },
+   "face": "-Z",
+   "sources": [
+    "ortho/back_mm.png",
+    "ortho/top_mm.png",
+    "raw/manual_eyecup.png"
+   ]
+  },
+  {
+   "id": "af_on_button",
+   "name": "AF-ON button",
+   "group": "rear",
+   "pos": {
+    "x": -34.6,
+    "y": 68.45,
+    "z": -20.7
+   },
+   "shape": "round button in a ring",
+   "size": {
+    "ring_dia": 7.4,
+    "button_dia": 5.5
+   },
+   "face": "-Z",
+   "engraving": "'AF' over 'ON', cap 1.6 mm",
+   "sources": [
+    "ortho/back_mm.png",
+    "ortho/top_mm.png"
+   ]
+  },
+  {
+   "id": "rear_command_dial",
+   "name": "Rear command dial",
+   "group": "rear",
+   "pos": {
+    "x": -49.0,
+    "y": 68.1,
+    "z": -13.5
+   },
+   "shape": "toothed wheel, vertical axis, rim exposed in a slot",
+   "size": {
+    "dia": 17.0,
+    "y": [
+     66.1,
+     70.1
+    ],
+    "window_x": [
+     -57.4,
+     -40.6
+    ],
+    "rim_z": -22.0
+   },
+   "face": "-Z",
+   "axis": "Y",
+   "note": "Only the rim shows, through a slot in the rear of the top plate; diameter inferred from the slot width.",
+   "sources": [
+    "ortho/back_mm.png",
+    "ortho/top_mm.png"
+   ]
+  },
+  {
+   "id": "q_button",
+   "name": "Q (quick menu) button",
+   "group": "rear",
+   "pos": {
+    "x": -63.8,
+    "y": 68.1,
+    "z": -19.8
+   },
+   "shape": "round button in a ring",
+   "size": {
+    "ring_dia": 6.8,
+    "button_dia": 5.0
+   },
+   "face": "-Z",
+   "sources": [
+    "ortho/back_mm.png",
+    "ortho/top_mm.png"
+   ]
+  },
+  {
+   "id": "indicator_lamp",
+   "name": "Indicator lamp / tally",
+   "group": "rear",
+   "pos": {
+    "x": -73.7,
+    "y": 56.8,
+    "z": -27.0
+   },
+   "shape": "tiny half-moon lens on the thumb rest",
+   "size": {
+    "w": 1.0,
+    "h": 1.5
+   },
+   "face": "-Z",
+   "sources": [
+    "ortho/back_mm.png",
+    "raw/manual_indicator.png"
+   ]
+  },
+  {
+   "id": "ael_button",
+   "name": "AEL button",
+   "group": "rear",
+   "pos": {
+    "x": -44.3,
+    "y": 54.7,
+    "z": -24.5
+   },
+   "shape": "round button",
+   "size": {
+    "dia": 7.0
+   },
+   "face": "-Z",
+   "engraving": "'AEL' cap 2.1 mm",
+   "sources": [
+    "ortho/back_mm.png"
+   ]
+  },
+  {
+   "id": "focus_lever",
+   "name": "Focus stick (focus lever)",
+   "group": "rear",
+   "pos": {
+    "x": -45.3,
+    "y": 43.0,
+    "z": -26.0
+   },
+   "shape": "joystick knob in a round surround",
+   "size": {
+    "surround_dia": 9.4,
+    "knob_dia": 5.4,
+    "protrusion": 3.0
+   },
+   "face": "-Z",
+   "sources": [
+    "ortho/back_mm.png",
+    "raw/manual_focus_lever.png"
+   ]
+  },
+  {
+   "id": "selector",
+   "name": "Selector (4-way, Fn3-Fn6) with MENU/OK centre",
+   "group": "rear",
+   "pos": {
+    "x": -50.3,
+    "y": 23.7,
+    "z": -24.5
+   },
+   "shape": "ring of four arc buttons round a centre button",
+   "size": {
+    "outer_dia": 18.1,
+    "inner_dia": 9.0,
+    "menu_ok_dia": 6.6
+   },
+   "face": "-Z",
+   "engraving": "'MENU' over 'OK' on the centre button, cap 1.7 mm",
+   "sources": [
+    "ortho/back_mm.png",
+    "raw/manual_selector.png"
+   ]
+  },
+  {
+   "id": "disp_back_button",
+   "name": "DISP/BACK button (Bluetooth glyph)",
+   "group": "rear",
+   "pos": {
+    "x": -43.9,
+    "y": 8.7,
+    "z": -24.5
+   },
+   "shape": "round button",
+   "size": {
+    "dia": 5.0
+   },
+   "face": "-Z",
+   "engraving": "Bluetooth rune on the button; 'DISP' over 'BACK' beside it at x -46.6..-53.5, y 6.3..11.2, cap 1.8 mm",
+   "sources": [
+    "ortho/back_mm.png"
+   ]
+  },
+  {
+   "id": "thumb_rest",
+   "name": "Thumb rest (leatherette)",
+   "group": "rear",
+   "pos": {
+    "x": -63.5,
+    "y": 32.0,
+    "z": -26.0
+   },
+   "shape": "raised pad",
+   "size": {
+    "x": [
+     -76.5,
+     -50.5
+    ],
+    "y": [
+     1.0,
+     62.8
+    ],
+    "max_rear_z": -28.0
+   },
+   "face": "-Z",
+   "sources": [
+    "ortho/back_mm.png",
+    "ortho/top_mm.png"
+   ]
+  },
+  {
+   "id": "lcd",
+   "name": "3.0 in LCD (three-direction tilt)",
+   "group": "rear",
+   "pos": {
+    "x": 8.35,
+    "y": 29.4,
+    "z": -24.0
+   },
+   "shape": "flat module on a two-axis tilt bracket",
+   "size": {
+    "housing_x": [
+     -33.2,
+     49.9
+    ],
+    "housing_y": [
+     1.0,
+     57.8
+    ],
+    "cover_glass_x": [
+     -31.2,
+     45.0
+    ],
+    "cover_glass_y": [
+     6.0,
+     54.1
+    ],
+    "active_x": [
+     -28.0,
+     36.2
+    ],
+    "active_y": [
+     7.0,
+     50.5
+    ],
+    "module_thickness": 5.8
+   },
+   "face": "-Z",
+   "hinges": {
+    "landscape": "bracket pivots on a horizontal (X) axis: screen pulls out from the bottom edge to tilt up, from the top edge to tilt down",
+    "portrait": "after pressing the tilt-lock release (tab on the screen's +X, port-side edge) the screen swings on a vertical (Y) axis along its -X (grip-side) edge, so the +X edge stands off the body (camera held grip-up: the lower edge comes out)",
+    "angles_deg": "about 90 up / 45 down / 60 portrait (X-T3/X-T2 family values; the X-T5 spec sheet and DPReview give no angles; unverified)",
+    "tilt_lock_release": {
+     "x": 50.0,
+     "y": 33.6,
+     "z": -22.0
+    },
+    "release_tab": "small ridged tab with a vertical slot on the +X edge of the screen frame, centred near y 33; two finger notches above and below it (raw/glz_body_silver_05.png)"
+   },
+   "sources": [
+    "ortho/back_mm.png",
+    "ortho/left_ports_open_mm.png",
+    "raw/glz_kit1680_silver_06.png",
+    "raw/glz_kit1680_silver_07.png",
+    "raw/glz_kit1680_silver_08.png",
+    "raw/manual_tilt01.png",
+    "raw/manual_tilt02.png",
+    "raw/manual_tilt03.png"
+   ]
+  },
+  {
+   "id": "card_door",
+   "name": "Memory card slot cover (grip side)",
+   "group": "side",
+   "pos": {
+    "x": -76.85,
+    "y": 33.0,
+    "z": -10.5
+   },
+   "shape": "leatherette-covered door, slide-and-swing",
+   "size": {
+    "z": [
+     -23.0,
+     2.0
+    ],
+    "y": [
+     3.0,
+     63.5
+    ],
+    "latch_recess": {
+     "z": -11.8,
+     "y": 34.0,
+     "w": 5.0,
+     "h": 9.0
+    },
+    "slot2": {
+     "z": [
+      -20.1,
+      -16.6
+     ],
+     "y": [
+      35.2,
+      60.3
+     ]
+    },
+    "slot1": {
+     "z": [
+      -20.1,
+      -16.6
+     ],
+     "y": [
+      5.1,
+      31.2
+     ]
+    }
+   },
+   "face": "-X",
+   "sources": [
+    "ortho/right_mm.png",
+    "ortho/right_door_open_mm.png",
+    "raw/trm_silver-5.jpg",
+    "raw/trm_silver-6.jpg"
+   ]
+  },
+  {
+   "id": "connector_cover_upper",
+   "name": "Connector cover, upper (mic / remote)",
+   "group": "side",
+   "pos": {
+    "x": 52.65,
+    "y": 52.8,
+    "z": -6.0
+   },
+   "shape": "rubber/leatherette door hinged at the front edge",
+   "size": {
+    "z": [
+     -17.3,
+     5.4
+    ],
+    "y": [
+     40.8,
+     64.7
+    ],
+    "mic_jack": {
+     "z": -5.3,
+     "y": 57.0,
+     "dia": 3.5,
+     "ring_dia": 4.7
+    },
+    "remote_jack": {
+     "z": -10.0,
+     "y": 45.3,
+     "dia": 2.5,
+     "ring_dia": 3.7
+    }
+   },
+   "face": "+X",
+   "sources": [
+    "ortho/left_mm.png",
+    "ortho/left_ports_open_mm.png"
+   ]
+  },
+  {
+   "id": "connector_cover_lower",
+   "name": "Connector cover, lower (USB-C / HDMI)",
+   "group": "side",
+   "pos": {
+    "x": 52.65,
+    "y": 21.0,
+    "z": -9.5
+   },
+   "shape": "rubber/leatherette door hinged at the front edge",
+   "size": {
+    "z": [
+     -17.3,
+     -1.8
+    ],
+    "y": [
+     1.3,
+     40.8
+    ],
+    "usb_c": {
+     "z": -11.25,
+     "y": 30.9,
+     "opening": [
+      3.6,
+      9.2
+     ],
+     "orientation": "long axis vertical"
+    },
+    "hdmi_d": {
+     "z": -11.25,
+     "y": 16.1,
+     "opening": [
+      2.8,
+      6.4
+     ],
+     "orientation": "long axis vertical"
+    },
+    "hdmi_deboss": {
+     "z": [
+      -14.3,
+      -5.5
+     ],
+     "y": [
+      34.7,
+      36.1
+     ],
+     "note": "'HDMI' blind-debossed in the cover's leatherette, reads front to rear"
+    }
+   },
+   "face": "+X",
+   "sources": [
+    "ortho/left_ports_open_mm.png"
+   ]
+  },
+  {
+   "id": "speaker",
+   "name": "Speaker grille",
+   "group": "side",
+   "pos": {
+    "x": 52.65,
+    "y": 22.5,
+    "z": 3.3
+   },
+   "shape": "two vertical slots",
+   "size": {
+    "slot": [
+     1.2,
+     3.0
+    ],
+    "slot_z": [
+     2.4,
+     4.3
+    ]
+   },
+   "face": "+X",
+   "sources": [
+    "ortho/left_mm.png",
+    "ortho/left_ports_open_mm.png"
+   ]
+  },
+  {
+   "id": "tripod_socket",
+   "name": "Tripod mount (1/4-20 UNC)",
+   "group": "bottom",
+   "pos": {
+    "x": 0.2,
+    "y": 0.0,
+    "z": -7.5
+   },
+   "shape": "threaded socket in a chrome ring",
+   "size": {
+    "ring_dia": 8.1,
+    "thread_dia": 6.35
+   },
+   "face": "-Y",
+   "sources": [
+    "ortho/bottom_mm.png"
+   ]
+  },
+  {
+   "id": "battery_door",
+   "name": "Battery-chamber cover",
+   "group": "bottom",
+   "pos": {
+    "x": -47.0,
+    "y": 0.0,
+    "z": -2.25
+   },
+   "shape": "hinged door",
+   "size": {
+    "x": [
+     -71.5,
+     -22.5
+    ],
+    "z": [
+     -15.5,
+     11.0
+    ],
+    "hinge": "short edge at x -71.5 (grip end), axis along Z (from the open-door renders)"
+   },
+   "face": "-Y",
+   "sources": [
+    "ortho/bottom_mm.png",
+    "raw/camerawest_silver_angled.jpg"
+   ]
+  },
+  {
+   "id": "battery_latch",
+   "name": "Battery-chamber cover latch (slider)",
+   "group": "bottom",
+   "pos": {
+    "x": -52.6,
+    "y": 0.0,
+    "z": -2.3
+   },
+   "shape": "ridged slider",
+   "size": {
+    "x": [
+     -56.3,
+     -49.0
+    ],
+    "z": [
+     -7.3,
+     2.7
+    ]
+   },
+   "face": "-Y",
+   "sources": [
+    "ortho/bottom_mm.png"
+   ]
+  },
+  {
+   "id": "bottom_holes",
+   "name": "Bottom screws and accessory holes",
+   "group": "bottom",
+   "pos": {
+    "x": 0.0,
+    "y": 0.0,
+    "z": 0.0
+   },
+   "shape": "list",
+   "size": {
+    "screws": [
+     [
+      -15.1,
+      6.5
+     ],
+     [
+      -15.1,
+      -11.2
+     ],
+     [
+      4.8,
+      -11.2
+     ],
+     [
+      48.4,
+      9.2
+     ],
+     [
+      47.9,
+      -16.4
+     ],
+     [
+      -71.6,
+      -16.7
+     ],
+     [
+      -58.3,
+      23.3
+     ]
+    ],
+    "accessory_holes": [
+     {
+      "x": -58.5,
+      "z": 19.6,
+      "dia": 3.7
+     },
+     {
+      "x": 45.3,
+      "z": -11.4,
+      "dia": 4.0
+     }
+    ],
+    "format": "[x, z] on the base plane"
+   },
+   "face": "-Y",
+   "sources": [
+    "ortho/bottom_mm.png"
+   ]
+  }
+ ]
+}

@@ -93,9 +93,13 @@ export function containRect(slotW, slotH, aspect) {
   return { x: Math.round((slotW - w) / 2), y: Math.round((slotH - h) / 2), width: w, height: h };
 }
 
-/** tokens.stage.lod: LOD0 when the projected width is at least 600 device px and the tier is not static. */
+/**
+ * The LOD rule: tokens.stage.lod (LOD0 at 600 device px of projected width and wider) under D-021, which keeps the
+ * ultra-detailed LOD0 (100k tris, 800 kB gz) to the full tier: the lite tier always draws LOD1, and the static
+ * tier draws nothing (its posters are the LOD0 set, posterSet()).
+ */
 export function pickLod(deviceWidth, tier) {
-  return tier !== "static" && deviceWidth >= 600 ? 0 : 1;
+  return tier === "full" && deviceWidth >= 600 ? 0 : 1;
 }
 
 /**
@@ -108,4 +112,15 @@ export function posterSet(entry, { slotW, slotH, glDpr, tier }) {
   if (tier === "static") return { lod: 0, files: entry.posters.lod0 };
   const lod = pickLod(containRect(Math.round(slotW * glDpr), Math.round(slotH * glDpr), entry.aspect).width, tier);
   return { lod, files: entry.posters[`lod${lod}`] };
+}
+
+/**
+ * The poster of a set to show: the file whose width is nearest, by ratio, to the GL frame's device width (the
+ * contain width in CSS px times the canvas's effective DPR), so the poster carries the detail GL will draw, no more
+ * and no less (W-S1's hero picks the same way). A phone's lite canvas renders at DPR 1.5, so its poster is not the
+ * 3x one a srcset would pick.
+ */
+export function posterFile(files, containCssW, glDpr) {
+  const need = containCssW * glDpr;
+  return files.reduce((best, f) => (Math.abs(Math.log(f.w / need)) < Math.abs(Math.log(best.w / need)) ? f : best));
 }
