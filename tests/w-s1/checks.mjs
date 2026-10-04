@@ -514,3 +514,54 @@ export async function gpu(base, { loads = 5 } = {}) {
   const valid = renderer && !H.SOFTWARE_RENDERER.test(renderer);
   return { pass: Boolean(valid) && hm <= 1.5 * pm, renderer, valid, prototypeMedianMs: pm, heroMedianMs: hm, ratio: Math.round((hm / pm) * 1000) / 1000, proto, hero };
 }
+
+/** Evidence: seeked hero filmstrips on the manual clock (?t=0). Full: the W-D012 keys of the intro. Reduced: a
+ *  shutter press and its 200 ms fade. Frames on disk plus one contact sheet per strip. */
+export async function filmstrips(base, { out, profileName = 'D2' } = {}) {
+  const strips = [];
+  {
+    const keys = [0, 120, 250, 380, 780, 1000, 1180, 1400, 1620, 1804, 2600, 3380, 3600];
+    const ctx = await context(profileName, 'auto');
+    const page = await ctx.newPage();
+    await page.goto(`${base}/?t=0`, { waitUntil: 'load' });
+    await page.waitForFunction(() => window.__hero && window.__hero.flying, null, { timeout: 20000 });
+    const files = [];
+    for (const t of keys) {
+      await page.evaluate((x) => window.__stage.seek(x), t);
+      await page.evaluate((x) => window.__stage.seek(x), t);
+      const f = `${out}/full-${profileName}-${String(t).padStart(4, '0')}.png`;
+      await page.screenshot({ path: f });
+      files.push(f);
+    }
+    await ctx.close();
+    strips.push({ mode: 'full', keys, files });
+  }
+  {
+    const keys = [0, 50, 100, 150, 200, 260];
+    const ctx = await context(profileName, 'reduced');
+    const page = await ctx.newPage();
+    await page.goto(`${base}/?t=0`, { waitUntil: 'load' });
+    await sleep(2500);
+    await page.click('[data-shutter]');
+    const files = [];
+    for (const t of keys) {
+      await page.evaluate((x) => window.__stage.seek(x), t);
+      const f = `${out}/reduced-${profileName}-${String(t).padStart(4, '0')}.png`;
+      await page.screenshot({ path: f });
+      files.push(f);
+    }
+    await ctx.close();
+    strips.push({ mode: 'reduced', keys, files });
+  }
+  for (const s of strips) {
+    const tiles = await Promise.all(s.files.map((f) => sharp(f).resize({ width: 480 }).toBuffer()));
+    const meta = await sharp(tiles[0]).metadata();
+    const cols = 4;
+    const rows = Math.ceil(tiles.length / cols);
+    await sharp({ create: { width: 480 * cols, height: meta.height * rows, channels: 3, background: '#808080' } })
+      .composite(tiles.map((t, i) => ({ input: t, left: (i % cols) * 480, top: Math.floor(i / cols) * meta.height })))
+      .png()
+      .toFile(`${out}/filmstrip-${s.mode}-${profileName}.png`);
+  }
+  return { pass: strips.every((s) => s.files.length === s.keys.length), strips: strips.map((s) => ({ mode: s.mode, keys: s.keys, frames: s.files.length })) };
+}

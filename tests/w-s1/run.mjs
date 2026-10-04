@@ -2,7 +2,8 @@
 // W-S1 acceptance runner (issue #13). Build first (npm run build), on the reference host (RX 6700 XT).
 //   node tests/w-s1/run.mjs [--only fcp,wordmark,...] [--out <dir>]
 // Checks: fcp, wordmark, firstScreen, readable, delayedGl, inputGuard, parity, strip, motion, flashLight, flashDark,
-// reducedStatic, gpu. Each writes <out>/<check>.json; the run writes <out>/summary.json and exits 1 on any FAIL.
+// reducedStatic, gpu, filmstrips (evidence). Each writes <out>/<check>.json; the run writes <out>/summary.json and
+// exits 1 on any FAIL.
 // GL and timing checks are only valid on a real renderer and with no Blender job loading the CPU (tools.md).
 import { mkdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -12,7 +13,7 @@ import * as C from './checks.mjs';
 const opts = H.cliOpts();
 const out = resolve(opts.out || join(H.evidenceDir('W-S1', 'wave3a', 'crew'), 'w-s1'));
 mkdirSync(out, { recursive: true });
-const ALL = ['fcp', 'wordmark', 'firstScreen', 'readable', 'delayedGl', 'inputGuard', 'parity', 'strip', 'motion', 'flashLight', 'flashDark', 'reducedStatic', 'gpu'];
+const ALL = ['fcp', 'wordmark', 'firstScreen', 'readable', 'delayedGl', 'inputGuard', 'parity', 'strip', 'motion', 'flashLight', 'flashDark', 'reducedStatic', 'gpu', 'filmstrips'];
 const only = opts.only ? String(opts.only).split(',') : ALL;
 
 const srv = await H.serve();
@@ -28,6 +29,10 @@ try {
         const dir = join(out, 'delayed-gl');
         mkdirSync(dir, { recursive: true });
         r = await C.delayedGl(srv.base, { out: dir });
+      } else if (name === 'filmstrips') {
+        const dir = join(out, 'filmstrips');
+        mkdirSync(dir, { recursive: true });
+        r = await C.filmstrips(srv.base, { out: dir });
       } else if (name === 'parity') {
         const dir = join(out, 'parity');
         mkdirSync(dir, { recursive: true });
