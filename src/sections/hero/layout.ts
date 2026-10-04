@@ -34,6 +34,9 @@ export function heroLayout(hero: HTMLElement, nudge = false): void {
   const WIN = 46 / 54; // image window / print width
   const HEAD = 0.15; // eject headroom above the camera, as a share of its width (the flight's measured apex + margin)
   const OVER = 0.32; // most of the camera's width print 1 may cover (the grip side; the lens starts near 44%)
+  const TILT = (1.2 * Math.PI) / 180; // print 1's slot tilt (Hero.astro .hero-print rotate)
+  const TC = Math.cos(TILT);
+  const TS = Math.sin(TILT);
   const r = (n: number) => Math.round(n);
   const rowBox = row.getBoundingClientRect();
   const rowTop = rowBox.top + win.scrollY;
@@ -72,16 +75,30 @@ export function heroLayout(hero: HTMLElement, nudge = false): void {
     rowH = Math.max(avail, 200);
     const stripRoom = short ? 0 : SH + GS;
     // Print 1: as tall as the row allows, at least a 220 px window, about a quarter of the content width.
-    // 10 px under the row's top stays free: the landing lift and the 2.2 degree tilt never reach the h1.
+    // 10 px under the row's top stays free: the landing lift and the tilt never reach the h1.
     let pw = Math.min((rowH - 10) * PR, Math.max(259, 0.24 * W));
     if (short) pw = Math.min((rowH - 10) * PR, 0.3 * W);
-    // Where the row is tall enough, print 1 may sit under the copy; otherwise it keeps clear of the lede and CTA.
-    const under = rowH - copyBottom - 16 >= pw / PR;
+    // On a mouse, print 1's still appears late (the eject's handback, with no input yet), so its LCP size, the box
+    // of the tilted card, stays under the h1's: the LCP stays the h1 (budgets.md).
+    if (!touch) pw = Math.min(pw, Math.sqrt((0.98 * h1Area) / ((TC + TS / PR) * (TC / PR + TS))));
+    // Where the row is tall enough, print 1 sits under the copy, in the column the copy leaves empty, at the largest
+    // size that fits there with a window of 220 px or more (a big desktop's first screen: the print fills the lower
+    // left and the camera is seen whole). Otherwise it keeps clear of the lede and CTA, beside the camera's grip.
+    const camFor = (p: number) => Math.min((rowH - stripRoom) / (HEAD + 1 / A), Math.sqrt(capArea(p * (p / PR)) * A), 0.46 * W, 760);
+    const roomUnder = (rowH - copyBottom - 28) * PR; // 28 px: the landing lift and tilt stay clear of the CTA
+    const pwBeside = pw;
+    let under = !short && roomUnder * WIN >= 220;
+    if (under) pw = Math.min(pw, roomUnder);
+    let cw = camFor(pw);
+    // Under the copy the print keeps 24 px clear of the camera; beside it, it sits left of the strip, over the grip.
+    if (under && pw + 24 > W - cw) {
+      under = false;
+      pw = pwBeside;
+      cw = camFor(pw);
+    }
     const left = under ? 0 : textRight + 24;
-    let cw = Math.min((rowH - stripRoom) / (HEAD + 1 / A), Math.sqrt(capArea(pw * (pw / PR)) * A), 0.46 * W, 760);
-    // The print sits left of the strip and over the grip side.
-    let right = Math.min(short ? W : W - SW - 8, W - cw + OVER * cw);
-    if (right - left < pw) {
+    let right = under ? pw : Math.min(short ? W : W - SW - 8, W - cw + OVER * cw);
+    if (!under && right - left < pw) {
       // Not enough room between the copy and the camera: shrink the camera until the print fits, then the print.
       const need = pw - (right - left);
       cw = Math.max(160, cw - need / (1 - OVER));
@@ -91,7 +108,7 @@ export function heroLayout(hero: HTMLElement, nudge = false): void {
     const ch = cw / A;
     // Compact the row to what it holds (a tall portrait split, like a 1024 x 1366 tablet, would otherwise leave a
     // gap between the copy and the camera), keeping everything bottom-aligned.
-    rowH = Math.min(rowH, Math.max(pw / PR + (under ? copyBottom + 16 : 0), HEAD * cw + ch + stripRoom, copyBottom + 24));
+    rowH = Math.min(rowH, Math.max(pw / PR + (under ? copyBottom + 28 : 0), HEAD * cw + ch + stripRoom, copyBottom + 24));
     cam = { x: W - cw, y: rowH - stripRoom - ch, w: cw, h: ch };
     pr = { x: right - pw, y: rowH - pw / PR, w: pw, h: pw / PR };
     strip = short ? { x: W - SW, y: rowH + 12 } : { x: W - SW, y: rowH - SH };

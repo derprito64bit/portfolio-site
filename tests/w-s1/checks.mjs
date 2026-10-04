@@ -125,7 +125,10 @@ export async function fcp(base, { profiles = [...GES, 'WK-P2', 'WK-T2'], lateFon
   for (const [p, route] of [...profiles.map((x) => [x, null]), ...lateFont.map((x) => [x, late])]) {
     const { page, ctx } = await open(base, p, 'auto', { init: FCP_PROBE, ...(route ? { route } : {}) });
     await page.waitForFunction(() => window.__w1?.fcp, null, { timeout: 10000 }).catch(() => {});
-    await sleep(route ? 2300 : 1500);
+    // Until the hero rests (print 1 handed back to its still on the full tier): a still that appears late must not
+    // take the LCP from the h1 either.
+    await heroAtRest(page).catch(() => {});
+    await sleep(route ? 1200 : 600);
     const r = await page.evaluate(() => window.__w1);
     const areas = await page.evaluate(LCP_AREAS);
     await ctx.close();
