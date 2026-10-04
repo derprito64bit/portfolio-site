@@ -93,7 +93,12 @@ export const heroTimeline = /*#__PURE__*/ Object.freeze({
   "readable": 1804,
   "developed": 3380,
   "readableAfterGlReady": 3004,
-  "budgetAfterGlReady": 3300
+  "budgetAfterGlReady": 3300,
+  "flashPeak": 370,
+  "rollerTracksEnd": 1300,
+  "lateGlAfterFcp": 2500,
+  "cameraAfterGlReady": 2500,
+  "revealSafety": 6000
 });
 
 export const develop = /*#__PURE__*/ Object.freeze({

@@ -22,8 +22,6 @@ const STACK_MAX = 3;
 const LENSES = [16, 28, 50, 85, 135];
 const SESSION_KEY = 'ion.hero';
 const EASE_OUT = 'cubic-bezier(0.23, 1, 0.32, 1)';
-/** W-D012's late guard: GL ready later than first contentful paint + 2.5 s jumps to the end state (no token holds it). */
-const LATE_GUARD_MS = 2500;
 /** The develop curve's exponent, from tokens.develop.curve (d = 1 - (1 - t)^2.4). */
 const CURVE_EXP = Number(/\^\s*([\d.]+)/.exec(developTokens.curve)?.[1] ?? 2.4);
 
@@ -300,7 +298,8 @@ function closeBrackets(stageMs?: number): void {
   });
 }
 
-/** The flash from the lens (W-D011): 350 ms, peak 0.62 at +120 ms, through the stage's one global limiter. */
+/** The flash from the lens (W-D011): 350 ms, peak 0.62 at +120 ms (heroTimeline.flashPeak), through the stage's one
+ *  global limiter. */
 function flash(trigger: string, stageMs?: number): boolean {
   if (!hero || !stage()?.requestFlash(trigger, 'hero:flash')) return false;
   const el = hero.querySelector<HTMLElement>('.hero-flash');
@@ -316,7 +315,7 @@ function flash(trigger: string, stageMs?: number): boolean {
   el.animate(
     [
       { opacity: 0, offset: 0 },
-      { opacity: 0.62, offset: 120 / durations.flash, easing: EASE_OUT },
+      { opacity: 0.62, offset: (heroTimeline.flashPeak - heroTimeline.flash) / durations.flash, easing: EASE_OUT },
       { opacity: 0, offset: 1 },
     ],
     { duration: durations.flash, easing: 'linear', delay: delayFor(stageMs) },
@@ -510,7 +509,7 @@ async function startIntro(): Promise<void> {
   // Guard: GL ready later than FCP + 2.5 s jumps to the end state (print 1 developed in its slot).
   const late = setTimeout(() => {
     if (markTime('stage:gl-ready') === null) finishIntro('late');
-  }, Math.max(0, fcp + LATE_GUARD_MS - performance.now()));
+  }, Math.max(0, fcp + heroTimeline.lateGlAfterFcp - performance.now()));
   guardOff.push(() => clearTimeout(late));
   const controller = await loadCamera();
   if (introState !== 'waiting') return;
@@ -525,7 +524,7 @@ async function startIntro(): Promise<void> {
   // (Not on the manual clock, where T0 waits for the first seek.)
   const slow = setTimeout(() => {
     if (!manualClock && !performance.getEntriesByName('hero:t0').length) finishIntro('slow-camera');
-  }, Math.max(0, glReady + LATE_GUARD_MS - performance.now()));
+  }, Math.max(0, glReady + heroTimeline.cameraAfterGlReady - performance.now()));
   guardOff.push(() => clearTimeout(slow));
   const result = await controller.intro(glReady + heroTimeline.t0AfterGlReady, introHooks);
   clearTimeout(slow);

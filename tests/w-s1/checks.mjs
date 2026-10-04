@@ -1,30 +1,19 @@
 // W-S1 acceptance checks (issue #13 with Amendments A1 and A2), one function per acceptance line. Each returns
 // { pass, ... } and never throws for a failed expectation (only for a broken harness). run.mjs runs them and writes the
 // JSON evidence. Durations and budgets come from the tokens (A2: no literal duration or budget here).
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import sharp from 'sharp';
 import { durations, heroTimeline, springs } from '../../src/lib/tokens.js';
+import { loadBudgets } from './budgets.mjs';
 import { H, WAIT, context, heroAtRest, heroRects, median, open, profile, rectsIntersect, sleep } from './lib.mjs';
 
 const GES = ['D1', 'D2', 'D3', 'T1', 'T2', 'P1', 'P2', 'S1', 'S2'];
 const MOUSE = (p) => profile(p).input === 'mouse';
-/** The acceptance lines' own numbers that no token holds (W-D012's guards, the delayed-GL line, budgets.md). */
-const SPEC = {
-  /** "With the GL chunk delayed 3 s via page.route, a developed print 1 is visible by FCP + 2.6 s". */
-  delayGlMs: 3000,
-  printVisibleAfterFcpMs: 2600,
-  /** budgets.md: no automatic motion over 5 s. */
-  motionCapMs: 5000,
-  /** budgets.md: pre-GL JS <= 35 kB gz from the network log. */
-  preGlBytes: 35_000,
-  /** budgets.md: GL chunk (three, addons, anime, stage GL, effects) <= 185 kB gz. */
-  glBytes: 185_000,
-  /** A2: the head script stays under 0.8 kB. */
-  headScriptBytes: 800,
-  /** Mean diff of a poster against the first GL frame (gate line 5), in 8-bit levels. */
-  parityMax: 4,
-};
+/** The acceptance numbers no token holds, read from budgets.md and the plan at run time (budgets.mjs). */
+const SPEC = loadBudgets();
+/** A held key repeats about 30 times a second (a rate, for the Space and Enter holds). */
+const KEY_REPEAT_HZ = 30;
 const GL_CHUNK = /\/_astro\/gl\.[^/]+\.js$/;
 /** The built client chunk that holds a source module (Vite manifest written by astro.config.mjs). */
 function chunkOf(module) {
@@ -119,17 +108,17 @@ const PLACEMENT = () => {
 /** 1. FCP shows the h1, the line slot, the CTA, the strip and the camera (the drawing on the first visit, else the
  *  poster); the LCP element per profile (never the camera), with the camera below 85% of the h1's LCP area (mouse) or
  *  of the larger of the h1 and print 1 (touch), and no layout shift in the hero. A second pass holds every web font
- *  back 800 ms (the h1 paints in its fallback face first): the LCP element must not change and nothing may shift. */
+ *  back for an idle detach (the h1 paints in its fallback face first): the LCP element must not change and nothing may shift. */
 export async function fcp(base, { profiles = [...GES, 'WK-P2', 'WK-T2'], lateFont = ['D1', 'D2', 'D3', 'T2', 'P2'] } = {}) {
   const rows = [];
-  const late = { match: /\.woff2(\?|$)/, handler: async (r) => { await sleep(800); await r.continue(); } };
+  const late = { match: /\.woff2(\?|$)/, handler: async (r) => { await sleep(WAIT.settle); await r.continue(); } };
   for (const [p, route] of [...profiles.map((x) => [x, null]), ...lateFont.map((x) => [x, late])]) {
     const { page, ctx } = await open(base, p, 'auto', { init: FCP_PROBE, ...(route ? { route } : {}) });
-    await page.waitForFunction(() => window.__w1?.fcp, null, { timeout: 10000 }).catch(() => {});
+    await page.waitForFunction(() => window.__w1?.fcp, null, { timeout: WAIT.patience }).catch(() => {});
     // Until the hero rests (print 1 handed back to its still on the full tier): a still that appears late must not
     // take the LCP from the h1 either.
     await heroAtRest(page).catch(() => {});
-    await sleep(route ? 1200 : 600);
+    await sleep(route ? 2 * WAIT.settle : WAIT.settle);
     const r = await page.evaluate(() => window.__w1);
     const areas = await page.evaluate(LCP_AREAS);
     await ctx.close();
@@ -156,7 +145,7 @@ export async function firstPaint(base, { out, profiles = GES } = {}) {
   const html = readFileSync(join(H.ROOT, 'dist/index.html'), 'utf8');
   const head = [...html.matchAll(/<script>([^<]*ion\.hero[^<]*)<\/script>/g)].map((m) => m[1])[0] ?? '';
   const headBytes = Buffer.byteLength(head);
-  const hold = async (route) => { await sleep(6000); await route.continue().catch(() => {}); };
+  const hold = async (route) => { await sleep(WAIT.patience); await route.continue().catch(() => {}); };
   const rows = [];
   const visit = async (p, mode, { url = '/', js = true, before } = {}) => {
     const ctx = await context(p, mode === 'reduced' ? 'reduced' : 'auto', js ? {} : { context: { javaScriptEnabled: false } });
@@ -170,9 +159,9 @@ export async function firstPaint(base, { out, profiles = GES } = {}) {
     const [path, hash] = url.split('#');
     // Not 'load': that waits for the held images. First paint, the fonts, then a beat.
     await page.goto(`${base}${path}${q}${hash ? `#${hash}` : ''}`, { waitUntil: js ? 'domcontentloaded' : 'load' });
-    if (js) await page.waitForFunction(() => window.__w1?.fcp, null, { timeout: 10000 }).catch(() => {});
+    if (js) await page.waitForFunction(() => window.__w1?.fcp, null, { timeout: WAIT.patience }).catch(() => {});
     await page.evaluate(() => document.fonts?.ready).catch(() => {});
-    await sleep(300);
+    await sleep(WAIT.beat);
     return { page, ctx };
   };
   const read = async (page) => page.evaluate(() => {
@@ -204,16 +193,16 @@ export async function firstPaint(base, { out, profiles = GES } = {}) {
       const page = await ctx.newPage();
       await page.addInitScript(FCP_PROBE);
       await page.goto(`${base}/`, { waitUntil: 'load' });
-      await page.waitForFunction(() => sessionStorage.getItem('ion.hero'), null, { timeout: 15000 }).catch(() => {});
+      await page.waitForFunction(() => sessionStorage.getItem('ion.hero'), null, { timeout: WAIT.patience }).catch(() => {});
       await page.reload({ waitUntil: 'load' });
-      await sleep(600);
+      await sleep(WAIT.settle);
       await record(`${p}-reload`, p, 'reload', 'camera', page, ctx);
     }
     // An anchor arrival in a fresh session.
     {
       const { page, ctx } = await visit(p, 'auto', { url: '/#sheet' });
       await page.evaluate(() => window.scrollTo(0, 0));
-      await sleep(200);
+      await sleep(WAIT.beat);
       await record(`${p}-hash`, p, 'hash', 'camera', page, ctx);
     }
     // Back: away from home before the opening could start, then back (a back_forward navigation, or a page restored
@@ -226,7 +215,7 @@ export async function firstPaint(base, { out, profiles = GES } = {}) {
       await page.goto(`${base}/`, { waitUntil: 'domcontentloaded' });
       await page.goto(`${base}/work/project-01/`, { waitUntil: 'load' });
       await page.goBack({ waitUntil: 'load' });
-      await sleep(800);
+      await sleep(WAIT.settle);
       const nav = await page.evaluate(() => performance.getEntriesByType('navigation')[0]?.type ?? null);
       const s = await read(page);
       if (out) await page.screenshot({ path: `${out}/${p}-back.png` });
@@ -282,7 +271,7 @@ export async function wordmark(base) {
     const { page: pg, ctx: c } = await open(base, p);
     if (spacing) await pg.addStyleTag({ content: SPACING });
     await pg.evaluate(() => document.fonts.ready);
-    await sleep(450);
+    await sleep(WAIT.beat);
     const r = await pg.evaluate(() => {
       const clipped = [...document.querySelectorAll('.hero *')].filter((e) => {
         const cs = getComputedStyle(e);
@@ -361,7 +350,7 @@ export async function readable(base, { loads = 3, profileName = 'D2' } = {}) {
   for (let i = 0; i < loads; i++) {
     await H.closeBrowsers();
     const { page, ctx } = await open(base, profileName);
-    await page.waitForFunction(() => performance.getEntriesByName('hero:readable').length || document.documentElement.dataset.hero === 'done', null, { timeout: 15000 }).catch(() => {});
+    await page.waitForFunction(() => performance.getEntriesByName('hero:readable').length || document.documentElement.dataset.hero === 'done', null, { timeout: WAIT.patience }).catch(() => {});
     const m = await page.evaluate(() => {
       const t = (n) => performance.getEntriesByName(n, 'mark')[0]?.startTime ?? null;
       return { glReady: t('stage:gl-ready'), camReady: t('hero:cam-ready'), t0: t('hero:t0'), readable: t('hero:readable'), cam: document.documentElement.dataset.cam, renderer: window.__stage?.gl?.rendererName ?? null, guards: performance.getEntriesByType('mark').filter((x) => x.name.startsWith('hero:guard')).map((x) => x.name) };
@@ -402,7 +391,7 @@ export async function delayedGl(base, { profileName = 'D2', out } = {}) {
         window.__dg.visibleAt = performance.now();
         return;
       }
-      setTimeout(poll, 16);
+      requestAnimationFrame(poll);
     };
     addEventListener('DOMContentLoaded', poll);
   });
@@ -414,13 +403,13 @@ export async function delayedGl(base, { profileName = 'D2', out } = {}) {
         await page.screenshot({ path: `${out}/delayed-gl-${String(t).padStart(5, '0')}.png` }).catch(() => {});
         frames.push(t);
       }
-      await sleep(250);
+      await sleep(WAIT.beat / 2);
     }
   };
   await page.goto(`${base}/`, { waitUntil: 'commit' });
   await shoot();
-  await page.waitForFunction(() => window.__dg.visibleAt !== null, null, { timeout: 8000 }).catch(() => {});
-  await sleep(durations.heroDrawingFade + 300);
+  await page.waitForFunction(() => window.__dg.visibleAt !== null, null, { timeout: WAIT.patience }).catch(() => {});
+  await sleep(durations.heroDrawingFade + WAIT.beat);
   const r = await page.evaluate(() => ({ ...window.__dg, hero: document.documentElement.dataset.hero, cam: document.documentElement.dataset.cam, session: sessionStorage.getItem('ion.hero'), guard: performance.getEntriesByType('mark').filter((m) => m.name.startsWith('hero:guard')).map((m) => m.name) }));
   if (out) await page.screenshot({ path: `${out}/delayed-gl-${profileName}-end.png` });
   await ctx.close();
@@ -438,13 +427,13 @@ export async function inputGuard(base, { profileName = 'D2' } = {}) {
   for (const kind of ['keydown', 'focusin', 'pointerdown']) {
     const { page, ctx } = await open(base, profileName);
     // Wait for the eject sequence to be under way (the drawing done, the print in flight), then interrupt it.
-    await page.waitForFunction(() => performance.getEntriesByName('hero:t0').length > 0, null, { timeout: 15000 }).catch(() => {});
+    await page.waitForFunction(() => performance.getEntriesByName('hero:t0').length > 0, null, { timeout: WAIT.patience }).catch(() => {});
     await sleep(durations.heroDrawingClay + durations.heroDrawingDevelop + heroTimeline.flight);
     const before = await page.evaluate(() => ({ hero: document.documentElement.dataset.hero, flying: Boolean(window.__hero?.flying) }));
     if (kind === 'keydown') await page.keyboard.press('Shift');
     if (kind === 'focusin') await page.evaluate(() => document.querySelector('.hero-cta a').focus());
     if (kind === 'pointerdown') await page.mouse.click(20, (await page.viewportSize()).height - 20);
-    await sleep(300);
+    await sleep(WAIT.beat);
     const after = await page.evaluate(() => {
       const img = document.querySelector('[data-hero-print] img.hero-still');
       return { hero: document.documentElement.dataset.hero, flying: Boolean(window.__hero?.flying), stillOpacity: Number(getComputedStyle(img).opacity), guard: performance.getEntriesByType('mark').filter((m) => m.name.startsWith('hero:guard')).map((m) => m.name) };
@@ -459,16 +448,17 @@ export async function inputGuard(base, { profileName = 'D2' } = {}) {
     const page = await ctx.newPage();
     await page.addInitScript(FCP_PROBE);
     await page.goto(`${base}/`, { waitUntil: 'load' });
-    await page.waitForFunction(() => performance.getEntriesByName('hero:t0').length > 0, null, { timeout: 15000 }).catch(() => {});
+    await page.waitForFunction(() => performance.getEntriesByName('hero:t0').length > 0, null, { timeout: WAIT.patience }).catch(() => {});
     await sleep(durations.heroDrawingClay + durations.heroDrawingDevelop / 4);
     mid.before = await page.evaluate(() => ({ cam: document.documentElement.dataset.cam, drawing: window.__hero?.drawingState }));
     await page.keyboard.press('Shift');
-    await sleep(60);
+    // Well inside the crossfade: the still is there when the guard fires, not when the crossfade ends.
+    await sleep(durations.heroDrawingFade / 8);
     mid.stillAtGuard = await page.evaluate(() => Number(getComputedStyle(document.querySelector('[data-hero-print] img.hero-still')).opacity));
-    await sleep(durations.heroDrawingFade + 200);
+    await sleep(durations.heroDrawingFade + WAIT.beat);
     mid.after = await page.evaluate(() => ({ cam: document.documentElement.dataset.cam, drawing: window.__hero?.drawingState, hero: document.documentElement.dataset.hero, session: sessionStorage.getItem('ion.hero'), still: Number(getComputedStyle(document.querySelector('[data-hero-print] img.hero-still')).opacity), live: window.__hero?.live, log: (window.__motionLog ?? []).filter((e) => e.kind === 'drawing').map((e) => e.id) }));
     await page.reload({ waitUntil: 'load' });
-    await sleep(600);
+    await sleep(WAIT.settle);
     mid.reload = await page.evaluate(() => ({ fcpCam: window.__w1?.fcp?.cam ?? null, camSeen: window.__w1?.camSeen ?? null, hero: document.documentElement.dataset.hero }));
     await ctx.close();
     mid.pass = mid.before.cam === 'drawing' && mid.before.drawing === 'running' && mid.stillAtGuard > 0.99 && mid.after.cam === 'camera' && mid.after.drawing === 'done' && mid.after.session === '1' && mid.after.still > 0.99 && mid.after.live === true && mid.reload.fcpCam === 'camera' && !(mid.reload.camSeen ?? []).includes('drawing');
@@ -495,13 +485,13 @@ export async function parity(base, { profiles = [...GES, 'X1180', 'X600', 'WK-P2
     const sctx = await context(p, 'reduced');
     const spage = await sctx.newPage();
     await spage.route(GL_CHUNK, async (route) => {
-      await sleep(20000);
+      await sleep(WAIT.patience);
       await route.continue().catch(() => {});
     });
     await spage.goto(`${base}/`, { waitUntil: 'load' });
     await spage.evaluate(() => document.fonts.ready);
-    await spage.waitForFunction(() => document.querySelector('.hero-poster')?.complete, null, { timeout: 8000 });
-    await sleep(300);
+    await spage.waitForFunction(() => document.querySelector('.hero-poster')?.complete, null, { timeout: WAIT.patience });
+    await sleep(WAIT.beat);
     const clip = await spage.evaluate(() => {
       const b = document.querySelector('[data-hero-camera]').getBoundingClientRect();
       return { x: Math.round(b.x), y: Math.round(b.y), width: Math.round(b.width), height: Math.round(b.height) };
@@ -511,8 +501,8 @@ export async function parity(base, { profiles = [...GES, 'X1180', 'X600', 'WK-P2
     await sctx.close();
     // The first GL frame: reduced motion (no intro), the camera live and the poster faded out.
     const g = await open(base, p, 'reduced');
-    await g.page.waitForFunction(() => document.querySelector('[data-hero-camera]')?.classList.contains('is-gl'), null, { timeout: 15000 }).catch(() => {});
-    await sleep(600);
+    await g.page.waitForFunction(() => document.querySelector('[data-hero-camera]')?.classList.contains('is-gl'), null, { timeout: WAIT.patience }).catch(() => {});
+    await sleep(WAIT.settle);
     const live = await g.page.evaluate(() => Boolean(window.__hero?.live));
     const b = await g.page.screenshot({ clip });
     await g.ctx.close();
@@ -530,7 +520,7 @@ export async function parity(base, { profiles = [...GES, 'X1180', 'X600', 'WK-P2
     const ctx = await context('D2');
     const page = await ctx.newPage();
     await page.goto(`${base}/?t=0`, { waitUntil: 'load' });
-    await page.waitForFunction(() => window.__hero && window.__hero.flying, null, { timeout: 20000 });
+    await page.waitForFunction(() => window.__hero && window.__hero.flying, null, { timeout: WAIT.patience });
     await page.evaluate(() => document.fonts.ready);
     const clip = await page.evaluate(() => {
       const b = document.querySelector('[data-hero-camera]').getBoundingClientRect();
@@ -551,8 +541,8 @@ export async function parity(base, { profiles = [...GES, 'X1180', 'X600', 'WK-P2
   }
   // Pose drift: the camera's projected box and angle across a 40% scroll of the hero (D2).
   const { page, ctx } = await open(base, 'D2', 'reduced');
-  await page.waitForFunction(() => document.querySelector('[data-hero-camera]')?.classList.contains('is-gl'), null, { timeout: 15000 }).catch(() => {});
-  await sleep(450);
+  await page.waitForFunction(() => document.querySelector('[data-hero-camera]')?.classList.contains('is-gl'), null, { timeout: WAIT.patience }).catch(() => {});
+  await sleep(WAIT.beat);
   const at = async () => page.evaluate(() => {
     const b = window.__stage.bounds('camera');
     return { slot: b.slot, gl: b.gl };
@@ -560,7 +550,7 @@ export async function parity(base, { profiles = [...GES, 'X1180', 'X600', 'WK-P2
   const top = await at();
   const heroH = await page.evaluate(() => document.querySelector('[data-hero-section]').offsetHeight);
   await page.evaluate((y) => window.scrollTo(0, y), Math.round(heroH * 0.4));
-  await sleep(500);
+  await sleep(WAIT.beat);
   const scrolled = await at();
   await ctx.close();
   const rel = (x) => ({ dx: x.gl.x - x.slot.x, dy: x.gl.y - x.slot.y, w: x.gl.w, h: x.gl.h, a: x.gl.angleDeg });
@@ -695,17 +685,17 @@ export async function strip(base) {
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: cam.x, y: cam.y }] });
   for (let i = 1; i <= 10; i++) await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: cam.x, y: cam.y - i * 24 }] });
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
-  await sleep(1500);
+  await sleep(2 * WAIT.settle);
   const y1 = await k.page.evaluate(() => scrollY);
   await k.page.evaluate(() => window.scrollTo(0, 0));
-  await sleep(800);
-  await k.page.waitForFunction(() => !window.__hero || window.__hero.live, null, { timeout: 8000 }).catch(() => {});
+  await sleep(WAIT.settle);
+  await k.page.waitForFunction(() => !window.__hero || window.__hero.live, null, { timeout: WAIT.patience }).catch(() => {});
   // Taps on the camera press the shutter: each makes the next print (GL ejects it on lite), announced and placed.
   const presses = [];
   for (let n = 1; n <= 4; n++) {
     const before = await k.page.evaluate(() => document.querySelectorAll('[data-hero-print] img.hero-still').length);
     await k.page.tap('[data-hero-camera]', { position: { x: 20, y: 20 } });
-    await sleep(heroTimeline.developed + durations.glHandback + 600);
+    await sleep(WAIT.press);
     const after = await k.page.evaluate(() => ({ stills: document.querySelectorAll('[data-hero-print] img.hero-still').length, status: document.getElementById('status')?.textContent ?? '' }));
     const placement = await k.page.evaluate(PLACEMENT);
     presses.push({ n, before, after, placement, pass: after.stills === Math.min(before + 1, 3) && /Printed/.test(after.status) && placement.every((x) => x.ok) });
@@ -733,14 +723,14 @@ const MID_FLIGHT = heroTimeline.flight - heroTimeline.shutter + (heroTimeline.la
 export async function motion(base) {
   const table = Object.fromEntries(Object.entries(springs).map(([k, v]) => [k, v.overshootPct]));
   const { page, ctx } = await open(base, 'D2');
-  await page.waitForFunction(() => performance.getEntriesByName('hero:developed').length > 0, null, { timeout: 15000 }).catch(() => {});
-  await sleep(500);
+  await page.waitForFunction(() => performance.getEntriesByName('hero:developed').length > 0, null, { timeout: WAIT.patience }).catch(() => {});
+  await sleep(WAIT.beat);
   const marks = await page.evaluate(() => Object.fromEntries(['hero:t0', 'hero:developed'].map((n) => [n, performance.getEntriesByName(n)[0]?.startTime ?? null])));
   await page.click('input[name="camera-lens"][value="85"]');
   await page.click('input[name="camera-look"][value="vivid"]');
-  await sleep(1200);
+  await sleep(WAIT.settle + WAIT.beat);
   await page.click('[data-shutter]');
-  await sleep(heroTimeline.developed + 1000);
+  await sleep(WAIT.press);
   const log = await page.evaluate(() => window.__motionLog.slice());
   await ctx.close();
   const springRows = log.filter((e) => e.spring && table[e.spring] !== undefined && e.to !== e.from).map((e) => {
@@ -759,20 +749,21 @@ export async function motion(base) {
   for (const scheme of ['light', 'dark']) {
     for (const key of ['Space', 'Enter']) {
       const h = await open(base, 'D2', 'auto', { colorScheme: scheme });
-      await h.page.waitForFunction(() => performance.getEntriesByName('hero:developed').length > 0 || document.documentElement.dataset.hero === 'done', null, { timeout: 15000 }).catch(() => {});
-      await sleep(1500);
+      await h.page.waitForFunction(() => performance.getEntriesByName('hero:developed').length > 0 || document.documentElement.dataset.hero === 'done', null, { timeout: WAIT.patience }).catch(() => {});
+      await sleep(2 * WAIT.settle);
       await h.page.focus('[data-shutter]');
       const cdp = await h.ctx.newCDPSession(h.page);
       const code = key === 'Space' ? { key: ' ', code: 'Space', windowsVirtualKeyCode: 32 } : { key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 };
       const t0 = await h.page.evaluate(() => performance.now());
       await cdp.send('Input.dispatchKeyEvent', { type: 'keyDown', ...code, text: key === 'Space' ? ' ' : '\r' });
-      const end = Date.now() + 5000;
+      // Held for five flash gaps: the limiter allows one flash per gap at most.
+      const end = Date.now() + 5 * durations.flashMinGap;
       while (Date.now() < end) {
         await cdp.send('Input.dispatchKeyEvent', { type: 'keyDown', ...code, autoRepeat: true, text: key === 'Space' ? ' ' : '\r' });
-        await sleep(33);
+        await sleep(1000 / KEY_REPEAT_HZ);
       }
       await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', ...code });
-      await sleep(heroTimeline.developed + 1000);
+      await sleep(WAIT.press);
       const flashes = await h.page.evaluate((from) => window.__motionLog.filter((e) => e.kind === 'flash' && e.t0 >= from).map((e) => e.t0), t0);
       await h.ctx.close();
       let worst = 0;
@@ -792,7 +783,7 @@ export async function flashFilm(base, { out, profileName = 'D2', scheme = 'light
   const ctx = await context(profileName, 'auto', { colorScheme: scheme });
   const page = await ctx.newPage();
   await page.goto(`${base}/?t=0`, { waitUntil: 'load' });
-  await page.waitForFunction(() => window.__hero && window.__hero.flying, null, { timeout: 20000 });
+  await page.waitForFunction(() => window.__hero && window.__hero.flying, null, { timeout: WAIT.patience });
   const frames = [];
   for (let i = 0; i <= (ms * fps) / 1000; i++) {
     const t = (i * 1000) / fps;
@@ -815,9 +806,9 @@ export async function reducedStatic(base) {
     const geo = {};
     for (const mode of ['auto', 'reduced', 'static']) {
       const { page, ctx } = await open(base, p, mode, { init: FCP_PROBE });
-      await page.waitForFunction(() => window.__w1?.fcp, null, { timeout: 10000 }).catch(() => {});
+      await page.waitForFunction(() => window.__w1?.fcp, null, { timeout: WAIT.patience }).catch(() => {});
       if (mode === 'auto') await heroAtRest(page).catch(() => {});
-      else await sleep(800);
+      else await sleep(WAIT.settle);
       const g = await heroRects(page);
       const fcp = await page.evaluate(() => window.__w1.fcp);
       const camSeen = await page.evaluate(() => window.__w1.camSeen);
@@ -825,18 +816,19 @@ export async function reducedStatic(base) {
       const presses = [];
       if (mode !== 'auto') {
         await page.click('[data-shutter]');
-        await sleep(60);
+        // Inside the fade: its animation is still running.
+        await sleep(durations.reduced / 4);
         swap = await page.evaluate(() => {
           const imgs = document.querySelectorAll('[data-hero-print] img.hero-still');
           const img = imgs[imgs.length - 1];
           const anims = img.getAnimations().map((a) => ({ duration: a.effect.getTiming().duration, props: a.effect.getKeyframes().map((k) => Object.keys(k).filter((x) => !['offset', 'computedOffset', 'easing', 'composite'].includes(x))).flat() }));
           return { stills: imgs.length, anims, flying: Boolean(window.__hero?.flying), fx: document.querySelector('[data-hero-section]').hasAttribute('data-fx') };
         });
-        await sleep(durations.reduced + 100);
+        await sleep(WAIT.fade);
         presses.push({ n: 1, placement: await page.evaluate(PLACEMENT) });
         for (let n = 2; n <= 4; n++) {
           await page.click('[data-shutter]');
-          await sleep(durations.reduced + 100);
+          await sleep(WAIT.fade);
           presses.push({ n, placement: await page.evaluate(PLACEMENT) });
         }
       }
@@ -878,8 +870,8 @@ export async function preGl(base, { runs = 3 } = {}) {
       cdp.on('Network.responseReceived', (e) => { const r = reqs.get(e.requestId); if (r) r.type = e.type; });
       cdp.on('Network.loadingFinished', (e) => { const r = reqs.get(e.requestId); if (r) r.bytes = e.encodedDataLength; });
       await page.goto(`${base}/`, { waitUntil: 'load' });
-      await page.waitForFunction(() => ['ready', 'failed'].includes(window.__stage?.glState), null, { timeout: 15000 }).catch(() => {});
-      await sleep(1500);
+      await page.waitForFunction(() => ['ready', 'failed'].includes(window.__stage?.glState), null, { timeout: WAIT.patience }).catch(() => {});
+      await sleep(2 * WAIT.settle);
       const t = await page.evaluate(() => ({ glStart: performance.getEntriesByName('stage:gl-start')[0]?.startTime ?? null, resources: performance.getEntriesByType('resource').map((r) => ({ url: r.name, start: r.startTime })) }));
       await ctx.close();
       const startOf = (url) => t.resources.find((r) => r.url === url)?.start ?? Infinity;
@@ -946,8 +938,8 @@ export async function liteLcp(base, { runs = 5, profiles = ['P2', 'T2'] } = {}) 
   for (const p of profiles) {
     for (let i = 0; i < runs; i++) {
       const { page, ctx } = await open(base, p, 'auto', { init: FCP_PROBE });
-      await page.waitForFunction(() => document.documentElement.dataset.cam === 'camera', null, { timeout: 8000 }).catch(() => {});
-      await sleep(800);
+      await page.waitForFunction(() => document.documentElement.dataset.cam === 'camera', null, { timeout: WAIT.patience }).catch(() => {});
+      await sleep(WAIT.settle);
       const r = await page.evaluate(() => ({ lcp: window.__w1.lcp, camSeen: window.__w1.camSeen, tier: document.documentElement.dataset.tier, crossfade: (window.__motionLog ?? []).find((e) => e.id === 'hero:drawing:crossfade') ?? null }));
       await ctx.close();
       const last = r.lcp.at(-1)?.el ?? null;
@@ -958,23 +950,122 @@ export async function liteLcp(base, { runs = 5, profiles = ['P2', 'T2'] } = {}) 
   return { pass: rows.every((r) => r.pass), rows };
 }
 
-/** A2: no literal duration or budget in src/ or tests/w-s1/: the hero drawing durations and heroTimelineMs values do
- *  not appear as numbers in the hero's code (comments aside); they are read from the tokens. */
-export async function tokensOnly() {
-  const files = ['src/sections/hero/hero.ts', 'src/sections/hero/layout.ts', 'src/sections/hero/Hero.astro', 'src/gl/camera/index.ts', 'src/gl/camera/drawing.ts', 'src/gl/effects/develop/index.ts', 'src/gl/effects/develop/camera.ts', 'tests/w-s1/checks.mjs', 'tests/w-s1/lib.mjs', 'tests/w-s1/run.mjs'];
-  const values = [durations.heroDrawingClay, durations.heroDrawingDevelop, durations.heroDrawingFade, heroTimeline.readableAfterGlReady, heroTimeline.budgetAfterGlReady, heroTimeline.developed, heroTimeline.readable, heroTimeline.landingDip, heroTimeline.flight, heroTimeline.developStart, heroTimeline.eject];
+/** W-S1's own files (ownership.json), minus the generated token outputs, whose job is to hold the values. */
+function ownedFiles() {
+  const own = JSON.parse(readFileSync(join(H.ROOT, 'docs/agents/ownership.json'), 'utf8'));
+  const globs = (own.W?.['W-S1'] ?? []).filter((g) => /^(src|tests\/w-s1)\//.test(g) && g.endsWith('/**')).map((g) => g.slice(0, -3));
+  const out = [];
+  const walk = (dir) => {
+    for (const name of readdirSync(join(H.ROOT, dir))) {
+      const rel = `${dir}/${name}`;
+      if (statSync(join(H.ROOT, rel)).isDirectory()) walk(rel);
+      else if (/\.(ts|js|mjs|astro|css|html)$/.test(name)) out.push(rel);
+    }
+  };
+  globs.forEach(walk);
+  return { globs, files: out.sort() };
+}
+
+/**
+ * A2: no literal duration or budget in src/ or tests/w-s1/ (review round 2: flag every time-like literal, not only
+ * the token values). Every file in W-S1's src globs and in tests/w-s1, comments aside, is scanned for:
+ * - unit: a number with a time unit ('160ms', '0.2s': CSS, strings, templates);
+ * - e3: a number written in thousands (6e3);
+ * - timer: a number of 10 or more in the delay of setTimeout, setInterval, sleep or waitForTimeout;
+ * - key: a number of 10 or more in the value of a time-named key or constant (timeout, duration, delay, polling,
+ *   interval, wait*, settle*, hold*, *Ms, *_MS);
+ * - clock: a number of 10 or more added to or taken from Date.now() or performance.now();
+ * - budget: a comparison against a number of 1000 or more next to bytes, ms, time or a budget;
+ * - token: a bare number equal to a hero drawing duration or a heroTimelineMs value.
+ * Numbers under 10 in those places are counts and factors (2 * WAIT.settle); 1000 is allowed as a unit conversion
+ * (s to ms, kB to bytes). A line marked 'not a time: <reason>' in a comment exempts a token or budget hit, and the
+ * report lists every exemption.
+ */
+export function scanTimeLiterals(entries, tokenValues = TOKEN_VALUES) {
+  const NUM = String.raw`\d[\d_]*(?:\.\d+)?(?:e\d+)?`;
+  const ARGS = String.raw`((?:[^()]|\((?:[^()]|\([^()]*\))*\))*)`;
+  const VALUE = String.raw`([^,;{}\n]*)`;
+  // Each rule: [name, regex, which capture holds the expression or the number, scan the expression for numbers?].
+  const rules = [
+    ['unit', new RegExp(String.raw`(?<![\w.$#-])(${NUM})\s?(?:ms|s)\b`, 'g'), false],
+    ['e3', new RegExp(String.raw`(?<![\w.])(\d[\d_.]*e3)\b`, 'g'), false],
+    ['timer', new RegExp(String.raw`\b(?:setTimeout|setInterval)\s*\(${ARGS}\)`, 'g'), 'lastArg'],
+    ['timer', new RegExp(String.raw`\b(?:sleep|waitForTimeout)\s*\(${ARGS}\)`, 'g'), true],
+    ['key', new RegExp(String.raw`\b(?:timeout|duration|delay|polling|interval|wait\w*|settle\w*|hold\w*|\w*Ms|\w*_MS)\s*(?::|=(?!=))\s*${VALUE}`, 'g'), true],
+    ['clock', new RegExp(String.raw`\b(?:Date\.now|performance\.now)\(\)\s*[-+]\s*${VALUE}`, 'g'), true],
+    ['budget', new RegExp(String.raw`([\w.\]) ]{0,40})(?:<=?|>=?)\s*(${NUM})(?![\w.])`, 'g'), 'budget'],
+    ['token', new RegExp(String.raw`(?<![\w.$#-])(${tokenValues.join('|')})(?![\w.])`, 'g'), false],
+  ];
   const hits = [];
-  for (const f of files) {
-    const code = readFileSync(join(H.ROOT, f), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
-    for (const v of values) {
-      for (const m of code.matchAll(new RegExp(`(?<![\\w.])${v}(?![\\w.])`, 'g'))) {
-        // Not a time: a font weight, a viewport or profile size (X1180, width: 1180).
-        if (/(font(-weight)?:\s*|width:\s*|height:\s*|X)$/.test(code.slice(Math.max(0, m.index - 14), m.index))) continue;
-        hits.push({ file: f, value: v, line: code.slice(0, m.index).split('\n').length, text: code.slice(Math.max(0, m.index - 30), m.index + 10).replace(/\s+/g, ' ') });
+  const exempt = [];
+  for (const { file, src } of entries) {
+    const lines = src.split('\n');
+    // Comments go, strings stay (a duration in a string is still a duration). Line breaks are kept for line numbers.
+    const blank = (m) => m.replace(/[^\n]/g, ' ');
+    const code = src.replace(/\/\*[\s\S]*?\*\//g, blank).replace(/<!--[\s\S]*?-->/g, blank).replace(/(^|[^:\\])\/\/.*$/gm, (m, p) => p + blank(m.slice(p.length)));
+    const seen = new Set();
+    const hit = (rule, at, n) => {
+      if (seen.has(at)) return;
+      seen.add(at);
+      const line = code.slice(0, at).split('\n').length;
+      const text = lines[line - 1].trim().slice(0, 160);
+      const row = { file, line, rule, value: n, text };
+      if ((rule === 'token' || rule === 'budget') && /not a time:/.test(lines[line - 1])) exempt.push({ ...row, reason: /not a time:\s*([^*]*)/.exec(lines[line - 1])[1].trim() });
+      else hits.push(row);
+    };
+    const unitConversion = (expr, i, len) => /[*/]\s*$/.test(expr.slice(0, i)) || /^\s*[*/]/.test(expr.slice(i + len));
+    for (const [rule, re, mode] of rules) {
+      for (const m of code.matchAll(re)) {
+        if (mode === true || mode === 'lastArg') {
+          let expr = m[1];
+          let offset = m.index + m[0].indexOf(m[1]);
+          if (mode === 'lastArg') {
+            // The delay is the text after the last top-level comma.
+            let depth = 0;
+            let cut = -1;
+            for (let i = 0; i < expr.length; i++) {
+              const c = expr[i];
+              if ('([{'.includes(c)) depth++;
+              else if (')]}'.includes(c)) depth--;
+              else if (c === ',' && depth === 0) cut = i;
+            }
+            if (cut < 0) continue;
+            offset += cut + 1;
+            expr = expr.slice(cut + 1);
+          }
+          for (const n of expr.matchAll(new RegExp(String.raw`(?<![\w.$#])${NUM}(?![\w.])`, 'g'))) {
+            const v = Number(n[0].replace(/_/g, ''));
+            if (!(v >= 10)) continue;
+            if (v === 1000 && unitConversion(expr, n.index, n[0].length)) continue;
+            hit(rule, offset + n.index, v);
+          }
+          continue;
+        }
+        if (mode === 'budget') {
+          const v = Number(m[2].replace(/_/g, ''));
+          if (v < 1000 || !/(bytes|Bytes|ms\b|Ms\b|time|Time|delta|budget|Budget|kB|gz)/.test(m[1])) continue;
+          hit(rule, m.index + m[0].lastIndexOf(m[2]), v);
+          continue;
+        }
+        const v = Number(m[1].replace(/_/g, ''));
+        if (!(v > 0)) continue;
+        const at = m.index + m[0].indexOf(m[1]);
+        const before = code.slice(Math.max(0, at - 16), at);
+        if (rule === 'token' && /(font(-weight)?:\s*|width:\s*|height:\s*|X)$/.test(before)) continue;
+        hit(rule, at, v);
       }
     }
   }
-  return { pass: hits.length === 0, values, hits };
+  const byRule = Object.fromEntries([...new Set(rules.map(([r]) => r))].map((r) => [r, hits.filter((h) => h.rule === r).length]));
+  return { byRule, hits, exempt };
+}
+/** The hero values a bare number must not repeat: the drawing durations and heroTimelineMs. */
+const TOKEN_VALUES = [...new Set([durations.heroDrawingClay, durations.heroDrawingDevelop, durations.heroDrawingFade, ...Object.values(heroTimeline)].filter((v) => v >= 100))];
+
+export async function tokensOnly() {
+  const { globs, files } = ownedFiles();
+  const r = scanTimeLiterals(files.map((file) => ({ file, src: readFileSync(join(H.ROOT, file), 'utf8') })));
+  return { pass: r.hits.length === 0, globs, files: files.length, scanned: files, tokenValues: TOKEN_VALUES, ...r };
 }
 
 /** 9. Hero wet GPU <= 1.5x the prototype median at D2: /bench/ hero3 (the prototype's wet stand-in) against the
@@ -987,14 +1078,14 @@ export async function gpu(base, { loads = 5 } = {}) {
     const c = await context('D2');
     const pg = await c.newPage();
     await pg.goto(`${base}/bench/`, { waitUntil: 'load' });
-    await pg.waitForFunction(() => window.__bench, null, { timeout: 15000 });
+    await pg.waitForFunction(() => window.__bench, null, { timeout: WAIT.patience });
     const r = await pg.evaluate(() => window.__bench.run({ scenario: 'hero3', warmup: 30, frames: 60 }));
     proto.push(r.medianMs);
     renderer = r.renderer;
     await c.close();
     const { page, ctx } = await open(base, 'D2', 'reduced');
-    await page.waitForFunction(() => window.__hero && document.querySelector('[data-hero-camera]')?.classList.contains('is-gl'), null, { timeout: 15000 });
-    await sleep(300);
+    await page.waitForFunction(() => window.__hero && document.querySelector('[data-hero-camera]')?.classList.contains('is-gl'), null, { timeout: WAIT.patience });
+    await sleep(WAIT.beat);
     const h = await page.evaluate(() => window.__hero.bench({ warmup: 30, frames: 60 }));
     hero.push(h.medianMs);
     await ctx.close();
@@ -1014,12 +1105,12 @@ export async function filmstrips(base, { out, profileName = 'D2' } = {}) {
     const D = durations.heroDrawingClay + durations.heroDrawingDevelop;
     const T = heroTimeline;
     const drawingKeys = [0, durations.heroDrawingClay / 2, durations.heroDrawingClay, durations.heroDrawingClay + durations.heroDrawingDevelop * 0.15, durations.heroDrawingClay + durations.heroDrawingDevelop * 0.3, durations.heroDrawingClay + durations.heroDrawingDevelop * 0.5, durations.heroDrawingClay + durations.heroDrawingDevelop * 0.75];
-    const seqKeys = [T.brackets, T.shutter, T.flash, T.eject, T.developStart, T.flight, T.landingDip, T.readable, T.developed, T.developed + durations.glHandback + 100].map((k) => D + k);
+    const seqKeys = [T.brackets, T.shutter, T.flash, T.eject, T.developStart, T.flight, T.landingDip, T.readable, T.developed, T.developed + 2 * durations.glHandback].map((k) => D + k);
     const keys = [...drawingKeys, ...seqKeys].map(Math.round);
     const ctx = await context(profileName, 'auto');
     const page = await ctx.newPage();
     await page.goto(`${base}/?t=0`, { waitUntil: 'load' });
-    await page.waitForFunction(() => window.__hero && window.__hero.flying, null, { timeout: 20000 });
+    await page.waitForFunction(() => window.__hero && window.__hero.flying, null, { timeout: WAIT.patience });
     const files = [];
     for (const t of keys) {
       await page.evaluate((x) => window.__stage.seek(x), t);
@@ -1036,7 +1127,7 @@ export async function filmstrips(base, { out, profileName = 'D2' } = {}) {
     const ctx = await context(profileName, 'reduced');
     const page = await ctx.newPage();
     await page.goto(`${base}/?t=0`, { waitUntil: 'load' });
-    await sleep(2500);
+    await sleep(WAIT.press);
     await page.click('[data-shutter]');
     const files = [];
     for (const t of keys) {

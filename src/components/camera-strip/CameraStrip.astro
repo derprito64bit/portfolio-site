@@ -111,7 +111,7 @@ const current = looks.find((l: { id: string }) => l.id === look) ?? looks[0];
     font: 500 0.8125rem / 1 var(--font-edge);
     letter-spacing: 0.01em;
     pointer-events: none;
-    transition: background-color 160ms var(--ease-out), color 160ms var(--ease-out), transform var(--spring-press-ms) var(--spring-press);
+    transition: background-color var(--dur-list-toggle) var(--ease-out), color var(--dur-list-toggle) var(--ease-out), transform var(--spring-press-ms) var(--spring-press);
   }
   .cs-opt input:checked + .cs-mark { background: var(--ink); color: var(--table); }
   @media (hover: hover) and (pointer: fine) {

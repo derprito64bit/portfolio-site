@@ -22,7 +22,7 @@ const H = W / framing.aspect;
 const RW = opt.depthWidth ?? 2400;
 const RH = Math.round(RW / framing.aspect);
 const CREASE_DEG = opt.creaseDeg ?? 35;
-const TARGET = opt.target ?? 120;
+const TARGET = opt.target ?? 120; // not a time: strokes per band
 
 /** Faces of these materials draw no line (they still hide what is behind them). */
 const SKIP = new Set(['cam_lettering', 'cam_engraving', 'cam_lens_legend', 'cam_screen', 'cam_sensor', 'cam_sensor_edge', 'cam_contact', 'cam_pin', 'cam_glass', 'cam_glass_inner', 'cam_coated', 'cam_coated_green', 'cam_element_edge', 'cam_evf_glass', 'cam_lcd_glass', 'cam_lens_bore', 'cam_throat', 'cam_bayonet_dark', 'cam_lamp', 'cam_gold']);

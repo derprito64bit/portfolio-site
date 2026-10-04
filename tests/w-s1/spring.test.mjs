@@ -1,5 +1,6 @@
 // ion-spring v1 conformance (W-D010, W-D030 motion: "a spring unit test"). GPU-free: node --test.
-// The exact step must give the table's overshoot and 2% settle time at 30, 60 and 144 Hz and through a 50 ms hitch,
+// The exact step must give the table's overshoot and 2% settle time at 30, 60 and 144 Hz and through a hitch of three
+// dropped frames,
 // and stay on the analytic curve (the trajectory depends only on time, not on the frame rate).
 // Writes spring-conformance.json rows when SPRING_CONFORMANCE_OUT is set (the seam shared with the Manor).
 import { test } from 'node:test';
@@ -10,6 +11,9 @@ import { Spring, overshootPct, params, sampleStep, stepExact } from '../../src/m
 
 const NAMES = ['press', 'detent', 'settle', 'lag'];
 const RATES = [30, 60, 144];
+/** A hitch: three frames dropped at 60 Hz. */
+const HITCH_FRAMES = 3;
+const HITCH_HZ = 60;
 const rows = [];
 
 for (const name of NAMES) {
@@ -25,8 +29,8 @@ for (const name of NAMES) {
       assert.ok(r.maxAbsErr < 1e-9, `drift from the analytic curve ${r.maxAbsErr}`);
     });
   }
-  test(`${name}: a 50 ms hitch does not change the curve`, () => {
-    const r = sampleStep(name, 60, { hitchMs: 50, hitchAt: 4 });
+  test(`${name}: a three-frame hitch does not change the curve`, () => {
+    const r = sampleStep(name, HITCH_HZ, { hitchMs: (HITCH_FRAMES * 1000) / HITCH_HZ, hitchAt: 4 });
     rows.push({ door: 'W', integrator: 'ion-spring exact', spring: name, hz: springs[name].hz, zeta: springs[name].zeta, rateHz: '60+hitch50', overshootPct: r.overshootPct, settle2Ms: r.settle2Ms, maxAbsErr: r.maxAbsErr });
     assert.ok(Math.abs(r.overshootPct - springs[name].overshootPct) <= 0.1);
     assert.ok(r.maxAbsErr < 1e-9);

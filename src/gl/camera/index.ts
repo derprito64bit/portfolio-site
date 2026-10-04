@@ -101,7 +101,6 @@ const RISE = 0.4 * PRINT_H; // how far the eject pushes the print out of the slo
 const PAD: [number, number] = [0.12, 0.09]; // shadow margin of the print quad, each side, as a share of the quad
 const LAND_DEPTH = 0.1; // view-space depth of a landed print: in front of the body, beyond the near plane
 const FOCUS_STEP_DEG = 24; // the focus ring turns this far per lens stop (W-C14 tunes the final verbs)
-const ROLL_TAIL = 120; // roller tracks end this long after the eject (fx-playbook section 2)
 const PRESENT_TAIL = 3; // frames presented after a change (WebKit shows a canvas one frame late)
 const html = document.documentElement;
 const reduced = () => html.dataset.motion === 'reduced';
@@ -819,10 +818,10 @@ vec3 ionNeutral(vec3 color) {
     if (this.introT0 !== null) {
       const rel = time - this.introT0;
       this.introEvents(rel);
-      if (rel < this.drawMs + heroTimeline.developed + 200) moving = true;
+      if (rel < this.drawMs + heroTimeline.developed + durations.glHandback) moving = true;
     }
     if (this.fade) moving = this.stepFade(time) || moving;
-    if (this.flying) moving = this.stepFlight(time) || moving;
+    if (this.flying) moving = this.stepFlight(time, dt) || moving;
     // A layout change across a band re-frames from the band's framing (posters.json) (the pose never follows the viewport otherwise).
     const band = bandOf(this.hero);
     if (band !== this.band && this.model) {
@@ -990,8 +989,10 @@ vec3 ionNeutral(vec3 color) {
     const dipStart = T.landingDip - T.shutter;
     const p = fl.print;
     p.d = (develop as typeof Develop).developCurve((rel - (T.developStart - T.shutter)) / durations.developHero);
-    // Roller tracks while the print passes the rollers, gone 120 ms after the eject ends.
-    p.roll = rel < ejectStart ? 0 : 1 - clamp01((rel - ejectStart - durations.eject) / ROLL_TAIL);
+    // Roller tracks while the print passes the rollers, gone 120 ms after the eject ends (fx-playbook section 2, effect 1:
+    // heroTimeline.rollerTracksEnd).
+    const ejectEnd = ejectStart + durations.eject;
+    p.roll = rel < ejectStart ? 0 : 1 - clamp01((rel - ejectEnd) / (T.rollerTracksEnd - T.shutter - ejectEnd));
     if (rel < ejectStart) {
       p.pose = null;
       return;
@@ -1024,11 +1025,13 @@ vec3 ionNeutral(vec3 color) {
     if (p.clip && (f > 0.6 || Math.min(...this.corners(p.pose, false).map((c) => c.y)) > this.exitPos.y + 0.002)) p.clip = false;
   }
 
-  private stepFlight(time: number): boolean {
+  private stepFlight(time: number, dt: number): boolean {
     const fl = this.flying;
     if (!fl || fl.done) return false;
     const rel = time - fl.t0;
-    if (!fl.landing && rel >= heroTimeline.flight - heroTimeline.shutter - 50) fl.landing = this.landingPose(fl.intro ? null : fl.still);
+    // The landing pose is taken one frame before the flight starts (dt is in seconds), so the layout read never lands
+    // in the flight's first frame.
+    if (!fl.landing && rel + dt * 1000 >= heroTimeline.flight - heroTimeline.shutter) fl.landing = this.landingPose(fl.intro ? null : fl.still);
     this.poseAt(fl, rel);
     const b = this.printBounds();
     if (b) this.flightLog.push({ t: Math.round(rel + heroTimeline.shutter), x: b.x, y: b.y, w: b.w, h: b.h });
@@ -1264,7 +1267,8 @@ vec3 ionNeutral(vec3 color) {
     fire('shutter', seq + heroTimeline.shutter, () => this.press('intro'));
     fire('flash', seq + heroTimeline.flash, () => this.introHooks?.flash(this.time));
     fire('readable', seq + heroTimeline.readable, () => this.mark('hero:readable'));
-    if (rel >= seq + heroTimeline.developed + 200) this.introT0 = null;
+    // The intro is over once print 1's handback has run.
+    if (rel >= seq + heroTimeline.developed + durations.glHandback) this.introT0 = null;
   }
 
   finishIntro(fadeMs = 0): void {

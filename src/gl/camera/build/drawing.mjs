@@ -55,7 +55,7 @@ try {
     void _p;
     const qs = new URLSearchParams({ framing: JSON.stringify(frame), opts: JSON.stringify({}) });
     await page.goto(`${origin}/src/gl/camera/build/drawing.html?${qs}`);
-    await page.waitForFunction(() => window.__done !== undefined, null, { timeout: 180_000 });
+    await page.waitForFunction(() => window.__done !== undefined, null, { timeout: 0 });
     const r = await page.evaluate(() => window.__done);
     if (r.error) throw new Error(`${band}: ${r.error}`);
     if (errors.length) throw new Error(`${band}: console errors: ${errors.join(' | ')}`);

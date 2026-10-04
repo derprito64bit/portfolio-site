@@ -72,7 +72,7 @@ export function heroLayout(hero: HTMLElement, nudge = false): void {
     const avail = vh - rowTop - 6;
     const short = avail < SH + 260 || !fits;
     arrangement = short ? 'short' : 'beside';
-    rowH = Math.max(avail, 200);
+    rowH = Math.max(avail, 200); // not a time: the row's floor in CSS px
     const stripRoom = short ? 0 : SH + GS;
     // Print 1: as tall as the row allows, at least a 220 px window, about a quarter of the content width.
     // 10 px under the row's top stays free: the landing lift and the tilt never reach the h1.
@@ -121,7 +121,7 @@ export function heroLayout(hero: HTMLElement, nudge = false): void {
     const room = vh - (rowTop + stageTop) - GS - SH - 12;
     const areaH = Math.max(Math.min(W, room), ph);
     let cw = Math.min(0.5 * W / (1 - OVER), Math.sqrt(capArea(pw * ph) * A), areaH / (HEAD + 1 / A), W - 24);
-    cw = Math.max(cw, 120);
+    cw = Math.max(cw, 120); // not a time: the camera's narrowest width in CSS px
     const ch = cw / A;
     cam = { x: W - cw, y: stageTop + Math.min(HEAD * cw, areaH - ch), w: cw, h: ch };
     pr = { x: 0, y: stageTop + areaH - ph, w: pw, h: ph };

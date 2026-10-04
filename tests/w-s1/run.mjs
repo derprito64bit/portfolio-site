@@ -10,6 +10,11 @@ import { mkdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { H, writeJson } from './lib.mjs';
 import * as C from './checks.mjs';
+import { durations, heroTimeline } from '../../src/lib/tokens.js';
+
+/** Flash-film frames kept on disk: the opening (start, clay, mid-develop, its end) and the flash at its peak. */
+const DRAWING = durations.heroDrawingClay + durations.heroDrawingDevelop;
+const FLASH_FRAMES = [0, durations.heroDrawingClay, DRAWING / 2, DRAWING, DRAWING + heroTimeline.flash, DRAWING + heroTimeline.flashPeak].map(Math.round);
 
 const opts = H.cliOpts();
 const out = resolve(opts.out || join(H.evidenceDir('W-S1', 'wave3a', 'crew'), 'w-s1'));
@@ -25,7 +30,7 @@ try {
     let r;
     try {
       if (name === 'flashLight' || name === 'flashDark') {
-        r = await C.flashFilm(srv.base, { out, scheme: name === 'flashLight' ? 'light' : 'dark', save: [0, 250, 367, 600, 1200, 1800] });
+        r = await C.flashFilm(srv.base, { out, scheme: name === 'flashLight' ? 'light' : 'dark', save: FLASH_FRAMES });
       } else if (name === 'delayedGl') {
         const dir = join(out, 'delayed-gl');
         mkdirSync(dir, { recursive: true });

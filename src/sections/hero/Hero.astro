@@ -25,6 +25,7 @@ import { CARD, svgDataUri, testStripSvg } from './still.ts';
 import drawings from '../../../public/posters/camera/drawing.json';
 import { bandMarks, type Framing, type Rig } from './framing.ts';
 import { cameraData } from '../../gl/camera/data.ts';
+import { heroTimeline } from '../../lib/tokens.js';
 
 type Band = 'split' | 'stacked' | 'phone';
 interface PosterFile { w: number; h: number; avif: string; webp: string }
@@ -73,8 +74,8 @@ const PHONE_MQ = '(max-width: 479px)';
 // that would be a layout shift. Where scrollbars take room, the page keeps their gutter from the start (CSS below).
 const layoutScript = `(function(h,L){var d=document.documentElement,p=document.createElement('div');p.style.cssText='position:absolute;top:-200px;width:100px;height:100px;overflow:scroll;visibility:hidden';d.appendChild(p);if(p.offsetWidth-p.clientWidth>0)d.setAttribute('data-hero-gutter','');p.remove();L(h);var r=h.querySelector('.hero-row');if(!r||!window.ResizeObserver)return;var w=r.clientWidth;h.__heroRo=new ResizeObserver(function(){if(r.clientWidth!==w){w=r.clientWidth;L(h)}});h.__heroRo.observe(r)})(document.currentScript.closest('.hero'),${heroLayout.toString()});`;
 // data-cam and data-hero (W-D012, #13 A2): no fetch, under 0.8 kB (tests/w-s1 measures it). A storage error counts
-// as unset. A runtime that never arrives still reveals print 1 (6 s safety).
-const heroHead = `(function(h,c){var s=null,n,t=h.dataset.tier;try{s=sessionStorage.getItem('ion.hero')}catch(e){}try{n=performance.getEntriesByType('navigation')[0]}catch(e){}var d=h.dataset.motion==='full'&&(t==='full'||t==='lite')&&!s&&!location.hash&&!(n&&n.type==='back_forward');h.dataset.cam=d?'drawing':'camera';if(d&&t==='full'&&matchMedia('(pointer: fine) and (hover: hover)').matches&&window.WebGL2RenderingContext&&!(c&&c.saveData)){h.dataset.hero='eject';setTimeout(function(){if(h.dataset.hero==='eject'&&!h.dataset.heroRun)h.dataset.hero='done'},6e3)}else h.dataset.hero='still'})(document.documentElement,navigator.connection)`;
+// as unset. A runtime that never arrives still reveals print 1 (heroTimeline.revealSafety after the script runs).
+const heroHead = `(function(h,c){var s=null,n,t=h.dataset.tier;try{s=sessionStorage.getItem('ion.hero')}catch(e){}try{n=performance.getEntriesByType('navigation')[0]}catch(e){}var d=h.dataset.motion==='full'&&(t==='full'||t==='lite')&&!s&&!location.hash&&!(n&&n.type==='back_forward');h.dataset.cam=d?'drawing':'camera';if(d&&t==='full'&&matchMedia('(pointer: fine) and (hover: hover)').matches&&window.WebGL2RenderingContext&&!(c&&c.saveData)){h.dataset.hero='eject';setTimeout(function(){if(h.dataset.hero==='eject'&&!h.dataset.heroRun)h.dataset.hero='done'},${heroTimeline.revealSafety})}else h.dataset.hero='still'})(document.documentElement,navigator.connection)`;
 ---
 <section
   class="hero wrap"

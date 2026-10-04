@@ -14,6 +14,8 @@ export { H };
 export const WAIT = {
   /** The stage's idle detach: a page with nothing moving has gone to sleep after it (W-D012 'sleeps 1 s later'). */
   settle: durations.idleDetach,
+  /** A beat: two poster fades, long enough for the page to paint what a step changed. */
+  beat: 2 * durations.posterFade,
   /** One press on GL, whole: the sequence to developed, the handback, and the loop asleep. */
   press: heroTimeline.developed + durations.glHandback + durations.idleDetach,
   /** A press on static or reduced motion: its fade swap, twice over. */
@@ -70,7 +72,7 @@ export async function heroAtRest(page, timeout = WAIT.patience) {
     const h = document.documentElement.dataset.hero;
     const cam = window.__hero;
     return h !== 'eject' && (!cam || !cam.flying) && window.__stage?.settled === true;
-  }, null, { timeout, polling: 100 });
+  }, null, { timeout, polling: 'raf' });
 }
 
 export function rectsIntersect(a, b) {
