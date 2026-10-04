@@ -77,10 +77,10 @@ const current = looks.find((l: { id: string }) => l.id === look) ?? looks[0];
     box-shadow: inset 0 0 0 1px var(--rule), inset 0 1px 0 color-mix(in srgb, white 55%, transparent);
   }
 
-  /* Options: the native radio is the 44 x 44 target and carries the focus ring; its mark sits on top (a click on the
-     mark is a click on the label, so it still checks the radio), which keeps the mark's text over a known plate for
-     contrast tools. The radio's 2 px radius keeps the ring's corners tight: square enough that >= 90 % of the band
-     around a 44 px target changes. */
+  /* Options: the native radio is the 44 x 44 target and carries the focus ring. Its mark paints on top but takes no
+     pointer events, so the radio stays the hit target while the mark's text sits over a known plate for contrast
+     tools. The radio's 2 px radius keeps the ring's corners tight: square enough that >= 90 % of the band around a
+     44 px target changes. */
   .cs-opt {
     position: relative;
     display: grid;
@@ -110,13 +110,14 @@ const current = looks.find((l: { id: string }) => l.id === look) ?? looks[0];
     color: var(--ink-2);
     font: 500 0.8125rem / 1 var(--font-edge);
     letter-spacing: 0.01em;
+    pointer-events: none;
     transition: background-color 160ms var(--ease-out), color 160ms var(--ease-out), transform var(--spring-press-ms) var(--spring-press);
   }
   .cs-opt input:checked + .cs-mark { background: var(--ink); color: var(--table); }
   @media (hover: hover) and (pointer: fine) {
-    .cs-opt:hover input:not(:checked) + .cs-mark { color: var(--ink); background: color-mix(in srgb, var(--ink) 8%, transparent); }
+    .cs-opt input:not(:checked):hover + .cs-mark { color: var(--ink); background: color-mix(in srgb, var(--ink) 8%, transparent); }
   }
-  .cs-opt:active input + .cs-mark { transform: scale(0.94); }
+  .cs-opt input:active + .cs-mark { transform: scale(0.94); }
 
   /* Look chips: word-free film swatches; the readout names the look. */
   .cs-chip {
