@@ -15,7 +15,7 @@ One family, **light-first development**. Nothing fades in. It develops like an i
 the eject edge, silver before dye, then the still (W-D016). The site opens on a line drawing of the X-T5 on an
 undeveloped print. The drawing develops into the real camera, and the camera ejects print 1, which develops in turn.
 Every supporting effect is part of a develop or of the darkroom equipment that makes one. It is cheap because it
-rides shaders being written now (`effects.develop` was a no-op at 7f12ced, V), so W-S1 #13 settles these chunks
+rides shaders being written now, so W-S1 #13 settles these chunks
 before its develop shader locks. Static, no-WebGL and reduced motion show the
 baked end state.
 
@@ -67,17 +67,18 @@ Amber and warm white only (D-025).
   V), as a disc inside W-C13's modelled loupe, which owns the rim and the perspective.
   - It fits the image window (about 150 to 160 px at 1440, E). It magnifies a measured 1.6x (divide out the
     refraction term). There is no rim fringe unless an A/B earns 1 device px.
-  - It needs a W-F accessor or cache for the still (no print entity existed, V), ion-spring's lag spring, and take
+  - It needs a W-F accessor or cache for the still, ion-spring's lag spring, and take
     and give on hover.
   - A 512 px still at 1.6x only upsamples, so its one new detail is optional **loupe-only grain**: static,
     screen-frequency, allowed by D-026.
-- **(b) Lens eye:** iridescence on `cam_glass`, front element only
+- **(b) Lens eye:** iridescence on the front element only (`cam_glass_front` on m2)
   ([three r186 iridescence chunk](https://unpkg.com/three@0.186.1/src/renderers/shaders/ShaderChunk/iridescence_fragment.glsl.js),
-  V). It ships as KHR_materials_iridescence through gltf-transform, so the posters keep parity at 4/255 or less. It is
+  V). It ships as KHR_materials_iridescence, written by a small W-C13 Node script on `@gltf-transform/extensions` (section 7),
+  so the posters keep parity at 4/255 or less. It is
   tuned to a photograph of a lit XF lens; what it reflects is RoomEnvironment today (V). The game's FlatToon LOD has
   no glint.
 
-**5. Camera develop patch** (D-024). A patch on the eight `cam_*` materials develops the camera from the drawing
+**5. Camera develop patch** (D-024). A patch on every `cam_*` material (8 on m1; re-measure on m2) develops the camera from the drawing
 (section 4). At d = 1 it is exact identity: saturate at uDev = 1, or delete `onBeforeCompile` and
 `customProgramCacheKey` and set `needsUpdate`.
 
@@ -90,7 +91,7 @@ Amber and warm white only (D-025).
   leading zeros, ▶ beside A frames, no arrows. Frames keep W-D031's tilts (a tilted strip breaks W-D013).
 - **Tile 3, oil slick:** a thin-film coating on the lens eye and the loupe.
 - **Tile 4, crystal:** dropped, with its orbit rings (transmission measured over budget, V).
-- **Tile 5, orbs:** halation in amber and warm white. Blue and pink are dropped; the enlarger pool went with the door.
+- **Tile 5, orbs:** halation in amber and warm white. Blue and pink are dropped.
 
 ## 4. The hero: the X-T5 drawing develops into the camera (D-024)
 
@@ -106,7 +107,7 @@ no swap. The CTA and the strip stay live DOM throughout, and the W-D012 guards
 | Phase | ms from T0 (E) | The visitor sees | How |
 |---|---|---|---|
 | First paint | before T0 | The X-T5 in its hero pose, in pale hairlines on an undeveloped teal-grey print ground, in the camera slot | An SVG or CSS poster with curated strokes in two weights and no hidden lines (A1) |
-| Clay | 0 to 200 (`heroDrawingClay`) | The drawing gains a body: the untextured camera in the veil's tone fills the lines | The 8 patched `cam_*` materials write depth; **FOV 28**, the hero pose (W-D013) |
+| Clay | 0 to 200 (`heroDrawingClay`) | The drawing gains a body: the untextured camera in the veil's tone fills the lines | The patched `cam_*` materials write depth; **FOV 28**, the hero pose (W-D013) |
 | Develop | 200 to 1,200 (`heroDrawingDevelop`) | Light first: silver top plate and dials, then black metal and leatherette, the amber shutter last. The hairlines fade with the veil | W-D011 curve, W-D016 noise |
 | W-D012 sequence | from about 1,200 | Brackets close, shutter, flash, eject with roller tracks; print 1 develops and is handed back | W-D012 unchanged, offset by the camera develop |
 
@@ -143,9 +144,9 @@ prepass; the SVG poster raycasts its strokes against LOD0 at build. Lines are co
 - CSS picks the drawing or finished-camera poster (both in `public/posters/camera/`) from `data-cam`.
 - Alt text comes from content (W-D005). No copy or alt text implies that the owner drew the drawing.
 
-**Boot and draws.** The patch ships in the GL chunk (no scene chunk); the 8 patched programs compile in parallel with
+**Boot and draws.** The patch ships in the GL chunk (no scene chunk); the patched programs (re-measure on m2) compile in parallel with
 no task over 50 ms (W-D034). The entity matches `slot.id`, never `data-gl-fixture`, and snaps to the end state on a
-tier demotion. LOD0 had 20 primitives on m1 (V; re-count on m2); the hero stays at ≤ 40 draws.
+tier demotion. LOD0 had 20 primitives on m1 (V); ≤ 40 draws is an m1 figure: re-measure on m2 (#56's LOD0 has 95).
 
 **Blender, later and GPU only (D-012):** Freestyle line references of LOD0 to check hidden lines, Cycles renders of
 the coated lenses against a photograph, and an iridescence assert in `rig.test.mjs`.
@@ -158,14 +159,14 @@ the coated lenses against a photograph, and an iridescence assert in `rig.test.m
 | W-D033, W-D032 | Coating. Optional static loupe grain (D-026). 1.6x measured. The lens stays within the image window. The loupe follows hover (full) and taps (lite); keyboard focus shows W-D032's ring and never moves the loupe or borrows a print | W-C14 #19, W-C13 #16 |
 | W-C2 scope and the film-look contract | Halation in the look bake plus a hero map; the contract gains a halation term | W-C2 #17 |
 | W-D012, W-D011 | The drawing develops into the camera before the hero sequence (D-024). The door story is cut (D-023) | W-S1 #13, W-C14 #19, W-C3 #18 |
-| W-D019 | Addendum: a lines asset on request; iridescence on `cam_glass` | W-C13 #16 |
+| W-D019 | Addendum: a lines asset on request; iridescence on the front element (`cam_glass_front` on m2) | W-C13 #16 |
 | Ownership | Camera patch: GLSL chunk `src/gl/effects/develop/camera.ts` (W-S1, then W-C2's final); hook and timing `src/gl/camera/drawing.ts` (W-S1, then W-C14 on m2). W-S1 freezes the uniform names. The enlarger and safelight are cut with the door | as listed |
 | Not changed | W-D013's FOV 28, W-D014, W-D002, W-D031. Issue #31 lands first | n/a |
 
 ## 6. Budget ledger
 
 The Effects gate counts the chunks holding `src/gl/effects/**` (`.size-limit.cjs`, V); `src/gl/shaders/**` is booked
-here too, to be safe. New sizes stay E until measured minified (gzip -9).
+here too. New sizes stay E until measured minified (gzip -9).
 
 | Item | Line | kB gz |
 |---|---|---|
@@ -182,9 +183,9 @@ Effects headroom is 0.8 kB (E): measure before W-S1's shader locks and cut in se
 
 ## 7. Dependencies
 
-None at runtime beyond three core and three/addons; the libraries rejected in research stay out (sizes and licences
-there). Build:
-@gltf-transform/cli 4.5.1 (iridescence goes through it) and sharp, both in `deps.md`. Optional dev tools (vite-plugin-glsl 1.6.1, spectorjs 0.9.33) need a `deps.md`
+None at runtime beyond three core and three/addons; the libraries rejected in research stay out. Build:
+@gltf-transform/cli 4.5.1 and sharp, both in `deps.md`. The iridescence script imports `@gltf-transform/extensions`
+(MIT, installed with the CLI), which needs its own `deps.md` row through a W-F request. Optional dev tools (vite-plugin-glsl 1.6.1, spectorjs 0.9.33) need a `deps.md`
 entry first. CI compiles the patched programs in headless Chromium and asserts that every `replace()` matched.
 
 ## 8. Prototypes worth building next
@@ -195,7 +196,7 @@ entry first. CI compiles the patched programs in headless Chromium and asserts t
    ≤ 10 kB measured.
 2. **Hero drawing-to-camera** (W-S1 #13, then W-C14 #19 on m2). Accept: every A1 and A2 line and section 4's
    budgets; FOV 28; no hidden line against Freestyle, no
-   stipple; ≤ 40 draws; no task over 50 ms; stock camera at d 1; poster parity ≤ 4/255; all tiers in GES-1.
+   stipple; draws re-measured on m2; no task over 50 ms; stock camera at d 1; poster parity ≤ 4/255; all tiers in GES-1.
 3. **Loupe and coated glass** (W-C14 #19, W-C13 #16). Accept: ≤ 0.3 ms moving at GES-1 D2 (real radius, 5
    interleaved loads); 0 draws at rest; 1.6 ± 0.05x; never over text; keyboard focus moves nothing; coating matches a
    photograph.
@@ -226,15 +227,14 @@ The hero's roller tracks and grain go last.
 ## 10. Owner questions from the research
 
 Resolved by the owner on 2026-10-04: story order and the line drawing (D-024), loupe grain and the boil (D-026), the
-moodboard (D-025). The 4.7 s question gives way to section 4's budgets. **Still open:** halation on UI
+moodboard (D-025). **Still open:** halation on UI
 screenshots, band-pass or none? The default is band-pass in non-Standard looks, with `halation: false` per print.
 
 ## Changelog
 
-- **Site revision 1** (2026-10-04): research section 4 moved from the door to the hero, aligned with #13 Amendment
-  A1; the enlarger light, door chunk, lift shot and Grand Gallery print cut; grain made calm (D-026); the budget
-  ledger re-summed; owner questions marked resolved. D-024 and A1 override five research critic findings:
-  fx-teardown taste cut[2] ("T1 in the hero"); fx-sketch3d keep[0] (the door, not the hero), cut[3] (the clay stage
-  stays), cut[9] (lite, phones included, paints the drawing and crossfades) and keep[5] (the reduced-motion
-  diptych: reduced motion paints the finished camera).
+- **Site revision 1** (2026-10-04): the header's decisions applied; the ledger re-summed. D-024, A1 and A2 override
+  seven research critic findings. From `critique-taste`: fx-teardown cut[2] ("T1 in the hero"); fx-sketch3d keep[0]
+  (the door, not the hero), cut[3] (the clay stage stays), cut[9] (lite, phones included, paints the drawing and
+  crossfades) and keep[5] (reduced motion paints the finished camera). From fx-sketch3d `critique-verify`: keep[4]
+  ("Placement out of the hero") and cut[4] (the phone variant of the drawing sequence: phones on lite crossfade).
 - **Research revision 3:** see `portfolio-evidence/research-fx/PLAYBOOK.md`.
