@@ -1,0 +1,1121 @@
+{
+ "$comment": "Reference pack citations for the 1:1 X-T5 (D-011). Images stay outside the repos (portfolio-assets/xt5/refs, evidence); only the URLs, the measured dimensions and the lettering positions are kept here.",
+ "spec": {
+  "model": "FUJIFILM X-T5",
+  "colour_for_build": "silver (D-014)",
+  "dimensions_mm": {
+   "width": 129.5,
+   "height": 91.0,
+   "depth": 63.8,
+   "depth_min": 37.9,
+   "note": "W x H x D; depth min 'excluding projections, measured at thinnest part'. Width excludes strap lugs (measured)."
+  },
+  "weight_g": {
+   "with_battery_and_card": 557,
+   "body_only": 476
+  },
+  "mount": "FUJIFILM X mount",
+  "sensor": "23.5 x 15.7 mm APS-C X-Trans CMOS 5 HR, 40.2 MP",
+  "evf": "0.5 in OLED, 3.69M dots, 0.80x, eyepoint approx. 24 mm, diopter -5 to +3 m-1, built-in eye sensor",
+  "lcd": "3.0 in, 3:2, 1.84M dots, touch, tilt type (three direction)",
+  "terminals": "USB Type-C (USB 3.2 Gen2x1), HDMI Micro (Type D), 3.5 mm mic, 2.5 mm remote, hot shoe, sync terminal",
+  "battery": "NP-W235 (38.92 x 22.8 x 52.26 mm, approx. 79 g)",
+  "sources": [
+   "https://www.fujifilm-x.com/global/products/cameras/x-t5/specifications/",
+   "https://fujifilm-dsc.com/en/manual/x-t5/technical_notes/spec/",
+   "https://fujifilm-dsc.com/en/manual/x-t5/x-t5_manual_en_s_f.pdf (p. 401-402, Specifications)"
+  ]
+ },
+ "lettering": {
+  "rule": "D-011: keep the real FUJIFILM and X-T5 lettering on the model.",
+  "FUJIFILM": {
+   "where": "front face of the EVF hump, vertical part above the mount (face plane Z ~ +15.0)",
+   "bbox": {
+    "x": [
+     -14.7,
+     14.7
+    ],
+    "y": [
+     73.8,
+     78.6
+    ]
+   },
+   "cap_height": 4.8,
+   "width": 29.4,
+   "stroke": 1.2,
+   "glyph_x": {
+    "F": [
+     -14.7,
+     -11.5
+    ],
+    "U": [
+     -10.7,
+     -6.8
+    ],
+    "J": [
+     -6.3,
+     -3.3
+    ],
+    "I1": [
+     -2.2,
+     -1.0
+    ],
+    "F2": [
+     -0.5,
+     3.5
+    ],
+    "I2": [
+     4.2,
+     5.4
+    ],
+    "L": [
+     6.6,
+     9.4
+    ],
+    "M": [
+     10.0,
+     14.7
+    ]
+   },
+   "font": "Fujifilm corporate logotype (custom): heavy, squarish geometric sans; the first I has the logo's diagonal notch cut into its top right. Trace from raw/camerawest_silver_front.jpg (308 px wide) rather than set in a font.",
+   "finish": "black-filled engraving on the silver hump (white on the black body)",
+   "sources": [
+    "ortho/front_mm.png",
+    "raw/camerawest_silver_front.jpg",
+    "raw/commons_xt5_aps1729.jpg"
+   ]
+  },
+  "X-T5": {
+   "where": "front of the top plate, camera-left shoulder, right of the hump (face plane Z +14.0)",
+   "bbox": {
+    "x": [
+     31.3,
+     45.6
+    ],
+    "y": [
+     66.6,
+     69.3
+    ]
+   },
+   "cap_height": 2.7,
+   "width": 14.3,
+   "stroke": 0.4,
+   "font": "model logotype: extended geometric sans, thin even stroke, slanted-cross X, hyphen at half height, square-shouldered 5. Nearest free match: Michroma / Eurostile Extended. Trace from the front render.",
+   "finish": "black-filled engraving on silver",
+   "sources": [
+    "ortho/front_mm.png"
+   ]
+  },
+  "dials": {
+   "numerals": "neo-grotesque sans, medium weight, slightly condensed (nearest free: Roboto Condensed Medium); radial; ISO/shutter cap ~1.5 mm, EV ~1.7 mm; ticks ~0.4 x 1.0 mm",
+   "colours_silver_body": "black fill on silver dial faces; 'A' orange (#e0602a family; the mount index dot samples #e15409)",
+   "colours_black_body": "white fill",
+   "iso": "A 125 200 400 800 1600 3200 6400 12800 C",
+   "shutter": "A B T 1 2 4 8 15 30 60 125 250X 500 1000 2000 4000 8000",
+   "ev": "0 +1 +2 +3 C -3 -2 -1",
+   "drive_ring": "[panorama] ADV. BKT CH CL S HDR (black on the silver ring; white on black on the black body; cap 2.0 mm)",
+   "still_movie_ring": "STILL (dot)  (orange-red dot) MOVIE, black legend and STILL dot on the silver ring (white on the black body), cap 2.0 mm",
+   "focus_mode": "M C S, white, cap 1.5 mm"
+  },
+  "buttons_and_body": {
+   "AEL": "2.1 mm",
+   "AF/ON": "1.6 mm per line",
+   "Q": "2.4 mm",
+   "MENU/OK": "1.7 mm",
+   "DISP/BACK": "1.8 mm (beside the button)",
+   "VIEWMODE": "1.3 mm, on the hump's -X flank",
+   "ON / OFF": "1.6 mm",
+   "diopter": "+ / -",
+   "phi": "1.2 mm",
+   "ports": "inside the covers: 'MIC' (vertical, beside the 3.5 mm jack), 'REMOTE' (vertical, beside the 2.5 mm jack), USB trident + phone/sync icon under the USB-C socket, 'HDMI' (vertical) beside the micro-HDMI socket; white on black (closeups/left_ports_open.png)",
+   "card_slots": "white tags with an up-arrow and '1' (lower) / '2' (upper) inside the card door (closeups/right_card_slots.png)",
+   "HDMI_cover": "'HDMI' blind-debossed (black on black) on the lower connector cover, cap 1.4 mm, z -14.3..-5.5, y 34.7..36.1",
+   "FUJIFILM_depth": "deep, crisp engraving with black fill and polished walls (real photo closeups/photo_fujifilm_hump.jpg)"
+  },
+  "closeups": "closeups/*.png: true-scale crops of every legend from the calibrated silver renders; closeups/closeups.json gives each crop's px->mm mapping"
+ },
+ "accuracy": "front/back/top/bottom +-0.5 mm (renders are near-orthographic; per-view scales agree with the spec to <0.7%); side views +-1.5 mm in Y; hidden parts (dial axes, wheel diameters) +-1 mm from fits; small features (mics, lamp) low confidence. Run 2: the 2000 px silver renders register to the run-1 views with IoU 0.995-0.9996 and <0.1% anisotropy, so every run-1 coordinate holds on them; they add ~20% resolution and the silver colour split. Run-2 values: colour bands +-0.15 mm front/rear, +-0.3 mm sides; lens profiles +-0.2 mm in diameter, +-0.4 mm in z.",
+ "views": [
+  {
+   "id": "front_silver",
+   "role": "front",
+   "source_url": "https://cdn.shopify.com/s/files/1/0709/3256/2235/files/1311340-06.jpg (https://camerawest.com/products/fujifilm-x-t5-mirrorless-camera-silver)",
+   "kind": "ortho render",
+   "licence": "official Fujifilm product render, redistributed by the retailer; reference only"
+  },
+  {
+   "id": "front_silver_alt",
+   "role": "front",
+   "source_url": "https://www.camerahouse.com.au/media/catalog/product/7/4/74455.jpg (https://www.camerahouse.com.au/fujifilm-x-t5-silver-body-only-compact-system-camera)",
+   "kind": "ortho render",
+   "licence": "official Fujifilm product render, redistributed by the retailer; reference only"
+  },
+  {
+   "id": "back_silver",
+   "role": "back",
+   "source_url": "https://www.camerahouse.com.au/media/catalog/product/x/-/x-t5_back_silver.jpg (https://www.camerahouse.com.au/fujifilm-x-t5-silver-body-only-compact-system-camera)",
+   "kind": "ortho render",
+   "licence": "official Fujifilm product render, redistributed by the retailer; reference only"
+  },
+  {
+   "id": "back_black_measured",
+   "role": "back",
+   "source_url": "https://cdn.shopify.com/s/files/1/0709/3256/2235/files/1311340-01.jpg (https://camerawest.com/products/fujifilm-x-t5-mirrorless-camera-silver)",
+   "kind": "ortho render",
+   "licence": "official Fujifilm product render, redistributed by the retailer; reference only"
+  },
+  {
+   "id": "top_silver",
+   "role": "top",
+   "source_url": "https://www.trm.fr/wp-content/uploads/2022/11/Fujifilm-X-T5-Silver-3.jpg (https://www.trm.fr/en/sorry-and-photo/fujifilm-x-t5-silver-camera/)",
+   "kind": "ortho render",
+   "licence": "official Fujifilm product render, redistributed by the retailer; reference only"
+  },
+  {
+   "id": "top_black_measured",
+   "role": "top",
+   "source_url": "https://cdn.shopify.com/s/files/1/0709/3256/2235/files/1311340-04.jpg (https://camerawest.com/products/fujifilm-x-t5-mirrorless-camera-silver)",
+   "kind": "ortho render",
+   "licence": "official Fujifilm product render, redistributed by the retailer; reference only"
+  },
+  {
+   "id": "bottom_silver",
+   "role": "bottom",
+   "source_url": "https://www.camerahouse.com.au/media/catalog/product/x/-/x-t5_bottom_silver.jpg (https://www.camerahouse.com.au/fujifilm-x-t5-silver-body-only-compact-system-camera)",
+   "kind": "ortho render",
+   "licence": "official Fujifilm product render, redistributed by the retailer; reference only"
+  },
+  {
+   "id": "bottom_black_measured",
+   "role": "bottom",
+   "source_url": "https://cdn.shopify.com/s/files/1/0709/3256/2235/files/1311340-05.jpg (https://camerawest.com/products/fujifilm-x-t5-mirrorless-camera-silver)",
+   "kind": "ortho render",
+   "licence": "official Fujifilm product render, redistributed by the retailer; reference only"
+  },
+  {
+   "id": "right_silver",
+   "role": "right (grip side, -X)",
+   "source_url": "https://www.trm.fr/wp-content/uploads/2022/11/Fujifilm-X-T5-Silver-5.jpg (https://www.trm.fr/en/sorry-and-photo/fujifilm-x-t5-silver-camera/)",
+   "kind": "ortho render",
+   "licence": "official Fujifilm product render, redistributed by the retailer; reference only"
+  },
+  {
+   "id": "right_silver_door_open",
+   "role": "right, card door open",
+   "source_url": "https://www.trm.fr/wp-content/uploads/2022/11/Fujifilm-X-T5-Silver-6.jpg (https://www.trm.fr/en/sorry-and-photo/fujifilm-x-t5-silver-camera/)",
+   "kind": "ortho render",
+   "licence": "official Fujifilm product render, redistributed by the retailer; reference only"
+  },
+  {
+   "id": "right_black_measured",
+   "role": "right (grip side, -X)",
+   "source_url": "https://www.fujirumors.com/wp-content/uploads/2022/11/Leaked-4.jpg (https://www.fujirumors.com/leaked-first-fujifilm-x-t5-images/)",
+   "kind": "ortho render",
+   "licence": "official Fujifilm product render, redistributed by the retailer; reference only"
+  },
+  {
+   "id": "left_black_measured",
+   "role": "left (port side, +X)",
+   "source_url": "https://www.fujirumors.com/wp-content/uploads/2022/11/Leaked-6.jpg (https://www.fujirumors.com/leaked-first-fujifilm-x-t5-images/)",
+   "kind": "ortho render",
+   "licence": "official Fujifilm product render, redistributed by the retailer; reference only"
+  },
+  {
+   "id": "left_black_ports_open",
+   "role": "left, connector covers open",
+   "source_url": "https://www.fujirumors.com/wp-content/uploads/2022/11/Leaked-7.jpg (https://www.fujirumors.com/leaked-first-fujifilm-x-t5-images/)",
+   "kind": "ortho render",
+   "licence": "official Fujifilm product render, redistributed by the retailer; reference only"
+  },
+  {
+   "id": "three_quarter_front_silver",
+   "role": "3/4 front (left of camera)",
+   "source_url": "https://cdn.shopify.com/s/files/1/0709/3256/2235/files/1311340-08.jpg (https://camerawest.com/products/fujifilm-x-t5-mirrorless-camera-silver)",
+   "kind": "render, with XF18-55",
+   "licence": "official Fujifilm product render, redistributed by the retailer; reference only"
+  },
+  {
+   "id": "three_quarter_front_silver_2",
+   "role": "3/4 front, high",
+   "source_url": "https://cdn.shopify.com/s/files/1/0709/3256/2235/files/1311340-07.jpg (https://camerawest.com/products/fujifilm-x-t5-mirrorless-camera-silver)",
+   "kind": "render, with XF16-80",
+   "licence": "official Fujifilm product render, redistributed by the retailer; reference only"
+  },
+  {
+   "id": "three_quarter_rear_silver",
+   "role": "3/4 rear-under (battery door open)",
+   "source_url": "https://cdn.shopify.com/s/files/1/0709/3256/2235/files/1311340-09.jpg (https://camerawest.com/products/fujifilm-x-t5-mirrorless-camera-silver)",
+   "kind": "render",
+   "licence": "official Fujifilm product render, redistributed by the retailer; reference only"
+  },
+  {
+   "id": "three_quarter_rear_silver_2",
+   "role": "3/4 rear-under",
+   "source_url": "https://www.camerahouse.com.au/media/catalog/product/x/-/x-t5_backnanameunder_batteryopen_silver.jpg",
+   "kind": "render",
+   "licence": "official Fujifilm product render, redistributed by the retailer; reference only"
+  },
+  {
+   "id": "photo_silver_front_xf35",
+   "role": "real photo, front, silver + XF35mmF2 silver",
+   "source_url": "https://commons.wikimedia.org/wiki/File:Fujifilm-X-T5.jpg",
+   "kind": "photo",
+   "licence": "CC0 (User:Aps1729)"
+  },
+  {
+   "id": "photo_silver_3q_xf33",
+   "role": "real photo, 3/4 front, silver + XF33",
+   "source_url": "https://commons.wikimedia.org/wiki/File:Fujifilm_X-T5.jpg",
+   "kind": "photo",
+   "licence": "CC0 (User:Mullowitsch)"
+  },
+  {
+   "id": "photo_silver_xf35_studio",
+   "role": "real photo, front-ish studio",
+   "source_url": "https://commons.wikimedia.org/wiki/File:Fujifilm_X-T5_with_Fujinon_XF_35mm_F2_R_WR_-_by_Henry_S%C3%B6derlund_(52536299126).jpg",
+   "kind": "photo",
+   "licence": "CC BY 2.0 (Henry Soderlund)"
+  },
+  {
+   "id": "photo_black_set",
+   "role": "real photos a-g, black body, many angles incl. tilted LCD",
+   "source_url": "https://commons.wikimedia.org/wiki/File:Fujifilm_X-T5_4_nov_2022a.jpg (a..g)",
+   "kind": "photo",
+   "licence": "CC BY-SA 4.0"
+  },
+  {
+   "id": "manual_parts_front",
+   "role": "manual line drawing, front 3/4 with numbered parts",
+   "source_url": "https://fujifilm-dsc.com/en/manual/x-t5/x-t5_manual_en_s_f.pdf (p. 2)",
+   "kind": "line drawing",
+   "licence": "Fujifilm manual"
+  },
+  {
+   "id": "manual_parts_rear",
+   "role": "manual line drawing, rear 3/4 with numbered parts",
+   "source_url": "https://fujifilm-dsc.com/en/manual/x-t5/x-t5_manual_en_s_f.pdf (p. 3)",
+   "kind": "line drawing",
+   "licence": "Fujifilm manual"
+  },
+  {
+   "id": "silver_leak_set",
+   "role": "silver front/back/bottom/3-4 (watermarked)",
+   "source_url": "https://www.fujirumors.com/fujifilm-x-t5-leaked-in-silver-which-one-will-you-pre-order-silver-or-black/",
+   "kind": "renders",
+   "licence": "official Fujifilm product render, redistributed by the retailer; reference only"
+  },
+  {
+   "id": "fujifilm_site",
+   "role": "official site images (top view black, rear 3/4 with tilted LCD, bottom/card, IBIS)",
+   "source_url": "https://www.fujifilm-x.com/global/products/cameras/x-t5/",
+   "kind": "renders",
+   "licence": "Fujifilm"
+  },
+  {
+   "id": "front_silver2k",
+   "role": "front",
+   "source_url": "https://cdn.shopify.com/s/files/1/0397/6167/4285/files/23866_16953883_01_Hero.png (https://glazerscamera.com/products/fuji-x-t5-body-silver-1)",
+   "kind": "ortho render, 2000 px PNG",
+   "licence": "official Fujifilm product render, redistributed by the retailer; reference only"
+  },
+  {
+   "id": "back_silver2k",
+   "role": "back",
+   "source_url": "https://cdn.shopify.com/s/files/1/0397/6167/4285/files/23866_16953883_02_Hero.png (https://glazerscamera.com/products/fuji-x-t5-body-silver-1)",
+   "kind": "ortho render, 2000 px PNG",
+   "licence": "official Fujifilm product render, redistributed by the retailer; reference only"
+  },
+  {
+   "id": "right_silver2k",
+   "role": "right (grip side, -X)",
+   "source_url": "https://cdn.shopify.com/s/files/1/0397/6167/4285/files/23866_16953883_03_Hero.png (https://glazerscamera.com/products/fuji-x-t5-body-silver-1)",
+   "kind": "ortho render, 2000 px PNG",
+   "licence": "official Fujifilm product render, redistributed by the retailer; reference only"
+  },
+  {
+   "id": "right_door_open_silver2k",
+   "role": "right, card door open",
+   "source_url": "https://cdn.shopify.com/s/files/1/0397/6167/4285/files/23866_16953883_04_Hero.png (https://glazerscamera.com/products/fuji-x-t5-body-silver-1)",
+   "kind": "ortho render, 2000 px PNG",
+   "licence": "official Fujifilm product render, redistributed by the retailer; reference only"
+  },
+  {
+   "id": "left_silver2k",
+   "role": "left (port side, +X)",
+   "source_url": "https://cdn.shopify.com/s/files/1/0397/6167/4285/files/23866_16953883_05_Hero.png (https://glazerscamera.com/products/fuji-x-t5-body-silver-1)",
+   "kind": "ortho render, 2000 px PNG",
+   "licence": "official Fujifilm product render, redistributed by the retailer; reference only"
+  },
+  {
+   "id": "left_ports_open_silver2k",
+   "role": "left, connector covers open",
+   "source_url": "https://cdn.shopify.com/s/files/1/0397/6167/4285/files/23866_16953883_06_Hero.png (https://glazerscamera.com/products/fuji-x-t5-body-silver-1)",
+   "kind": "ortho render, 2000 px PNG",
+   "licence": "official Fujifilm product render, redistributed by the retailer; reference only"
+  },
+  {
+   "id": "top_silver2k",
+   "role": "top",
+   "source_url": "https://cdn.shopify.com/s/files/1/0397/6167/4285/files/23866_16953883_07_Hero.png (https://glazerscamera.com/products/fuji-x-t5-body-silver-1)",
+   "kind": "ortho render, 2000 px PNG",
+   "licence": "official Fujifilm product render, redistributed by the retailer; reference only"
+  },
+  {
+   "id": "bottom_silver2k",
+   "role": "bottom",
+   "source_url": "https://cdn.shopify.com/s/files/1/0397/6167/4285/files/23866_16953883_08_Hero.png (https://glazerscamera.com/products/fuji-x-t5-body-silver-1)",
+   "kind": "ortho render, 2000 px PNG",
+   "licence": "official Fujifilm product render, redistributed by the retailer; reference only"
+  },
+  {
+   "id": "three_quarter_rear_under_silver2k",
+   "role": "3/4 rear-under, battery door open",
+   "source_url": "https://cdn.shopify.com/s/files/1/0397/6167/4285/files/23866_16953883_09_Hero.png (https://glazerscamera.com/products/fuji-x-t5-body-silver-1)",
+   "kind": "render, 2000 px PNG",
+   "licence": "official Fujifilm product render, redistributed by the retailer; reference only"
+  },
+  {
+   "id": "three_quarter_front_high_xf1680_a",
+   "role": "3/4 front from the port side (+X), high",
+   "source_url": "https://cdn.shopify.com/s/files/1/0397/6167/4285/files/23894_16953900_02_Hero_4be047b2-3654-44cf-9d45-47d30a02a24c.png (https://glazerscamera.com/products/fuji-x-t5-w-16-80-kit-siilver)",
+   "kind": "render with XF16-80, 2000 px PNG",
+   "licence": "official Fujifilm product render, redistributed by the retailer; reference only"
+  },
+  {
+   "id": "three_quarter_front_high_xf1680_b",
+   "role": "front, high elevation, nearly frontal (top plate and dials foreshortened)",
+   "source_url": "https://cdn.shopify.com/s/files/1/0397/6167/4285/files/23894_16953900_03_Hero_e7156ec8-9664-413d-9a05-a27939dc76ea.png (https://glazerscamera.com/products/fuji-x-t5-w-16-80-kit-siilver)",
+   "kind": "render with XF16-80, 2000 px PNG",
+   "licence": "official Fujifilm product render, redistributed by the retailer; reference only"
+  },
+  {
+   "id": "front_xf1680",
+   "role": "front with XF16-80",
+   "source_url": "https://cdn.shopify.com/s/files/1/0397/6167/4285/files/23894_16953900_01_Hero_8c233fac-b8b4-4869-88ac-6c4b3f7de76e.png (https://glazerscamera.com/products/fuji-x-t5-w-16-80-kit-siilver)",
+   "kind": "render, 2000 px PNG",
+   "licence": "official Fujifilm product render, redistributed by the retailer; reference only"
+  },
+  {
+   "id": "left_xf1680",
+   "role": "left (port side) with XF16-80",
+   "source_url": "https://cdn.shopify.com/s/files/1/0397/6167/4285/files/23894_16953900_04_Hero_38e7f68d-df3c-404f-b1d7-ca007f8624ca.png (https://glazerscamera.com/products/fuji-x-t5-w-16-80-kit-siilver)",
+   "kind": "render, 2000 px PNG",
+   "licence": "official Fujifilm product render, redistributed by the retailer; reference only"
+  },
+  {
+   "id": "top_xf1680",
+   "role": "top with XF16-80",
+   "source_url": "https://cdn.shopify.com/s/files/1/0397/6167/4285/files/23894_16953900_05_Hero_1efee4ac-4b59-49c4-b604-35bc085e26c4.png (https://glazerscamera.com/products/fuji-x-t5-w-16-80-kit-siilver)",
+   "kind": "render, 2000 px PNG",
+   "licence": "official Fujifilm product render, redistributed by the retailer; reference only"
+  },
+  {
+   "id": "rear_3q_lcd_tilt_a",
+   "role": "3/4 rear, LCD tilted on the landscape (X) axis",
+   "source_url": "https://cdn.shopify.com/s/files/1/0397/6167/4285/files/23894_16953900_06_Hero_bb00d3fb-ea4b-49bf-97ce-08714012d758.png (https://glazerscamera.com/products/fuji-x-t5-w-16-80-kit-siilver)",
+   "kind": "render, 2000 px PNG",
+   "licence": "official Fujifilm product render, redistributed by the retailer; reference only"
+  },
+  {
+   "id": "rear_3q_lcd_tilt_b",
+   "role": "3/4 rear from above, LCD tilted",
+   "source_url": "https://cdn.shopify.com/s/files/1/0397/6167/4285/files/23894_16953900_07_Hero_cb024928-171a-4471-845b-a37d43c49f01.png (https://glazerscamera.com/products/fuji-x-t5-w-16-80-kit-siilver)",
+   "kind": "render, 2000 px PNG",
+   "licence": "official Fujifilm product render, redistributed by the retailer; reference only"
+  },
+  {
+   "id": "rear_lcd_portrait_tilt",
+   "role": "rear, camera in portrait, LCD on its portrait (Y) axis",
+   "source_url": "https://cdn.shopify.com/s/files/1/0397/6167/4285/files/23894_16953900_08_Hero_b3adfead-2fe0-4984-b0b9-21554a7dce5b.png (https://glazerscamera.com/products/fuji-x-t5-w-16-80-kit-siilver)",
+   "kind": "render, 2000 px PNG",
+   "licence": "official Fujifilm product render, redistributed by the retailer; reference only"
+  },
+  {
+   "id": "kit1650_set",
+   "role": "silver body + XF16-50: front, 3/4 front, back, sides, top, bottom, 3/4 rear-under; lens side views, with hood, 3/4s",
+   "source_url": "https://cdn.shopify.com/s/files/1/0397/6167/4285/files/23880_16953895_<NN>_Hero_<uuid>.png (see _tools/list_r2_glz1650.txt) (https://glazerscamera.com/products/fuji-x-t5-w-16-50-kit-silver-1)",
+   "kind": "renders, 2000 px PNG",
+   "licence": "official Fujifilm product render, redistributed by the retailer; reference only"
+  },
+  {
+   "id": "xf35f2_silver_3q",
+   "role": "XF35mmF2 R WR silver, 3/4 front",
+   "source_url": "https://cdn.shopify.com/s/files/1/0397/6167/4285/files/49711648188001Hero.png (https://glazerscamera.com/products/fuji-xf-35mm-f2-0-r-wr-silver)",
+   "kind": "lens render, 2000 px PNG",
+   "licence": "official Fujifilm product render, redistributed by the retailer; reference only"
+  },
+  {
+   "id": "xf35f2_silver_side",
+   "role": "XF35mmF2 R WR silver, side (near-orthographic, ~1.5 deg elevation)",
+   "source_url": "https://cdn.shopify.com/s/files/1/0397/6167/4285/files/49711648188002Hero.png (https://glazerscamera.com/products/fuji-xf-35mm-f2-0-r-wr-silver)",
+   "kind": "lens render, 2000 px PNG",
+   "licence": "official Fujifilm product render, redistributed by the retailer; reference only"
+  },
+  {
+   "id": "photo_dpr_beauty",
+   "role": "real photo, silver + black XF35mmF2, 3/4 front",
+   "source_url": "https://www.dpreview.com/wp-content/uploads/2020/09/0162052316-Fujifilm_X-T5_beauty_shot.jpeg (https://www.dpreview.com/reviews/fujifilm-x-t5-in-depth-review)",
+   "kind": "photo, 3840 px",
+   "licence": "DPReview review photo (c) DPReview; reference only"
+  },
+  {
+   "id": "photo_dpr_grip",
+   "role": "real photo, silver, front 3/4 low (grip, FUJIFILM, front dial)",
+   "source_url": "https://www.dpreview.com/wp-content/uploads/2020/03/0162052316-Fujifilm_X-T5_new_grip.jpeg (https://www.dpreview.com/reviews/fujifilm-x-t5-in-depth-review)",
+   "kind": "photo, 3840 px",
+   "licence": "DPReview review photo (c) DPReview; reference only"
+  },
+  {
+   "id": "photo_dpr_rear",
+   "role": "real photo, silver, rear",
+   "source_url": "https://www.dpreview.com/wp-content/uploads/2020/06/0162052316-Fujifilm_X-T5_rear.jpeg (https://www.dpreview.com/reviews/fujifilm-x-t5-in-depth-review)",
+   "kind": "photo, 3840 px",
+   "licence": "DPReview review photo (c) DPReview; reference only"
+  },
+  {
+   "id": "photo_dpr_card_slots",
+   "role": "real photo, silver, grip side with card door open",
+   "source_url": "https://www.dpreview.com/wp-content/uploads/2013/02/0162052316-Fujifilm_X-T5_SD_card_slots.jpeg (https://www.dpreview.com/reviews/fujifilm-x-t5-in-depth-review)",
+   "kind": "photo, 3840 px",
+   "licence": "DPReview review photo (c) DPReview; reference only"
+  },
+  {
+   "id": "photo_dpr_dials",
+   "role": "real photo, silver, top-right dials close-up (best finish/knurl/engraving reference)",
+   "source_url": "https://www.dpreview.com/wp-content/uploads/2013/01/0162052316-Fujifilm_X-T5_shutter_exp_comp_dials.jpeg (https://www.dpreview.com/reviews/fujifilm-x-t5-in-depth-review)",
+   "kind": "photo, 3840 px",
+   "licence": "DPReview review photo (c) DPReview; reference only"
+  }
+ ],
+ "pages": "_tools/sources.tsv (every downloaded file with its URL, size and pixel dimensions; run-2 rows from _tools/list_r2_*.txt). Run-2 pages: https://glazerscamera.com/products/fuji-x-t5-body-silver-1, https://glazerscamera.com/products/fuji-x-t5-w-16-50-kit-silver-1, https://glazerscamera.com/products/fuji-x-t5-w-16-80-kit-siilver, https://glazerscamera.com/products/fuji-xf-35mm-f2-0-r-wr-silver, https://www.dpreview.com/reviews/fujifilm-x-t5-in-depth-review, https://www.fujifilm-x.com/global/products/lenses/xf16-50mmf28-48-r-lm-wr/specifications/, https://www.fujifilm-x.com/global/products/lenses/xf35mmf2-r-wr/specifications/",
+ "downloads": [
+  {
+   "file": "fuji_device_slider_01.png",
+   "url": "https://www.fujifilm-x.com/products-cameras-static/x-t5/assets/images/top/koes_device_slider_01.png"
+  },
+  {
+   "file": "fuji_device_slider_02.png",
+   "url": "https://www.fujifilm-x.com/products-cameras-static/x-t5/assets/images/top/koes_device_slider_02.png"
+  },
+  {
+   "file": "fuji_device_slider_03.png",
+   "url": "https://www.fujifilm-x.com/products-cameras-static/x-t5/assets/images/top/koes_device_slider_03.png"
+  },
+  {
+   "file": "fuji_device_slider_04.png",
+   "url": "https://www.fujifilm-x.com/products-cameras-static/x-t5/assets/images/top/koes_device_slider_04.png"
+  },
+  {
+   "file": "fuji_device_slider_05.png",
+   "url": "https://www.fujifilm-x.com/products-cameras-static/x-t5/assets/images/top/koes_device_slider_05.png"
+  },
+  {
+   "file": "fuji_device_img_01.png",
+   "url": "https://www.fujifilm-x.com/products-cameras-static/x-t5/assets/images/top/koes_device_img_01.png"
+  },
+  {
+   "file": "fuji_device_img_02.png",
+   "url": "https://www.fujifilm-x.com/products-cameras-static/x-t5/assets/images/top/koes_device_img_02.png"
+  },
+  {
+   "file": "fuji_kv_bg_01_pc.png",
+   "url": "https://www.fujifilm-x.com/products-cameras-static/x-t5/assets/images/top/koes_kv_bg_01_pc.png"
+  },
+  {
+   "file": "fuji_kv_bg_02_pc.png",
+   "url": "https://www.fujifilm-x.com/products-cameras-static/x-t5/assets/images/top/koes_kv_bg_02_pc.png"
+  },
+  {
+   "file": "fuji_kv_bg_03_pc.png",
+   "url": "https://www.fujifilm-x.com/products-cameras-static/x-t5/assets/images/top/koes_kv_bg_03_pc.png"
+  },
+  {
+   "file": "fuji_concept_img_01_pc.png",
+   "url": "https://www.fujifilm-x.com/products-cameras-static/x-t5/assets/images/top/koes_concept_img_01_pc.png"
+  },
+  {
+   "file": "fuji_fanc_kv_01.png",
+   "url": "https://www.fujifilm-x.com/products-cameras-static/x-t5/assets/images/top/koes_fanc_kv_01.png"
+  },
+  {
+   "file": "fuji_fanc_sec01_img_01_pc.png",
+   "url": "https://www.fujifilm-x.com/products-cameras-static/x-t5/assets/images/top/koes_fanc_sec01_img_01_pc.png"
+  },
+  {
+   "file": "fuji_fanc_sec02_img_01.png",
+   "url": "https://www.fujifilm-x.com/products-cameras-static/x-t5/assets/images/top/koes_fanc_sec02_img_01.png"
+  },
+  {
+   "file": "fuji_fanc_sec03_img_01.png",
+   "url": "https://www.fujifilm-x.com/products-cameras-static/x-t5/assets/images/top/koes_fanc_sec03_img_01.png"
+  },
+  {
+   "file": "fuji_other_sec01_img_01_pc.png",
+   "url": "https://www.fujifilm-x.com/products-cameras-static/x-t5/assets/images/top/koes_other_sec01_img_01_pc.png"
+  },
+  {
+   "file": "fuji_other_sec02_img_01.png",
+   "url": "https://www.fujifilm-x.com/products-cameras-static/x-t5/assets/images/top/koes_other_sec02_img_01.png"
+  },
+  {
+   "file": "fuji_other_sec03_img_01.png",
+   "url": "https://www.fujifilm-x.com/products-cameras-static/x-t5/assets/images/top/koes_other_sec03_img_01.png"
+  },
+  {
+   "file": "fuji_other_sec04_img_01.png",
+   "url": "https://www.fujifilm-x.com/products-cameras-static/x-t5/assets/images/top/koes_other_sec04_img_01.png"
+  },
+  {
+   "file": "fuji_other_sec05_img_01.png",
+   "url": "https://www.fujifilm-x.com/products-cameras-static/x-t5/assets/images/top/koes_other_sec05_img_01.png"
+  },
+  {
+   "file": "fuji_other_sec05_img_02.png",
+   "url": "https://www.fujifilm-x.com/products-cameras-static/x-t5/assets/images/top/koes_other_sec05_img_02.png"
+  },
+  {
+   "file": "fuji_other_sec06_img_01.png",
+   "url": "https://www.fujifilm-x.com/products-cameras-static/x-t5/assets/images/top/koes_other_sec06_img_01.png"
+  },
+  {
+   "file": "fuji_interface_img_01.png",
+   "url": "https://www.fujifilm-x.com/products-cameras-static/x-t5/assets/images/top/koes_interface_img_01.png"
+  },
+  {
+   "file": "fuji_interface_img_02.png",
+   "url": "https://www.fujifilm-x.com/products-cameras-static/x-t5/assets/images/top/koes_interface_img_02.png"
+  },
+  {
+   "file": "fuji_movie_img_01.png",
+   "url": "https://www.fujifilm-x.com/products-cameras-static/x-t5/assets/images/top/koes_movei_img_01.png"
+  },
+  {
+   "file": "manual_parts_01.png",
+   "url": "https://fujifilm-dsc.com/en/manual/x-t5/images/ill_bd_number01_x-t5.png"
+  },
+  {
+   "file": "manual_parts_02.png",
+   "url": "https://fujifilm-dsc.com/en/manual/x-t5/images/ill_bd_number02_x-t5.png"
+  },
+  {
+   "file": "manual_plate.png",
+   "url": "https://fujifilm-dsc.com/en/manual/x-t5/images/ill_bd_plate_x-t5.png"
+  },
+  {
+   "file": "manual_focus_lever.png",
+   "url": "https://fujifilm-dsc.com/en/manual/x-t5/images/ill_bd_up_focus-area_no-evf_x-t5.png"
+  },
+  {
+   "file": "manual_selector.png",
+   "url": "https://fujifilm-dsc.com/en/manual/x-t5/images/ill_bd_up_selector-add_x-t5.png"
+  },
+  {
+   "file": "manual_iso_dial.png",
+   "url": "https://fujifilm-dsc.com/en/manual/x-t5/images/ill_bd_up_sensitivity-dial_x-t5.png"
+  },
+  {
+   "file": "manual_shutter_dial.png",
+   "url": "https://fujifilm-dsc.com/en/manual/x-t5/images/ill_bd_up_shutter-speed-dial_x-t5.png"
+  },
+  {
+   "file": "manual_still_movie.png",
+   "url": "https://fujifilm-dsc.com/en/manual/x-t5/images/ill_bd_up_dial_drive-still_movie_x-t5.png"
+  },
+  {
+   "file": "manual_ev_dial.png",
+   "url": "https://fujifilm-dsc.com/en/manual/x-t5/images/ill_bd_up_exposuredial-0_x-t5.png"
+  },
+  {
+   "file": "manual_drive_dial.png",
+   "url": "https://fujifilm-dsc.com/en/manual/x-t5/images/ill_bd_up_dial_drive-ch-cm-cl_2_x-t5.png"
+  },
+  {
+   "file": "manual_front_cmd.png",
+   "url": "https://fujifilm-dsc.com/en/manual/x-t5/images/ill_bd_commanddial-f_x-t5.png"
+  },
+  {
+   "file": "manual_rear_cmd.png",
+   "url": "https://fujifilm-dsc.com/en/manual/x-t5/images/ill_bd_commanddial-r_x-t5.png"
+  },
+  {
+   "file": "manual_indicator.png",
+   "url": "https://fujifilm-dsc.com/en/manual/x-t5/images/ill_bd_indicator-lamp_x-t5.png"
+  },
+  {
+   "file": "manual_tilt01.png",
+   "url": "https://fujifilm-dsc.com/en/manual/x-t5/images/ill_bd_monitor-tilt01_x-t5.png"
+  },
+  {
+   "file": "manual_tilt02.png",
+   "url": "https://fujifilm-dsc.com/en/manual/x-t5/images/ill_bd_monitor-tilt02_x-t5.png"
+  },
+  {
+   "file": "manual_tilt03.png",
+   "url": "https://fujifilm-dsc.com/en/manual/x-t5/images/ill_bd_monitor-tilt03_x-t5.png"
+  },
+  {
+   "file": "manual_eyecup.png",
+   "url": "https://fujifilm-dsc.com/en/manual/x-t5/images/ill_bd_eye-cap_x-t5.png"
+  },
+  {
+   "file": "manual_diopter_01.png",
+   "url": "https://fujifilm-dsc.com/en/manual/x-t5/images/ill_bd_up_diopter-adjust-out01_x-t5.png"
+  },
+  {
+   "file": "manual_diopter_02.png",
+   "url": "https://fujifilm-dsc.com/en/manual/x-t5/images/ill_bd_up_diopter-adjust-out02_x-t5.png"
+  },
+  {
+   "file": "manual_diopter_03.png",
+   "url": "https://fujifilm-dsc.com/en/manual/x-t5/images/ill_bd_up_diopter-adjust-out03_x-t5.png"
+  },
+  {
+   "file": "manual_x-t5_en.pdf",
+   "url": "https://fujifilm-dsc.com/en/manual/x-t5/x-t5_manual_en_s_f.pdf"
+  },
+  {
+   "file": "commons_xt5_square_a.jpg",
+   "url": "https://upload.wikimedia.org/wikipedia/commons/3/31/Fujifilm_X-T5_4_nov_2022a.jpg"
+  },
+  {
+   "file": "commons_xt5_square_b.jpg",
+   "url": "https://upload.wikimedia.org/wikipedia/commons/c/cf/Fujifilm_X-T5_4_nov_2022b.jpg"
+  },
+  {
+   "file": "camerawest_silver_front.jpg",
+   "url": "https://cdn.shopify.com/s/files/1/0709/3256/2235/files/1311340-06.jpg?v=1687275965"
+  },
+  {
+   "file": "camerawest_silver_angled.jpg",
+   "url": "https://cdn.shopify.com/s/files/1/0709/3256/2235/files/1311340-09.jpg?v=1687275962"
+  },
+  {
+   "file": "commons_xt5_square_c.jpg",
+   "url": "https://upload.wikimedia.org/wikipedia/commons/a/a8/Fujifilm_X-T5_4_nov_2022c.jpg"
+  },
+  {
+   "file": "commons_xt5_square_d.jpg",
+   "url": "https://upload.wikimedia.org/wikipedia/commons/3/31/Fujifilm_X-T5_4_nov_2022d.jpg"
+  },
+  {
+   "file": "commons_xt5_square_e.jpg",
+   "url": "https://upload.wikimedia.org/wikipedia/commons/b/b5/Fujifilm_X-T5_4_nov_2022e.jpg"
+  },
+  {
+   "file": "commons_xt5_square_f.jpg",
+   "url": "https://upload.wikimedia.org/wikipedia/commons/d/dd/Fujifilm_X-T5_4_nov_2022f.jpg"
+  },
+  {
+   "file": "commons_xt5_square_g.jpg",
+   "url": "https://upload.wikimedia.org/wikipedia/commons/c/c4/Fujifilm_X-T5_4_nov_2022g.jpg"
+  },
+  {
+   "file": "commons_xt5_aps1729.jpg",
+   "url": "https://upload.wikimedia.org/wikipedia/commons/e/ef/Fujifilm-X-T5.jpg"
+  },
+  {
+   "file": "commons_xt5_silver_xf33_mullowitsch.jpg",
+   "url": "https://upload.wikimedia.org/wikipedia/commons/6/6c/Fujifilm_X-T5.jpg"
+  },
+  {
+   "file": "commons_xt5_xf35f2_soderlund.jpg",
+   "url": "https://upload.wikimedia.org/wikipedia/commons/2/25/Fujifilm_X-T5_with_Fujinon_XF_35mm_F2_R_WR_-_by_Henry_S%C3%B6derlund_%2852536299126%29.jpg"
+  },
+  {
+   "file": "camerawest_1311340-01.jpg",
+   "url": "https://cdn.shopify.com/s/files/1/0709/3256/2235/files/1311340-01.jpg"
+  },
+  {
+   "file": "camerawest_1311340-02.jpg",
+   "url": "https://cdn.shopify.com/s/files/1/0709/3256/2235/files/1311340-02.jpg"
+  },
+  {
+   "file": "camerawest_1311340-03.jpg",
+   "url": "https://cdn.shopify.com/s/files/1/0709/3256/2235/files/1311340-03.jpg"
+  },
+  {
+   "file": "camerawest_1311340-04.jpg",
+   "url": "https://cdn.shopify.com/s/files/1/0709/3256/2235/files/1311340-04.jpg"
+  },
+  {
+   "file": "camerawest_1311340-05.jpg",
+   "url": "https://cdn.shopify.com/s/files/1/0709/3256/2235/files/1311340-05.jpg"
+  },
+  {
+   "file": "camerawest_1311340-07.jpg",
+   "url": "https://cdn.shopify.com/s/files/1/0709/3256/2235/files/1311340-07.jpg"
+  },
+  {
+   "file": "camerawest_1311340-08.jpg",
+   "url": "https://cdn.shopify.com/s/files/1/0709/3256/2235/files/1311340-08.jpg"
+  },
+  {
+   "file": "fujirumors_silver-1.jpg",
+   "url": "https://www.fujirumors.com/wp-content/uploads/2022/11/Silver-1.jpg"
+  },
+  {
+   "file": "fujirumors_silver-2.jpg",
+   "url": "https://www.fujirumors.com/wp-content/uploads/2022/11/Silver-2.jpg"
+  },
+  {
+   "file": "fujirumors_silver-3.jpg",
+   "url": "https://www.fujirumors.com/wp-content/uploads/2022/11/Silver-3.jpg"
+  },
+  {
+   "file": "fujirumors_silver-4.jpg",
+   "url": "https://www.fujirumors.com/wp-content/uploads/2022/11/Silver-4.jpg"
+  },
+  {
+   "file": "fujirumors_leaked-8.jpg",
+   "url": "https://www.fujirumors.com/wp-content/uploads/2022/11/Leaked-8.jpg"
+  },
+  {
+   "file": "fujirumors_leaked-2.jpg",
+   "url": "https://www.fujirumors.com/wp-content/uploads/2022/11/Leaked-2.jpg"
+  },
+  {
+   "file": "fujirumors_leaked-1.jpg",
+   "url": "https://www.fujirumors.com/wp-content/uploads/2022/11/Leaked-1.jpg"
+  },
+  {
+   "file": "camerahouse_x-t5_back_silver.jpg",
+   "url": "https://www.camerahouse.com.au/media/catalog/product/x/-/x-t5_back_silver.jpg"
+  },
+  {
+   "file": "camerahouse_x-t5_bottom_silver.jpg",
+   "url": "https://www.camerahouse.com.au/media/catalog/product/x/-/x-t5_bottom_silver.jpg"
+  },
+  {
+   "file": "camerahouse_x-t5_backnanameunder_batteryopen_silver.jpg",
+   "url": "https://www.camerahouse.com.au/media/catalog/product/x/-/x-t5_backnanameunder_batteryopen_silver.jpg"
+  },
+  {
+   "file": "camerahouse_74455.jpg",
+   "url": "https://www.camerahouse.com.au/media/catalog/product/7/4/74455.jpg"
+  },
+  {
+   "file": "camerahouse_74457_front_16-80_silver.png",
+   "url": "https://www.camerahouse.com.au/media/catalog/product/7/4/74457_x-t5_front_16-80_silver_gold_award..png"
+  },
+  {
+   "file": "camerahouse_74456.jpg",
+   "url": "https://www.camerahouse.com.au/media/catalog/product/7/4/74456.jpg"
+  },
+  {
+   "file": "camerahouse_kit_1_90.png",
+   "url": "https://www.camerahouse.com.au/media/catalog/product/1/_/1_90.png"
+  },
+  {
+   "file": "camerahouse_kit_2_87.png",
+   "url": "https://www.camerahouse.com.au/media/catalog/product/2/_/2_87.png"
+  },
+  {
+   "file": "camerahouse_kit_3_77.png",
+   "url": "https://www.camerahouse.com.au/media/catalog/product/3/_/3_77.png"
+  },
+  {
+   "file": "trm_silver-1.jpg",
+   "url": "https://www.trm.fr/wp-content/uploads/2022/11/Fujifilm-X-T5-Silver.jpg"
+  },
+  {
+   "file": "trm_silver-2.jpg",
+   "url": "https://www.trm.fr/wp-content/uploads/2022/11/Fujifilm-X-T5-Silver-2.jpg"
+  },
+  {
+   "file": "trm_silver-3.jpg",
+   "url": "https://www.trm.fr/wp-content/uploads/2022/11/Fujifilm-X-T5-Silver-3.jpg"
+  },
+  {
+   "file": "trm_silver-4.jpg",
+   "url": "https://www.trm.fr/wp-content/uploads/2022/11/Fujifilm-X-T5-Silver-4.jpg"
+  },
+  {
+   "file": "trm_silver-5.jpg",
+   "url": "https://www.trm.fr/wp-content/uploads/2022/11/Fujifilm-X-T5-Silver-5.jpg"
+  },
+  {
+   "file": "trm_silver-6.jpg",
+   "url": "https://www.trm.fr/wp-content/uploads/2022/11/Fujifilm-X-T5-Silver-6.jpg"
+  },
+  {
+   "file": "fujirumors_leaked-3.jpg",
+   "url": "https://www.fujirumors.com/wp-content/uploads/2022/11/Leaked-3.jpg"
+  },
+  {
+   "file": "fujirumors_leaked-4.jpg",
+   "url": "https://www.fujirumors.com/wp-content/uploads/2022/11/Leaked-4.jpg"
+  },
+  {
+   "file": "fujirumors_leaked-5.jpg",
+   "url": "https://www.fujirumors.com/wp-content/uploads/2022/11/Leaked-5.jpg"
+  },
+  {
+   "file": "fujirumors_leaked-6.jpg",
+   "url": "https://www.fujirumors.com/wp-content/uploads/2022/11/Leaked-6.jpg"
+  },
+  {
+   "file": "fujirumors_leaked-7.jpg",
+   "url": "https://www.fujirumors.com/wp-content/uploads/2022/11/Leaked-7.jpg"
+  },
+  {
+   "file": "fujirumors_leaked-9.jpg",
+   "url": "https://www.fujirumors.com/wp-content/uploads/2022/11/Leaked-9.jpg"
+  },
+  {
+   "file": "lens_xf35f2_main.png",
+   "url": "https://fujifilm-x.b-cdn.net/wp-content/uploads/2019/10/xf35mmf2-r-wr_main-3.png"
+  },
+  {
+   "file": "lens_xf35f2_overview02.webp",
+   "url": "https://fujifilm-x.b-cdn.net/wp-content/uploads/2025/09/xf35mmf2-r-wr-overview_images02.webp"
+  },
+  {
+   "file": "lens_xf35f2_overview03.webp",
+   "url": "https://fujifilm-x.b-cdn.net/wp-content/uploads/2025/09/xf35mmf2-r-wr-overview_images03.webp"
+  },
+  {
+   "file": "lens_xf35f2_cutaway.webp",
+   "url": "https://fujifilm-x.b-cdn.net/wp-content/uploads/2025/09/XF35mm%E9%80%8F%E8%A6%96_150930.webp"
+  },
+  {
+   "file": "lens_xf35f2_hood_incl.webp",
+   "url": "https://fujifilm-x.b-cdn.net/wp-content/uploads/2025/09/Lenshood-incl-XF35mm.webp"
+  },
+  {
+   "file": "lens_xf35f2_on_xt_black.webp",
+   "url": "https://fujifilm-x.b-cdn.net/wp-content/uploads/2025/09/LH-XF35-2_XF35mm_X-TI_black.webp"
+  },
+  {
+   "file": "lens_xf18-55_main.png",
+   "url": "https://fujifilm-x.b-cdn.net/wp-content/uploads/2019/10/xf18-55mmf28-4-r-lm-ois_main-1.png"
+  },
+  {
+   "file": "lens_xf18-55_overview01.webp",
+   "url": "https://fujifilm-x.b-cdn.net/wp-content/uploads/2025/09/xf18-55mmf28-4-r-lm-ois-overview_images01.webp"
+  },
+  {
+   "file": "lens_xf35f2_silver_cw_1.jpg",
+   "url": "https://cdn.shopify.com/s/files/1/0709/3256/2235/files/1445434524_1192471.jpg?v=1754408293"
+  },
+  {
+   "file": "lens_xf35f2_silver_cw_2.jpg",
+   "url": "https://cdn.shopify.com/s/files/1/0709/3256/2235/files/1445859043_IMG_546249.jpg?v=1754408293"
+  },
+  {
+   "file": "lens_xf35f2_silver_cw_3.jpg",
+   "url": "https://cdn.shopify.com/s/files/1/0709/3256/2235/files/1564567624_IMG_1110822.jpg?v=1754408294"
+  },
+  {
+   "file": "lens_xf35f2_silver_cw_4.jpg",
+   "url": "https://cdn.shopify.com/s/files/1/0709/3256/2235/files/1564567624_IMG_1110823.jpg?v=1754408294"
+  },
+  {
+   "file": "lens_xf35f2_silver_cw_5.jpg",
+   "url": "https://cdn.shopify.com/s/files/1/0709/3256/2235/files/1564567624_IMG_1110824.jpg?v=1754408294"
+  },
+  {
+   "file": "lens_xf35f2_silver_cw_6.jpg",
+   "url": "https://cdn.shopify.com/s/files/1/0709/3256/2235/files/1564567624_IMG_1110825.jpg?v=1754408302"
+  },
+  {
+   "file": "glz_body_silver_01.png",
+   "url": "https://cdn.shopify.com/s/files/1/0397/6167/4285/files/23866_16953883_01_Hero.png"
+  },
+  {
+   "file": "glz_body_silver_02.png",
+   "url": "https://cdn.shopify.com/s/files/1/0397/6167/4285/files/23866_16953883_02_Hero.png"
+  },
+  {
+   "file": "glz_body_silver_03.png",
+   "url": "https://cdn.shopify.com/s/files/1/0397/6167/4285/files/23866_16953883_03_Hero.png"
+  },
+  {
+   "file": "glz_body_silver_04.png",
+   "url": "https://cdn.shopify.com/s/files/1/0397/6167/4285/files/23866_16953883_04_Hero.png"
+  },
+  {
+   "file": "glz_body_silver_05.png",
+   "url": "https://cdn.shopify.com/s/files/1/0397/6167/4285/files/23866_16953883_05_Hero.png"
+  },
+  {
+   "file": "glz_body_silver_06.png",
+   "url": "https://cdn.shopify.com/s/files/1/0397/6167/4285/files/23866_16953883_06_Hero.png"
+  },
+  {
+   "file": "glz_body_silver_07.png",
+   "url": "https://cdn.shopify.com/s/files/1/0397/6167/4285/files/23866_16953883_07_Hero.png"
+  },
+  {
+   "file": "glz_body_silver_08.png",
+   "url": "https://cdn.shopify.com/s/files/1/0397/6167/4285/files/23866_16953883_08_Hero.png"
+  },
+  {
+   "file": "glz_body_silver_09.png",
+   "url": "https://cdn.shopify.com/s/files/1/0397/6167/4285/files/23866_16953883_09_Hero.png"
+  },
+  {
+   "file": "glz_kit1650_silver_01.png",
+   "url": "https://cdn.shopify.com/s/files/1/0397/6167/4285/files/23880_16953895_01_Hero_f85ebfee-45ac-4576-84cc-d167a06d422f.png"
+  },
+  {
+   "file": "glz_kit1650_silver_02.png",
+   "url": "https://cdn.shopify.com/s/files/1/0397/6167/4285/files/23880_16953895_02_Hero_b1524778-ffc3-414a-a99d-48c39e5d97e3.png"
+  },
+  {
+   "file": "glz_kit1650_silver_03.png",
+   "url": "https://cdn.shopify.com/s/files/1/0397/6167/4285/files/23880_16953895_03_Hero_1e21b231-6f2b-4aa3-a1a4-ba349fac6d68.png"
+  },
+  {
+   "file": "glz_kit1650_silver_04.png",
+   "url": "https://cdn.shopify.com/s/files/1/0397/6167/4285/files/23880_16953895_04_Hero_7240938f-05f1-4c0a-ba83-658d689fe2dd.png"
+  },
+  {
+   "file": "glz_kit1650_silver_05.png",
+   "url": "https://cdn.shopify.com/s/files/1/0397/6167/4285/files/23880_16953895_05_Hero_6714bca9-aaef-4197-bed2-9a4513ac9512.png"
+  },
+  {
+   "file": "glz_kit1650_silver_06.png",
+   "url": "https://cdn.shopify.com/s/files/1/0397/6167/4285/files/23880_16953895_06_Hero_a39ed09a-92c6-4fea-ae62-8340c2b6fc6f.png"
+  },
+  {
+   "file": "glz_kit1650_silver_07.png",
+   "url": "https://cdn.shopify.com/s/files/1/0397/6167/4285/files/23880_16953895_07_Hero_f9b98757-45d0-4819-ab50-45352e68f41f.png"
+  },
+  {
+   "file": "glz_kit1650_silver_08.png",
+   "url": "https://cdn.shopify.com/s/files/1/0397/6167/4285/files/23880_16953895_08_Hero_f6028a11-07af-4fd0-93a9-6463438d8cf0.png"
+  },
+  {
+   "file": "glz_kit1650_silver_09.png",
+   "url": "https://cdn.shopify.com/s/files/1/0397/6167/4285/files/23880_16953895_09_Hero_72a1d510-cfab-44d4-bfe9-3d0856b9fb1a.png"
+  },
+  {
+   "file": "glz_kit1650_silver_10.png",
+   "url": "https://cdn.shopify.com/s/files/1/0397/6167/4285/files/23880_16953895_10_Hero_8ede1d7e-c15e-4f6f-b517-01f1f00d7521.png"
+  },
+  {
+   "file": "glz_kit1650_silver_11.png",
+   "url": "https://cdn.shopify.com/s/files/1/0397/6167/4285/files/23880_16953895_11_Hero_dbe17303-6d6b-4d31-b1b5-39ee203bb3da.png"
+  },
+  {
+   "file": "glz_kit1650_silver_12.png",
+   "url": "https://cdn.shopify.com/s/files/1/0397/6167/4285/files/23880_16953895_12_Hero_b083b981-429d-42c5-b7fd-7483fa3221bd.png"
+  },
+  {
+   "file": "glz_kit1650_silver_13.png",
+   "url": "https://cdn.shopify.com/s/files/1/0397/6167/4285/files/23880_16953895_13_Hero_8c5b434f-9838-4bf1-a047-aa01caaf6460.png"
+  },
+  {
+   "file": "glz_kit1650_silver_14.png",
+   "url": "https://cdn.shopify.com/s/files/1/0397/6167/4285/files/23880_16953895_14_Hero_d15aa57b-9d07-4eb9-ba33-25e87086dca6.png"
+  },
+  {
+   "file": "glz_kit1650_silver_15.png",
+   "url": "https://cdn.shopify.com/s/files/1/0397/6167/4285/files/23880_16953895_15_Hero_ba1f074d-3c3a-44fb-9a6d-ba6521ad1158.png"
+  },
+  {
+   "file": "glz_kit1650_silver_16.png",
+   "url": "https://cdn.shopify.com/s/files/1/0397/6167/4285/files/23880_16953895_16_Hero_bbb519ff-a17f-4aad-86f6-ca6610e1e2d0.png"
+  },
+  {
+   "file": "glz_kit1650_silver_17.png",
+   "url": "https://cdn.shopify.com/s/files/1/0397/6167/4285/files/23880_16953895_17_Hero_e8d96ab8-8596-427f-9a77-d0ab1be79022.png"
+  },
+  {
+   "file": "glz_kit1680_silver_01.png",
+   "url": "https://cdn.shopify.com/s/files/1/0397/6167/4285/files/23894_16953900_01_Hero_8c233fac-b8b4-4869-88ac-6c4b3f7de76e.png"
+  },
+  {
+   "file": "glz_kit1680_silver_02.png",
+   "url": "https://cdn.shopify.com/s/files/1/0397/6167/4285/files/23894_16953900_02_Hero_4be047b2-3654-44cf-9d45-47d30a02a24c.png"
+  },
+  {
+   "file": "glz_kit1680_silver_03.png",
+   "url": "https://cdn.shopify.com/s/files/1/0397/6167/4285/files/23894_16953900_03_Hero_e7156ec8-9664-413d-9a05-a27939dc76ea.png"
+  },
+  {
+   "file": "glz_kit1680_silver_04.png",
+   "url": "https://cdn.shopify.com/s/files/1/0397/6167/4285/files/23894_16953900_04_Hero_38e7f68d-df3c-404f-b1d7-ca007f8624ca.png"
+  },
+  {
+   "file": "glz_kit1680_silver_05.png",
+   "url": "https://cdn.shopify.com/s/files/1/0397/6167/4285/files/23894_16953900_05_Hero_1efee4ac-4b59-49c4-b604-35bc085e26c4.png"
+  },
+  {
+   "file": "glz_kit1680_silver_06.png",
+   "url": "https://cdn.shopify.com/s/files/1/0397/6167/4285/files/23894_16953900_06_Hero_bb00d3fb-ea4b-49bf-97ce-08714012d758.png"
+  },
+  {
+   "file": "glz_kit1680_silver_07.png",
+   "url": "https://cdn.shopify.com/s/files/1/0397/6167/4285/files/23894_16953900_07_Hero_cb024928-171a-4471-845b-a37d43c49f01.png"
+  },
+  {
+   "file": "glz_kit1680_silver_08.png",
+   "url": "https://cdn.shopify.com/s/files/1/0397/6167/4285/files/23894_16953900_08_Hero_b3adfead-2fe0-4984-b0b9-21554a7dce5b.png"
+  },
+  {
+   "file": "glz_kit1680_silver_09.png",
+   "url": "https://cdn.shopify.com/s/files/1/0397/6167/4285/files/23894_16953900_09_Hero_cde0281d-c63a-4752-b968-c612130d1c0e.png"
+  },
+  {
+   "file": "glz_kit1680_silver_10.png",
+   "url": "https://cdn.shopify.com/s/files/1/0397/6167/4285/files/23894_16953900_10_Hero_76b8e0ab-345d-4336-ae9c-a1745bea3e54.png"
+  },
+  {
+   "file": "glz_kit1680_silver_11.png",
+   "url": "https://cdn.shopify.com/s/files/1/0397/6167/4285/files/23894_16953900_11_Hero_14deda8c-d466-445a-8c12-c1692ad53415.png"
+  },
+  {
+   "file": "glz_kit1680_silver_12.png",
+   "url": "https://cdn.shopify.com/s/files/1/0397/6167/4285/files/23894_16953900_12_Hero_2d3d13d0-c827-4723-a0b2-8ebec7ca777d.png"
+  },
+  {
+   "file": "glz_kit1680_silver_13.png",
+   "url": "https://cdn.shopify.com/s/files/1/0397/6167/4285/files/23894_16953900_13_Hero_c4618440-22ff-45e0-bf36-45d0b25f7efe.png"
+  },
+  {
+   "file": "glz_kit1680_silver_14.png",
+   "url": "https://cdn.shopify.com/s/files/1/0397/6167/4285/files/23894_16953900_14_Hero_d833ca0b-2bf2-4594-a0f2-fa905947a820.png"
+  },
+  {
+   "file": "glz_kit1680_silver_15.png",
+   "url": "https://cdn.shopify.com/s/files/1/0397/6167/4285/files/23894_16953900_15_Hero_b87554a0-2af7-4af1-bee9-0fee5c3e289a.png"
+  },
+  {
+   "file": "glz_kit1680_silver_16.png",
+   "url": "https://cdn.shopify.com/s/files/1/0397/6167/4285/files/23894_16953900_16_Hero_0750dfce-7575-4f8c-8edc-48c0baaaa4dc.png"
+  },
+  {
+   "file": "glz_kit1680_silver_17.png",
+   "url": "https://cdn.shopify.com/s/files/1/0397/6167/4285/files/23894_16953900_17_Hero_62f4aae8-02b6-4a6b-94ea-4858c096c11d.png"
+  },
+  {
+   "file": "dpr_new_grip.jpeg",
+   "url": "https://www.dpreview.com/wp-content/uploads/2020/03/0162052316-Fujifilm_X-T5_new_grip.jpeg"
+  },
+  {
+   "file": "dpr_shutter_exp_comp_dials.jpeg",
+   "url": "https://www.dpreview.com/wp-content/uploads/2013/01/0162052316-Fujifilm_X-T5_shutter_exp_comp_dials.jpeg"
+  },
+  {
+   "file": "dpr_sd_card_slots.jpeg",
+   "url": "https://www.dpreview.com/wp-content/uploads/2013/02/0162052316-Fujifilm_X-T5_SD_card_slots.jpeg"
+  },
+  {
+   "file": "dpr_rear.jpeg",
+   "url": "https://www.dpreview.com/wp-content/uploads/2020/06/0162052316-Fujifilm_X-T5_rear.jpeg"
+  },
+  {
+   "file": "dpr_beauty_shot.jpeg",
+   "url": "https://www.dpreview.com/wp-content/uploads/2020/09/0162052316-Fujifilm_X-T5_beauty_shot.jpeg"
+  },
+  {
+   "file": "glz_xf35f2_silver_01.png",
+   "url": "https://cdn.shopify.com/s/files/1/0397/6167/4285/files/49711648188001Hero.png"
+  },
+  {
+   "file": "glz_xf35f2_silver_02.png",
+   "url": "https://cdn.shopify.com/s/files/1/0397/6167/4285/files/49711648188002Hero.png"
+  }
+ ]
+}

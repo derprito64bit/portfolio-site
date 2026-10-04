@@ -5,8 +5,9 @@
 // 2. For each GES-1 profile (W-D030) plus 1180x820, 600x900 and a landscape phone, it emulates the device, builds a
 //    hero stage slot (size: an estimate from tokens.space and tokens.stage.heroRow until W-S1 owns the hero), and
 //    screenshots the same slot twice: the live first GL frame (tier from the pointer: mouse = full with MSAA and
-//    DPR <= 2, touch = lite without MSAA, DPR <= 1.5, LOD by projected width) and the poster as <img srcset> in
-//    AVIF and in WebP.
+//    DPR <= 2, touch = lite without MSAA, DPR <= 1.5; LOD0 on the full tier at 600 device px and wider, D-021) and
+//    the poster as an <img>: the file of the LOD's set nearest the GL frame's device width (stage.js posterFile, as
+//    W-S1's hero picks it), in AVIF and in WebP.
 // 3. Diff = mean absolute difference over R, G and B of every slot pixel, in 0-255 units. Pass: <= 4.
 // Writes <out>/poster-diff.json and per-profile crops (gl, poster, diff x8) under <out>/parity/.
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -103,7 +104,7 @@ async function main() {
       if (set.lod !== gl.done.lod) throw new Error(`${p.id}: posterSet() picked lod${set.lod}, GL drew lod${gl.done.lod}`);
       for (const fmt of ["avif", "webp"]) {
         const srcset = set.files.map((f) => ({ url: `/x/posters/${f[fmt]}`, w: f.w }));
-        const img = await runPage(context, origin, { mode: "img", framing: band, w: String(s.w), h: String(s.h), srcset }, { keep: true });
+        const img = await runPage(context, origin, { mode: "img", framing: band, w: String(s.w), h: String(s.h), srcset, glDpr: String(gl.done.dpr) }, { keep: true });
         const posterPng = await img.page.screenshot({ clip });
         await img.page.close();
         const d = diff(glRaw, await raw(posterPng));

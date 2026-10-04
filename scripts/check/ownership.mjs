@@ -2,7 +2,7 @@
 // Ownership check (PROTOCOL.md section 3): every file this branch changes must match the crew's globs in
 // docs/agents/ownership.json. Run before every push. Exits 1 and lists each file outside the globs.
 // Usage: node scripts/check/ownership.mjs [--crew W-F] [--base origin/main]
-// The crew defaults to the branch name (crew/w-f -> W-F). W-F's one exception: new stub files for other crews'
+// The crew defaults to the branch name (crew/w-f -> W-F; a milestone branch crew/w-c13-m2 -> W-C13). W-F's one exception: new stub files for other crews'
 // paths, recognised by their 'STUB by W-F' header, in W-F's own branch.
 import { execFileSync } from 'node:child_process';
 import { readFileSync, existsSync } from 'node:fs';
@@ -15,7 +15,8 @@ const opt = (k, d) => (args.includes(k) ? args[args.indexOf(k) + 1] : d);
 const git = (...a) => execFileSync('git', a, { cwd: ROOT, encoding: 'utf8' }).trim();
 
 const branch = git('rev-parse', '--abbrev-ref', 'HEAD');
-const crew = opt('--crew', branch.startsWith('crew/') ? branch.slice(5).toUpperCase() : null);
+// A crew's milestone branches (crew/w-c13-m2, or --crew W-C13-M2 from CI) use the crew's own globs.
+const crew = opt('--crew', branch.startsWith('crew/') ? branch.slice(5).toUpperCase() : null)?.replace(/-M\d+$/, '') ?? null;
 const base = opt('--base', 'origin/main');
 if (!crew) {
   console.error(`ownership: not on a crew/<id> branch (${branch}); pass --crew <id>`);
