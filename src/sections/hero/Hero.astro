@@ -222,6 +222,10 @@ const heroHead = `(function(h,c){var s=null,n,t=h.dataset.tier;try{s=sessionStor
     box-shadow: 0 1px 2px color-mix(in srgb, #13171a 22%, transparent), 0 10px 24px -6px color-mix(in srgb, #13171a 30%, transparent);
     transition: opacity var(--dur-gl-handback) linear;
   }
+  /* The stills' visibility while GL holds the slot has one owner: the slot's .is-gl (base.css) hides every still while
+     GL draws the stack, and a still the shutter just made waits here until its GL copy hands back. No still carries an
+     inline opacity, which would beat both rules. */
+  .hero-print :global(.hero-still[data-pending]) { opacity: 0; }
   .hero-fx { display: none; }
 
   /* The first-paint drawing (D-024): only while data-cam is 'drawing'; the finished-camera poster waits under it. */

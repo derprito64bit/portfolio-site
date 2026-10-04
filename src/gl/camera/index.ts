@@ -102,11 +102,23 @@ const PAD: [number, number] = [0.12, 0.09]; // shadow margin of the print quad, 
 const LAND_DEPTH = 0.1; // view-space depth of a landed print: in front of the body, beyond the near plane
 const FOCUS_STEP_DEG = 24; // the focus ring turns this far per lens stop (W-C14 tunes the final verbs)
 const PRESENT_TAIL = 3; // frames presented after a change (WebKit shows a canvas one frame late)
+/** ms from a press (the shutter mark) to the eject's first frame (W-D012). */
+const EJECT_LEAD = heroTimeline.eject - heroTimeline.shutter;
 const html = document.documentElement;
 const reduced = () => html.dataset.motion === 'reduced';
 const tierNow = () => html.dataset.tier || 'static';
 /** True on the manual clock (?t=): the intro is filmed by __stage.seek(ms), with T0 at stage time 0. */
 const manualClock = new URLSearchParams(location.search).has('t');
+
+/**
+ * A still the shutter made shows: it waited, hidden (data-pending, Hero.astro), for its GL copy's handback. One owner
+ * for the stills' visibility while GL holds the print slot: the slot's .is-gl (base.css) hides every still while GL
+ * draws the stack, and data-pending hides a new one until its handback. Nothing writes a still's inline opacity, so
+ * neither rule is ever beaten (gate, round 3: an inline opacity left by a handback kept a still over the next develop).
+ */
+function reveal(still: HTMLImageElement | null): void {
+  still?.removeAttribute('data-pending');
+}
 
 // The develop shader (and the camera patch's GLSL) is its own chunk (the effects budget counts it alone).
 let develop: typeof Develop | null = null;
@@ -178,6 +190,8 @@ interface MotionRecord {
   peak: number;
   settle2Ms: number | null;
   measured?: boolean;
+  /** Retargeted before it came to rest (see retarget): its peak is as far as it got, not a step's overshoot. */
+  interrupted?: boolean;
 }
 /** Append to window.__motionLog with the W-D030 schema. */
 function logMotion(e: MotionRecord): void {
@@ -278,13 +292,17 @@ class GLPrint {
 
 interface Flight {
   print: GLPrint;
-  /** Stage time of the shutter press that started it (the sequence's 120 ms mark). */
+  /** Stage time of the shutter press that started it (the sequence's shutter mark), read from the clock at the press
+   *  (clock(), never the last frame's time: the ticker may have slept since). */
   t0: number;
   /** The DOM still it lands on and hands back to. */
   still: HTMLImageElement | null;
   landing: Pose | null;
   done: boolean;
   intro: boolean;
+  /** Frames this flight has stepped, and whether GL holds the print slot yet (a press's .is-gl, see stepFlight). */
+  frames: number;
+  held: boolean;
   /** Measured on the frames drawn: the flight's furthest progress and the dip's deepest seat. */
   peakF: number;
   minSeat: number;
@@ -330,6 +348,7 @@ class HeroCamera implements CameraController {
   private readonly exitPos = new Vector3();
   /** The body below the exit slot (half width, z min, z max), from the model's own bounds. */
   private readonly body: [number, number, number] = [0.068, -0.046, 0.03];
+  /** Stage time of the last frame stepped (only valid inside a frame: see clock). */
   private time = 0;
   /** Frames still to present after the last change (see step). */
   private tail = 0;
@@ -752,19 +771,37 @@ vec3 ionNeutral(vec3 color) {
     }
   }
 
-  private track(spring: Spring, id: string, kind: string, trigger: string): void {
+  /**
+   * The stage clock now, outside a frame: what the ticker passes as stage time (src/stage/state.ts now(): the manual
+   * clock's last seek on ?t=, where frames run only on a seek, else performance.now()). Never the last frame's time
+   * there: once the ticker has slept (durations.idleDetach) that is stale by the whole rest (gate, round 3).
+   */
+  private clock(): number {
+    return manualClock ? this.time : performance.now();
+  }
+
+  /**
+   * Retarget a rig spring now and queue its __motionLog row (written by step once the spring rests). A row still
+   * queued for the same spring is written first, as it ran up to now: it was retargeted before it came to rest (the
+   * shutter's release comes durations.shutter after its press), so it is marked `interrupted` (an unfinished step has
+   * no overshoot to compare with the table). Every row's t0 is the clock at its trigger.
+   */
+  private retarget(spring: Spring, to: number, id: string, kind: string, trigger: string): void {
+    const at = this.clock();
+    for (const p of this.pending) {
+      if (p.spring !== spring) continue;
+      logMotion({ id: p.id, kind: p.kind, spring: spring.name, trigger: p.trigger, t0: Math.round(p.t0), t1: Math.max(Math.round(p.t0), Math.round(at)), from: spring.from, to: spring.target, peak: spring.peak, settle2Ms: null, measured: true, interrupted: true });
+    }
     this.pending = this.pending.filter((p) => p.spring !== spring);
-    this.pending.push({ spring, id, kind, trigger, t0: this.time });
+    spring.to(to);
+    this.pending.push({ spring, id, kind, trigger, t0: at });
   }
 
   setLook(index: number, trigger: string): void {
     // At rest the dial sits where the poster shows it: the look print 1 carried at load.
     const to = index - this.lookAt0;
     if (reduced()) this.lookSpring.set(to);
-    else {
-      this.lookSpring.to(to);
-      this.track(this.lookSpring, 'camera:dial_look', 'detent', trigger);
-    }
+    else this.retarget(this.lookSpring, to, 'camera:dial_look', 'detent', trigger);
     this.applyRig();
     this.invalidate();
   }
@@ -772,21 +809,16 @@ vec3 ionNeutral(vec3 color) {
   setLens(index: number, trigger: string): void {
     const to = index - this.lensAt0;
     if (reduced()) this.focusSpring.set(to);
-    else {
-      this.focusSpring.to(to);
-      this.track(this.focusSpring, 'camera:lens_focus_ring', 'detent', trigger);
-    }
+    else this.retarget(this.focusSpring, to, 'camera:lens_focus_ring', 'detent', trigger);
     this.applyRig();
     this.invalidate();
   }
 
   press(trigger: string): void {
     if (reduced()) return;
-    this.shutterSpring.to(1);
-    this.track(this.shutterSpring, 'camera:shutter_button', 'press', trigger);
+    this.retarget(this.shutterSpring, 1, 'camera:shutter_button', 'press', trigger);
     setTimeout(() => {
-      this.shutterSpring.to(0);
-      this.track(this.shutterSpring, 'camera:shutter_button', 'press', `${trigger}:release`);
+      this.retarget(this.shutterSpring, 0, 'camera:shutter_button', 'press', `${trigger}:release`);
       this.invalidate();
     }, durations.shutter);
     this.invalidate();
@@ -1028,7 +1060,20 @@ vec3 ionNeutral(vec3 color) {
   private stepFlight(time: number, dt: number): boolean {
     const fl = this.flying;
     if (!fl || fl.done) return false;
+    if (!fl.intro) {
+      // A press's first frame comes after the ticker wakes (it may have slept through a long rest), and a slow still
+      // decode delays the flight's start: neither may eat the eject. The press's clock is held so that its first
+      // frame is at most at the eject's start (not on ?t=, where a seek may jump to any moment of the sequence).
+      if (fl.frames === 0 && !manualClock) fl.t0 = Math.max(fl.t0, time - EJECT_LEAD);
+      fl.frames++;
+    }
     const rel = time - fl.t0;
+    // GL takes the print slot once its copies of the stack have been presented (PRESENT_TAIL frames: WebKit presents a
+    // canvas a frame late), and before the eject: the stills then fade out over identical GL pixels, never over a gap.
+    if (!fl.held && !fl.intro && (fl.frames > PRESENT_TAIL || rel >= EJECT_LEAD)) {
+      fl.held = true;
+      this.hero.querySelector('[data-hero-print]')?.classList.add('is-gl');
+    }
     // The landing pose is taken one frame before the flight starts (dt is in seconds), so the layout read never lands
     // in the flight's first frame.
     if (!fl.landing && rel + dt * 1000 >= heroTimeline.flight - heroTimeline.shutter) fl.landing = this.landingPose(fl.intro ? null : fl.still);
@@ -1056,7 +1101,9 @@ vec3 ionNeutral(vec3 color) {
     fl.print.shadow = 1;
     fl.print.roll = 0;
     if (!cut) this.logFlight(fl, fl.intro ? 'intro' : 'shutter', fl.intro ? 'hero-1' : fl.still?.dataset.slug ?? 'print');
-    if (fl.still) fl.still.style.opacity = '1';
+    // Every still shows again over its GL copy (the transition is the 120 ms crossfade): the new one leaves its
+    // pending state and the slot leaves GL. Print 1 on the opening shows when data-hero leaves 'eject' (the hook).
+    reveal(fl.still);
     if (fl.intro) {
       this.introHooks?.handback();
       this.mark('hero:developed');
@@ -1171,9 +1218,12 @@ vec3 ionNeutral(vec3 color) {
     this.fxView.visible = true;
   }
 
+  /** `addStill` adds the next still to the stack hidden (data-pending) and returns it. */
   async printNext(item: QueueItem, addStill: () => HTMLImageElement | null): Promise<void> {
+    // The press is now (the shutter mark of its sequence): the flight counts from here, wherever the ticker is.
+    const pressedAt = this.clock();
     if (!(await this.ready) || this.flying || this.gone) {
-      addStill()?.style.setProperty('opacity', '1');
+      reveal(addStill());
       return;
     }
     let still: HTMLImageElement | null = null;
@@ -1190,21 +1240,20 @@ vec3 ionNeutral(vec3 color) {
     } catch (e) {
       // A still that cannot be decoded, say: the press ends on its end state at once, and the next one works.
       if (!added) still = addStill();
-      if (still) still.style.opacity = '1';
+      reveal(still);
       this.letGo();
       if (!this.gone) console.warn('[hero] the print could not fly; its still is shown', e);
       return;
     }
     if (this.gone) {
       // GL went away while the print was being made.
-      if (still) still.style.opacity = '1';
+      reveal(still);
       this.letGo();
       return;
     }
-    this.hero.querySelector('[data-hero-print]')?.classList.add('is-gl');
-    const t0 = this.time;
+    // GL takes the slot (.is-gl) in the flight's own frames, once the stack's GL copies are on screen (stepFlight).
     return new Promise<void>((resolve) => {
-      this.flying = { print, t0, still, landing: null, done: false, intro: false, peakF: 0, minSeat: 1, resolve };
+      this.flying = { print, t0: pressedAt, still, landing: null, done: false, intro: false, frames: 0, held: false, peakF: 0, minSeat: 1, resolve };
       this.invalidate();
     });
   }
@@ -1232,7 +1281,8 @@ vec3 ionNeutral(vec3 color) {
     this.introT0 = start;
     this.drawMs = this.drawingState === 'armed' ? drawingTiming.total : 0;
     return new Promise<IntroResult>((resolve) => {
-      this.flying = { print, t0: start + this.drawMs + heroTimeline.shutter, still, landing: null, done: false, intro: true, peakF: 0, minSeat: 1, resolve: () => resolve('done') };
+      // The opening's slot is GL's from the sequence's start ('seq' in introEvents).
+      this.flying = { print, t0: start + this.drawMs + heroTimeline.shutter, still, landing: null, done: false, intro: true, frames: 0, held: true, peakF: 0, minSeat: 1, resolve: () => resolve('done') };
       this.invalidate();
     });
   }
@@ -1280,8 +1330,8 @@ vec3 ionNeutral(vec3 color) {
     } else if (this.drawingState === 'running') {
       this.drawingState = 'fading';
       this.introHooks?.drawingCrossfade(fadeMs);
-      this.fade = { from: this.time, ms: fadeMs };
-      if (fadeMs <= 0) this.stepFade(this.time);
+      this.fade = { from: this.clock(), ms: fadeMs };
+      if (fadeMs <= 0) this.stepFade(this.clock());
     }
     this.takeCamera();
     if (this.introT0 === null && !this.flying?.intro) {

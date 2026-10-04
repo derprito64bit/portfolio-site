@@ -646,7 +646,147 @@ export async function pressRow(base, p, { delay = 0, demoteAt = null, failDecode
   return { profile: p, run, delayMs: delay, demoteAtMs: demoteAt, failDecode, live, pressedAfterLiveMs: Math.round(pressedAt - liveAt), demoted, first, second, placement, pass };
 }
 
-export async function strip(base) {
+/** Every frame of the page: __stage.bounds('hero-print').gl (the acceptance's own log), and the moment of every click
+ *  (the shutter fires on click, hero.ts bindStrip), both on the page's clock. */
+const REST_PROBE = () => {
+  window.__noFly = [];
+  window.__clicks = [];
+  addEventListener('click', () => window.__clicks.push(performance.now()), { capture: true });
+  const tick = () => {
+    const b = window.__stage?.bounds?.('hero-print')?.gl;
+    if (b) window.__noFly.push({ t: performance.now(), x: b.x, y: b.y, w: b.w, h: b.h });
+    if (window.__noFly.length < 20000) requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+};
+
+/** The print slot while a print develops in it: GL's hold, and every still's computed and inline opacity. */
+const SLOT_STATE = () => {
+  const slot = document.querySelector('[data-hero-print]');
+  return {
+    isGl: slot.classList.contains('is-gl'),
+    fx: document.querySelector('[data-hero-section]').hasAttribute('data-fx'),
+    flying: Boolean(window.__hero?.flying),
+    tier: document.documentElement.dataset.tier,
+    stills: [...slot.querySelectorAll('img.hero-still')].map((img) => ({ slug: img.dataset.slug ?? 'print-1', pending: img.hasAttribute('data-pending'), opacity: Number(getComputedStyle(img).opacity), inline: img.style.opacity })),
+  };
+};
+
+/** Mid-develop: between the landing dip and readable, the new print seated in its slot and still developing. */
+const MID_DEVELOP = (heroTimeline.landingDip + heroTimeline.readable) / 2 - heroTimeline.shutter;
+
+/**
+ * A press after a rest, twice (round 3 must-fixes 1 and 2). The stage sleeps after durations.idleDetach; the page rests
+ * two more of those, then the shutter is pressed. Each press must:
+ * - eject: frames of __stage.bounds('hero-print') during the eject (before the flight starts) with the print near the
+ *   camera, not yet in its slot, over at least half the eject's time; then fly without crossing the h1, line or CTA;
+ * - log the press with the clock of the press: the shutter row's t0, and the flight row's t0 less its offset from the
+ *   press, each within one frame of the click;
+ * - develop in view: mid-develop, every DOM still in the slot is hidden (GL holds the slot) and the slot's pixels differ
+ *   from the slot before the press and from it after the handback, each by more than the parity tolerance (a still
+ *   left over the develop, or a print that arrives developed, matches one of them);
+ * - end with every still shown (computed opacity 1, no inline opacity, none pending) and placed in the slot.
+ */
+export async function restPress(base, p, { out } = {}) {
+  const { page, ctx } = await open(base, p, 'auto', { init: REST_PROBE });
+  const touch = !MOUSE(p);
+  const live = await page.waitForFunction(() => window.__hero?.live, null, { timeout: WAIT.patience }).then(() => true, () => false);
+  await heroAtRest(page).catch(() => {});
+  const spot = touch ? await page.evaluate(CAMERA_SPOT) : null;
+  const g = await heroRects(page);
+  const clip = { x: g.print.x, y: g.print.y, width: g.print.w, height: g.print.h };
+  const T = heroTimeline;
+  const presses = [];
+  for (let n = 1; n <= 2; n++) {
+    // The rest: the stage detaches after an idle detach of nothing moving, then two more of them asleep.
+    await page.waitForFunction(() => window.__stage?.settled === true, null, { timeout: WAIT.patience }).catch(() => {});
+    const ticksAtRest = await page.evaluate(() => window.__stage.stats.ticks);
+    await sleep(2 * WAIT.settle);
+    const beforeShot = await page.screenshot({ clip });
+    const before = await raw(beforeShot);
+    const rest = await page.evaluate((t) => ({ asleep: window.__stage.settled === true && window.__stage.stats.ticks === t, idleAt: performance.getEntriesByName('stage:idle').at(-1)?.startTime ?? null }), ticksAtRest);
+    const k = await page.evaluate(() => window.__clicks.length);
+    const logFrom = await page.evaluate(() => window.__motionLog.length);
+    if (touch) await page.touchscreen.tap(spot.x, spot.y);
+    else await page.click('[data-shutter]');
+    const pressedAt = await (await page.waitForFunction((i) => window.__clicks[i], k)).jsonValue();
+    await page.waitForFunction((at) => performance.now() >= at, pressedAt + MID_DEVELOP, { polling: 'raf' });
+    const mid = await page.evaluate(SLOT_STATE);
+    const midShot = await page.screenshot({ clip });
+    await sleep(WAIT.press);
+    const after = await page.evaluate(SLOT_STATE);
+    const afterShot = await page.screenshot({ clip });
+    const placement = await page.evaluate(PLACEMENT);
+    const status = await page.evaluate(() => document.getElementById('status')?.textContent ?? '');
+    const frames = await page.evaluate((at) => window.__noFly.filter((f) => f.t >= at), pressedAt);
+    const log = await page.evaluate((i) => window.__motionLog.slice(i), logFrom);
+    const midRaw = await raw(midShot);
+    const afterRaw = await raw(afterShot);
+    if (out) {
+      for (const [name, buf] of [['before', beforeShot], ['mid', midShot], ['after', afterShot]]) await sharp(buf).toFile(`${out}/rest-${p}-press${n}-${name}.png`);
+    }
+    // The frame: the page's own frame interval while the print flies (median of the logged frames' gaps).
+    const gaps = frames.slice(1).map((f, i) => f.t - frames[i].t);
+    const frameMs = median(gaps) ?? null;
+    const centre = (b) => ({ x: b.x + b.w / 2, y: b.y + b.h / 2 });
+    const inside = (c, r) => c.x >= r.x && c.x <= r.x + r.w && c.y >= r.y && c.y <= r.y + r.h;
+    const firstInSlot = frames.findIndex((f) => inside(centre(f), g.print));
+    const beforeSlot = firstInSlot < 0 ? frames : frames.slice(0, firstInSlot);
+    const eject = beforeSlot.filter((f) => f.t - pressedAt < T.flight - T.shutter);
+    const ejectNearCamera = eject.every((f) => inside(centre(f), g.camera));
+    const ejectSpanMs = eject.length ? eject.at(-1).t - eject[0].t : 0;
+    const noFly = [g.h1, g.line, g.cta];
+    const crossings = frames.filter((b) => noFly.some((r) => rectsIntersect(r, b)));
+    const pressRow = log.find((e) => e.id === 'camera:shutter_button' && e.trigger === (touch ? 'camera' : 'strip'));
+    const flightRow = log.find((e) => e.kind === 'flight' && e.trigger === 'shutter');
+    const within = (t) => t !== null && frameMs !== null && Math.abs(t - pressedAt) <= frameMs;
+    const pressT0 = pressRow ? pressRow.t0 : null;
+    const flightPress = flightRow ? flightRow.t0 - (T.flight - T.shutter) : null;
+    const diffBefore = meanDiff(midRaw, before);
+    const diffAfter = meanDiff(midRaw, afterRaw);
+    const midHidden = mid.isGl && mid.fx && mid.flying && mid.stills.every((s) => s.opacity === 0 && s.inline === '');
+    const shown = !after.isGl && !after.fx && !after.flying && after.stills.every((s) => s.opacity === 1 && s.inline === '' && !s.pending);
+    const checks = {
+      asleep: rest.asleep,
+      eject: eject.length >= 2 && ejectNearCamera && ejectSpanMs >= (T.flight - T.eject) / 2,
+      landed: firstInSlot >= 0,
+      noFly: crossings.length === 0,
+      pressT0: within(pressT0),
+      flightT0: within(flightPress),
+      midHidden,
+      developInView: diffBefore > SPEC.parityMax && diffAfter > SPEC.parityMax,
+      shown,
+      placed: placement.every((x) => x.ok) && /Printed/.test(status),
+    };
+    presses.push({
+      n,
+      pass: Object.values(checks).every(Boolean),
+      checks,
+      restMs: rest.idleAt === null ? null : Math.round(pressedAt - rest.idleAt),
+      frameMs: frameMs === null ? null : Math.round(frameMs * 100) / 100,
+      firstFrameAfterPressMs: frames.length ? Math.round(frames[0].t - pressedAt) : null,
+      ejectFrames: eject.length,
+      ejectSpanMs: Math.round(ejectSpanMs),
+      framesToSlot: firstInSlot,
+      flightFrames: frames.length,
+      crossings: crossings.slice(0, 5),
+      pressRow: pressRow ?? null,
+      pressT0MinusClickMs: pressT0 === null ? null : Math.round((pressT0 - pressedAt) * 10) / 10,
+      flightT0MinusClickMs: flightPress === null ? null : Math.round((flightPress - pressedAt) * 10) / 10,
+      diffMidVsBefore: Math.round(diffBefore * 1000) / 1000,
+      diffMidVsAfter: Math.round(diffAfter * 1000) / 1000,
+      parityMax: SPEC.parityMax,
+      mid,
+      after,
+      placement,
+      status,
+    });
+  }
+  await ctx.close();
+  return { profile: p, live, tier: g.tier, pass: live && presses.every((x) => x.pass), presses };
+}
+
+export async function strip(base, { out } = {}) {
   const { page, ctx } = await open(base, 'P2');
   await page.evaluate(() => document.fonts.ready);
   const group = await page.getByRole('group', { name: 'Camera' }).count();
@@ -714,10 +854,15 @@ export async function strip(base) {
   const dropped = [];
   for (const p of ['P2', 'WK-P2']) dropped.push(await pressRow(base, p, { demoteAt: MID_FLIGHT }));
   const thrown = [await pressRow(base, 'P2', { failDecode: true })];
+  // Presses after a rest (round 3 must-fixes 1 and 2): the eject, the press's clock and the develop in view.
+  const rested = [];
+  for (const p of REST_PROFILES) rested.push(await restPress(base, p, { out }));
   const same = tapped.lens === keyed.lens && tapped.look === keyed.look && tapped.readout === keyed.readout;
-  const pass = group === 1 && small.length === 0 && overlaps.length === 0 && same && y1 - y0 > 100 && presses.every((p) => p.pass) && [...early, ...dropped, ...thrown].every((r) => r.pass);
-  return { pass, group, targets: targets.length, small, overlaps, tapped, keyed, identical: same, swipeScrolledPx: y1 - y0, presses, early, dropped, thrown };
+  const pass = group === 1 && small.length === 0 && overlaps.length === 0 && same && y1 - y0 > 100 && presses.every((p) => p.pass) && [...early, ...dropped, ...thrown, ...rested].every((r) => r.pass);
+  return { pass, group, targets: targets.length, small, overlaps, tapped, keyed, identical: same, swipeScrolledPx: y1 - y0, presses, early, dropped, thrown, rested };
 }
+/** Where a press after a rest is checked: the full tier, lite on Chromium and lite on WebKit (round 3 review). */
+const REST_PROFILES = ['D2', 'P2', 'WK-P2'];
 /** Fractions of an eject after the camera goes GL: the window where early taps were lost (gate, round 2). */
 const EARLY_TAPS = [0, 3 / 8, 7 / 8];
 /** After a press: the print is in the air (the flight's start plus half the time to its landing dip). */
@@ -738,7 +883,11 @@ export async function motion(base) {
   await sleep(WAIT.press);
   const log = await page.evaluate(() => window.__motionLog.slice());
   await ctx.close();
-  const springRows = log.filter((e) => e.spring && table[e.spring] !== undefined && e.to !== e.from).map((e) => {
+  // A row retargeted before it came to rest (the shutter's down-stroke, released after durations.shutter) is logged
+  // with `interrupted`: an unfinished step has no overshoot to hold against the table. Its spring name and t0 are
+  // still checked (springNamesOk, and strip's rested presses).
+  const interrupted = log.filter((e) => e.interrupted);
+  const springRows = log.filter((e) => e.spring && table[e.spring] !== undefined && e.to !== e.from && !e.interrupted).map((e) => {
     const os = Math.max(0, ((e.peak - e.to) / (e.to - e.from)) * 100);
     return { id: e.id, spring: e.spring, measured: Boolean(e.measured), overshootPct: Math.round(os * 100) / 100, table: table[e.spring], ok: Math.abs(os - table[e.spring]) <= 0.5 };
   });
@@ -772,13 +921,14 @@ export async function motion(base) {
       const flashes = await h.page.evaluate((from) => window.__motionLog.filter((e) => e.kind === 'flash' && e.t0 >= from).map((e) => e.t0), t0);
       await h.ctx.close();
       let worst = 0;
-      for (const f of flashes) worst = Math.max(worst, flashes.filter((g) => g >= f && g < f + 1000).length);
+      // Flashes in the window of one flash gap from each flash (durations.flashMinGap: one flash per second).
+      for (const f of flashes) worst = Math.max(worst, flashes.filter((g) => g >= f && g < f + durations.flashMinGap).length);
       holds.push({ scheme, key, flashes: flashes.length, worstPerSecond: worst, pass: worst <= 1 });
     }
   }
   const measuredOk = springRows.filter((r) => r.spring === 'settle' || r.id.includes(':dip')).every((r) => r.measured);
   const pass = springRows.length > 0 && springRows.every((r) => r.ok) && ['press', 'detent', 'settle'].every((k) => kinds.has(k)) && measuredOk && phasesOk && capOk && holds.every((h) => h.pass);
-  return { pass, springs: springRows, kinds: [...kinds], measuredOk, phases: order.concat(phase('lines-fade')), phasesOk, automaticMs, capMs: SPEC.motionCapMs, capOk, holds, log };
+  return { pass, springs: springRows, interrupted: interrupted.map((e) => ({ id: e.id, trigger: e.trigger, t0: e.t0, t1: e.t1, from: e.from, to: e.to, peak: e.peak })), kinds: [...kinds], measuredOk, phases: order.concat(phase('lines-fade')), phasesOk, automaticMs, capMs: SPEC.motionCapMs, capOk, holds, log };
 }
 
 /** 7b. Seeked filmstrip of the opening (?t=0) for the WCAG 2.3.1 flash analyser, in both schemes; frames on disk. */

@@ -332,7 +332,9 @@ function nextItem(): QueueItem | null {
   return { slug: q.slug, frame: q.frame, look: q.look, name: q.name, still: svgDataUri(testStripSvg({ slug: q.slug, tint: q.tint, frame: q.frame })) };
 }
 
-/** Add a still to the print stack (newest on top, at most 3). Returns the new <img>. */
+/** Add a still to the print stack (newest on top, at most 3). Returns the new <img>. Not `visible`: it waits, hidden
+ *  (data-pending), for its GL copy's handback (the camera reveals it). Never an inline opacity: the slot's .is-gl rule
+ *  must be able to hide every still while GL holds the slot (see reveal in src/gl/camera). */
 function addStill(item: QueueItem, visible: boolean): HTMLImageElement | null {
   const slot = hero?.querySelector<HTMLElement>('[data-hero-print]');
   if (!slot) return null;
@@ -349,7 +351,7 @@ function addStill(item: QueueItem, visible: boolean): HTMLImageElement | null {
   const k = printed % 3;
   img.style.translate = `${[6, -5, 3][k]}px ${[-4, 3, -2][k]}px`;
   img.style.rotate = `${[1.6, -1.1, 0.7][k]}deg`;
-  img.style.opacity = visible ? '1' : '0';
+  if (!visible) img.setAttribute('data-pending', '');
   slot.append(img);
   const stills = slot.querySelectorAll('img.hero-still');
   for (let i = 0; i < stills.length - STACK_MAX; i++) stills[i].remove();
@@ -379,8 +381,8 @@ function shutter(trigger: string): void {
   } else {
     cam?.press(trigger);
     flash(trigger);
-    // Static and reduced motion: the next print swaps in with a 200 ms fade (W-D011), no flight, no shift. The
-    // final opacity is set first, so the still is never left hidden if the animation is cancelled.
+    // Static and reduced motion: the next print swaps in with a 200 ms fade (W-D011), no flight, no shift. The still
+    // is visible by its styles, so it is never left hidden if the animation is cancelled.
     const img = addStill(item, true);
     img?.animate([{ opacity: 0 }, { opacity: 1 }], { duration: durations.reduced, easing: EASE_OUT });
   }

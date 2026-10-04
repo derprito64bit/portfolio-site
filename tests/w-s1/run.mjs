@@ -43,6 +43,10 @@ try {
         const dir = join(out, 'first-paint');
         mkdirSync(dir, { recursive: true });
         r = await C.firstPaint(srv.base, { out: dir });
+      } else if (name === 'strip') {
+        const dir = join(out, 'strip');
+        mkdirSync(dir, { recursive: true });
+        r = await C.strip(srv.base, { out: dir });
       } else if (name === 'parity') {
         const dir = join(out, 'parity');
         mkdirSync(dir, { recursive: true });
