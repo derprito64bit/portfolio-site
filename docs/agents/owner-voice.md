@@ -4,7 +4,7 @@ These are the owner's own words, quoted verbatim (spelling kept). Agents read th
 - If anything in a plan, brief or decision contradicts these words, these words win.
 - Do not paraphrase them into stronger or weaker claims.
 
-Owner: **derprito64bit**. Collected 2026-10-01 → 2026-10-02.
+Owner: **derprito64bit**. Collected 2026-10-01 → 2026-10-04.
 
 ## What the portfolio is
 
@@ -24,7 +24,7 @@ Owner: **derprito64bit**. Collected 2026-10-01 → 2026-10-02.
 > importantly the gallery portion i think the game has taken far too much attention so have only a few subagents
 > working on that … it's down to details and efficiency along with bringing the overall purpose together"
 
-## The 2D site (the front door)
+## The 2D site
 
 > "instead make a 2d website completely different from what we are making that uses, threejs, animejs,
 > unicornstudio animations to dispaly make it an option for desktop users as well since a portfolio should be
@@ -46,6 +46,19 @@ Owner: **derprito64bit**. Collected 2026-10-01 → 2026-10-02.
 
 > "remember that you can also get agents to use blender mcp and any tools for 3d animations or even ask them to
 > reference websites from awwwards or anywhere else or even have them get skills from other places"
+
+## The site and the game (2026-10-04)
+
+The newest words win over the earlier "front door" and "game as portfolio" framing above (D-023).
+
+> "i think your starting to confuse the website as a landing page to enter the game treat it as a completely
+> different portfolio that is used to showcase all projects including the game"
+
+- **The X-T5 sequence:** the sketch-to-3D X-T5 sequence "should be the site" (a fragment, as relayed in
+  portfolio-site issue #13, Amendment A1). It opens the site rather than sitting at a door (D-024).
+- The same day the owner also accepted the darkroom translation of the moodboard (D-025) and calm grain that forms
+  once (D-026). Those were picked from options, not said in quotable words, so they are recorded in `decisions.md`
+  only.
 
 ## Content
 

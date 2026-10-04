@@ -4,24 +4,28 @@
 > first places; all three named its signature unprompted). This is the creative director's direction document,
 > followed by the grafts and must-fix items the build has to honour. Reference mock: `darkroom/index.html` (open it
 > in a browser); frames: `darkroom/frames/`.
+>
+> **(D-023 to D-026, 2026-10-04.)** The site is a standalone portfolio of all the owner's work, and the game is one
+> project in it. The handoff, the door section and the ink drip are cut. The site opens with the X-T5 drawing developing
+> into the camera (D-024), and the effects follow `fx-playbook.md`. Changed parts are marked (D-023) to (D-026).
 
 # Direction C: Darkroom (cd-c)
 
 **North star v1.1.** Placeholders marked. No AI images. Free tools only. Em-dash free.
 
 ## One idea
-The page is a backlit **light table**. Every project is an **instant print** that **develops** when it reaches you. The Manor's gold `[ ]` around the name are the camera's **viewfinder**. The same camera and the same amber live in the Manor, so the Manor reads as the same maker's other room. Camera is the hero object, not a gate: all content is plain DOM links under the GL layer.
+The page is a backlit **light table**. Every project is an **instant print** that **develops** when it reaches you. The Manor's gold `[ ]` around the name are the camera's **viewfinder**. (D-023) The same camera and amber also appear in the owner's game, because it is the same maker's work; the game is one project here, not a room the site leads into. Camera is the hero object, not a gate: all content is plain DOM links under the GL layer.
 
 ## 3D signature (heavy, real three.js)
 - **Camera:** X-T5 silhouette, silver top plate, EVF hump, knurled dials, lens with aperture and focus rings, amber shutter, an amber film-look dial on the front. Ejects a print from a top slot. Tilts to the pointer and scroll (springs). Mock is procedural; real site ships one Blender GLB (target 250 kB or less, meshopt). Own look names, no Fujifilm marks.
-- **Print:** one card mesh, one shader. Undeveloped teal, then the image surfaces in blotches (light first), silver before dye, per-channel emulsion warp that decays, edge burn, settling grain. Four film looks graded in-shader per project: Classic, Vivid, Mono, Soft.
-- **Handoff:** a clone of the camera ejects the owner's real Grand Gallery render, which develops. Click: flash, lights out, print zooms to fill the page, navigate to /manor/. Manor Camera Room reuses the GLB, the develop shader (HLSL port), the prints, the amber and the spring table.
+- **Print:** one card mesh, one shader. Undeveloped teal, then the image surfaces in blotches (light first), silver before dye, per-channel emulsion warp that decays, edge burn, calm grain that forms once and is gone at d = 1 (D-026). Four film looks graded in-shader per project: Classic, Vivid, Mono, Soft.
+- **Opening (D-024; replaces the handoff, D-023):** at first paint the X-T5 is a line drawing on an undeveloped print. It develops into the real camera, which ejects print 1 (`fx-playbook.md` section 4). The game's Camera Room reuses the GLB, the develop shader (HLSL port), the prints, the amber and the spring table.
 
 ## 2D system and beats
-1. **Identity (10 s):** name in brackets, one placeholder line, one CTA, camera ejecting print 1. Hero text elements: 3.
+1. **Identity (10 s):** name in brackets, one placeholder line, one CTA, the X-T5 drawing developing into the camera, which ejects print 1 (D-024). Hero text elements: 3.
 2. **Best work (60 s):** three enlargements at different scales and tilts, captions beside, develop on scroll. No card row.
-3. **Everything (3 min):** one proof sheet of all eight prints, amber grease-pencil boxes tie it to the enlargements. Awards go on a negative-sleeve strip (next wave), contact in the footer.
-4. **Craft (10 min, desktop):** dark door section, the one theme change. Manor teaser plus "Enter the Manor" and "Straight to the Grand Gallery". Phones see "needs a desktop browser".
+3. **Everything (3 min):** one proof sheet of all eight prints, amber grease-pencil boxes tie it to the enlargements. Awards go on a negative-sleeve strip (next wave), contact in the footer. The game is one print on the sheet, like every project, and the home page ends here (D-023).
+4. **Depth (on demand, any device) (D-023):** on each project page: the lead exhibit, Show the mesh and the process media. The game's page adds Play on a desktop, with stills and video for phones. There is no door section and no theme change on the home page.
 
 ## Type, colour
 - **Bricolage Grotesque** (OFL, variable) is the bridging face; **Geist Mono** (OFL) for frame numbers and placeholder captions only.
@@ -36,7 +40,6 @@ snap 520/34, soft 170/15, settle 110/11. Shutter 130 ms, flash 380 ms flat, ejec
 |---|---|
 | Eject, flash, develop | still tier (reduced motion): finished prints, no flash |
 | Pointer follow, AF frame | off on touch and reduced motion |
-| Door camera | static print only |
 | Everything GL | static tier: baked camera poster plus CSS prints with per-look CSS filters |
 Tiers: full, lite (phones, 4 cores or fewer, save-data: DPR 1.5, no MSAA), still, static. A frame-time probe steps down. Poster is also the pre-GL image, so no layout shift.
 
@@ -47,7 +50,7 @@ Tiers: full, lite (phones, 4 cores or fewer, save-data: DPR 1.5, no MSAA), still
 - Recruiter in 60 s? Name, line, CTA in the first screen; best work by 1 scroll; contact in the footer.
 
 ## Delete before adding
-First cut: AF cursor, then door camera, pointer and scroll turn, pencil boxes, film dial.
+First cut: AF cursor, then pointer and scroll turn, pencil boxes, film dial. (D-023: the door camera is gone.)
 
 ## Uncertainty
 - Frame times and GLB weight are **not measured** (software GL only). The three tree-shake of 132 kB gz is measured in refs/tools.md.
@@ -62,10 +65,13 @@ Mock: `cd-c\index.html` (serve over http if your browser blocks file: modules). 
 
 - From Workbench: press/spin/detent verbs on the camera (shutter press, lens ring with detents, mode dial); real 3D
   exhibit objects in the work section; the "Show the mesh" wireframe reveal with a measured triangle count.
-- From Wet Proof: the typographic numbered index as the List view (also the phone and no-WebGL fallback); the
-  ink-drip used once only, on the Manor handoff.
+- From Wet Proof: the typographic numbered index as the List view (also the phone and no-WebGL fallback). The
+  ink-drip on the Manor handoff is cut (D-023).
 
 ### Every graft the judges proposed (for the specialists to weigh)
+
+(D-023) The proposals below that are tied to the Manor door or the handoff (the ink drip, the arched door plate, the
+press-through, models near the door, the camera as the Manor key) are retired.
 
 - (Hostile critic) From Wet Proof: the giant fitted wordmark as the Darkroom name treatment, kept inside the amber brackets. Also the typographic eight-row index as the Bench/List 'List' view, built as a toggleable list in the Gil Huybrecht style.
 - (Hostile critic) From Wet Proof: a single vermilion-style ink-drip moment, used once only (the Manor handoff transition), not as an always-on effect.
@@ -92,7 +98,7 @@ Mock: `cd-c\index.html` (serve over http if your browser blocks file: modules). 
 - (Hostile critic) Cut the hero develop from about 6.2 s to roughly 2.5 to 3 s, or ensure copy and CTA never wait on it. Fix the clipped caption behind the print mid-eject.
 - (Hostile critic) Give the camera a physical interaction in the hero: pressable shutter, turnable dial, a visible reason to touch it, since 'tactile' is a north-star word.
 - (Hostile critic) Replace the stock-looking Bauhaus placeholder prints with clearly marked, plainer placeholders so they cannot ship as fake art.
-- (Hostile critic) Design the dark door section properly. It is a black field with a camera clone, which is the weakest frame.
+- (Hostile critic) Design the dark door section properly. It is a black field with a camera clone, which is the weakest frame. (D-023: retired with the door.)
 - (Hostile critic) Keep film grain and edge-burn within a fill-rate budget on tier 2 and prove it on weak hardware.
 - (Visitor judge) State what the owner makes in the hero line so the camera is read as a metaphor, not a photography portfolio; keep the placeholder honest but make the slot prominent.
 - (Visitor judge) Make prints carry the real work (screenshots, renders, 3D, builds) and differentiate exhibit types so the contact sheet is not eight similar posters; the poster art now reads as generic stand-ins.
@@ -101,7 +107,7 @@ Mock: `cd-c\index.html` (serve over http if your browser blocks file: modules). 
 - (Visitor judge) Cut the hero develop duration or show a readable first state so beat 1 never waits on a 6 s shader.
 - (Visitor judge) Soften the contact-sheet card feel (vary scale and tilt) to stay clear of the 'no card grids' rule.
 - (Feasibility judge) Add an idle sleep and stop rendering once all prints are developed. Bake finished prints to static textures and dispose the develop shader. This is the single biggest perf fix (206 ms idle in software GL).
-- (Feasibility judge) Make the hero print readable by about 2 s (develop curve front-loaded) so beat 1 is never a dark empty card. Keep the reduced-motion path that shows finished prints.
+- (Feasibility judge) Make the hero print readable by about 2 s (develop curve front-loaded) so beat 1 is never a dark empty card. (D-024: the drawing fills the camera slot from first paint; print 1 is readable within 3.3 s of GL-ready, budgets.md.) Keep the reduced-motion path that shows finished prints.
 - (Feasibility judge) Cut the develop shader's cost: about 4-octave fbm called many times per fragment. Offer a lite shader (precomputed noise texture) for tier lite and phones.
 - (Feasibility judge) Texture and canvas budget with real images: 13 plate canvases are placeholders. Specify KTX2, lazy load, and disposal for the 8 sheet prints, and one atlas option on phones.
 - (Feasibility judge) Give the hero camera interaction (drag to turn, press the shutter) or add more models, otherwise 'heavy 3D' is not met. Ship the camera as a Draco/meshopt GLB, not RoundedBox primitives.

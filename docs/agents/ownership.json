@@ -1,5 +1,5 @@
 {
-  "$comment": "Crew -> owned globs (Wave 2 lock). A crew may only change files matching its globs.",
+  "$comment": "Crew -> owned globs (Wave 2 lock). A crew may only change files matching its globs. D-023 (2026-10-04): W-C7 is merged into W-C5 and its door globs are retired; W-C2 and W-C6 take the one-off door and drip removals named in their entries.",
   "W": {
     "W-F": [
       "package.json",
@@ -76,7 +76,11 @@
       "src/gl/effects/**",
       "src/gl/shaders/**",
       "scripts/build/looks/**",
-      "tests/w-c2/**"
+      "tests/w-c2/**",
+      "src/stage/effects.ts (D-023: drip removal only)",
+      "src/stage/rail.ts (D-023: drip removal only)",
+      "src/styles/base.css (D-023: the drip rule only)",
+      "scripts/build/tokens.mjs (D-023: drip and handoff tokens only)"
     ],
     "W-C3": [
       "src/motion/**",
@@ -107,17 +111,19 @@
       "src/gl/flight/**",
       "src/pages/og/**",
       "scripts/build/og/**",
-      "tests/w-c5/**"
+      "tests/w-c5/**",
+      "src/components/play/**",
+      "src/lib/play/**"
     ],
     "W-C6": [
       "src/sections/honours/**",
       "src/sections/footer/**",
-      "tests/w-c6/**"
-    ],
-    "W-C7": [
-      "src/sections/door/**",
-      "src/lib/handoff/**",
-      "tests/w-c7/**"
+      "tests/w-c6/**",
+      "src/pages/index.astro (D-023: door removal only)",
+      "src/layouts/Base.astro (D-023: the nav item only)",
+      "scripts/crew.mjs (D-023: the #door scroll stop only)",
+      "src/sections/door/** (D-023: delete)",
+      "src/lib/handoff/** (D-023: delete)"
     ],
     "W-C8": [
       "src/pages/404.astro",
