@@ -10,7 +10,7 @@ A change that exceeds a budget fails its gate. Evidence standard: GES-1 (W-D030)
 - LCP <= 2.5 s mobile and <= 2.0 s desktop. The LCP element is the h1 on mouse profiles, or the h1 or print 1's still on touch profiles. CLS <= 0.02. TBT <= 150 ms, mobile and desktop.
 - JS: pre-GL JS <= 35 kB gz, summed from the network log before the stage:gl-start mark. GL chunk (three, addons, anime, stage GL, effects) <= 185 kB gz. Effects <= 10 kB gz (6.0 measured; `docs/direction/fx-playbook.md` section 6 books 9.2 kB with D-025's effects, estimate).
 - Fonts <= 100 kB woff2 (96.8 planned); preloaded <= 46 kB.
-- 3D: camera LOD0 <= 30k tris and <= 250 kB gz; LOD1 <= 5k and <= 60 kB gz; Manor LOD <= 1.5k tris; cartridge <= 1.5k and 20 kB; loupe <= 3k and 40 kB; gear <= 4k and 40 kB; an owner work model <= 50k and 1 MB, on its own project only. 3D per page <= 1.5 MB gz.
+- 3D: camera LOD0 <= 30k tris and <= 250 kB gz; LOD1 <= 5k and <= 60 kB gz; Manor LOD <= 1.5k tris; cartridge <= 1.5k and 20 kB gz; loupe <= 3k and 40 kB gz; gear <= 4k and 40 kB gz; an owner work model <= 50k and 1 MB gz, on its own project only. 3D per page <= 1.5 MB gz.
 - Canvas: <= 4.5 Mpx on full and <= 1.5 Mpx on lite (effective DPR lowered to fit); DPR caps 2 and 1.5.
 - Print stills: sheet 512 px long edge, enlargements and hero 1024 px, AVIF with WebP fallback; home images <= 600 kB on the first scroll-through (estimate until real images).
 - GPU worst moment (8 wet sheet prints): <= 4 ms per frame on the reference integrated GPU at the tier the rules give it. Until it is measured: a reference-host median x 30 <= 4 ms passes; passing only at x 10 is 'at risk' and goes to the owner. A real number comes from /bench/. Crews stay <= 1.5x the prototype median, with no regression over 20% against gpu-baseline.json.
@@ -30,7 +30,7 @@ Tests read this block instead of parsing the sentences above (requested in the W
 ```json budgets
 {
   "schema": 1,
-  "note": "Mirrors the sentences above, which stay the human source; a change edits both in the same PR. Units are in the key names.",
+  "note": "Mirrors the Site sentences above, plus W-D012's head-script size and the W-S1 brief's poster parity in docs/direction/front-door-plan.md; those prose sources stay the human source, and a change edits both in the same PR. Units are in the key names; *Max/*Min say which side is inclusive, plain values are '<=' limits unless named otherwise.",
   "site": {
     "lighthouse": {
       "perfMobileMin": 90,
@@ -71,7 +71,8 @@ Tests read this block instead of parsing the sentences above (requested in the W
       },
       "ownerWork": {
         "tris": 50000,
-        "kbGz": 1000
+        "kbGz": 1000,
+        "scope": "its own project page only"
       }
     },
     "threeDPerPageKbGz": 1500,
@@ -106,8 +107,8 @@ Tests read this block instead of parsing the sentences above (requested in the W
       "print1VisibleAfterFcpMs": 2600,
       "guardAfterFcpMs": 2500,
       "motionCapMs": 5000,
-      "headScriptKb": 0.8,
-      "posterParityMax255": 4
+      "posterParityMax255": 4,
+      "headScriptKbStrictMax": 0.8
     },
     "inputBlocking": {
       "swupOutMs": 160
@@ -123,7 +124,24 @@ Tests read this block instead of parsing the sentences above (requested in the W
       "contrastMin": 3,
       "coverageMinPct": 90
     },
-    "soundKbAfterOptIn": 16
+    "soundKbAfterOptIn": 16,
+    "zero": {
+      "idleRafCallbacks": 0,
+      "idleDraws": 0,
+      "inputBlockingMsOutsideSwupOut": 0,
+      "driftPx": 0,
+      "axeViolationsWcag": 0,
+      "sharedFloorAxeSeriousOrCritical": 0,
+      "soundBytesBeforeOptIn": 0,
+      "overflowPxMax": 0
+    },
+    "protocol": {
+      "lighthouseVersion": "13.5.0",
+      "lighthouseRuns": 5,
+      "heroColdLoadsMedianOf": 3,
+      "gpuWorstMomentWetSheetPrints": 8,
+      "driftToolbarCollapsePx": 80
+    }
   }
 }
 ```
