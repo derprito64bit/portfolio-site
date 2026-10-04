@@ -93,9 +93,13 @@ export function containRect(slotW, slotH, aspect) {
   return { x: Math.round((slotW - w) / 2), y: Math.round((slotH - h) / 2), width: w, height: h };
 }
 
-/** tokens.stage.lod: LOD0 when the projected width is at least 600 device px and the tier is not static. */
+/**
+ * The LOD rule: tokens.stage.lod (LOD0 at 600 device px of projected width and wider) under D-021, which keeps the
+ * ultra-detailed LOD0 (100k tris, 800 kB gz) to the full tier: the lite tier always draws LOD1, and the static
+ * tier draws nothing (its posters are the LOD0 set, posterSet()).
+ */
 export function pickLod(deviceWidth, tier) {
-  return tier !== "static" && deviceWidth >= 600 ? 0 : 1;
+  return tier === "full" && deviceWidth >= 600 ? 0 : 1;
 }
 
 /**

@@ -53,7 +53,7 @@ FILES = {"lod0": "camera_xt_lod0.glb", "lod1": "camera_xt_lod1.glb", "manor": "c
 # Detail knobs per web LOD (xt5lib.LODQ). LOD0 is the modeller's full detail, with a 0.5-degree limited dissolve
 # (flat runs only). LOD1: fewer revolve steps, plain bands, no meshed text, a 4-degree dissolve, then a shared
 # collapse ratio down to LOD1_TARGET (lite tier, D-021 cap 15k).
-LOD1_Q = {"rev": 0.25, "rev_lens": 0.3, "rev_min": 6, "knurl": False, "gear": False, "text": False, "bevel_segs": 1}
+LOD1_Q = {"rev": 0.17, "rev_lens": 0.3, "rev_min": 6, "knurl": False, "gear": False, "text": False, "bevel_segs": 1}
 LOD0_DISSOLVE_DEG, LOD1_DISSOLVE_DEG = 0.5, 4.0
 LOD1_TARGET = int(arg("--lod1-target", 14000))
 # Texture sizes per LOD (px): the chassis leather strip (normal; colour and roughness at half), the tileable thumb
@@ -307,7 +307,7 @@ def strap_geo(lod):
     """The strap: on each lug a cord loop through the eyelet (the lug's Z-axis hole, LUG_HOLE_R 1.35) hanging to a
     disc anchor beside the body side. Returns (geo, tag_frame): tag_frame places the [d64] decal on the grip-side
     anchor's outer face (normal -X, reading toward +Z for a viewer outside)."""
-    seg = {"lod0": (8, 2, 32), "lod1": (6, 1, 16), "manor": (4, 1, 8)}[lod]     # cord sides, path steps, disc steps
+    seg = {"lod0": (8, 2, 32), "lod1": (6, 1, 16), "manor": (3, 1, 8)}[lod]     # cord sides, path steps, disc steps
     sides, nper, ndisc = seg
     g = Geo("strap_mesh")
     tag_frame = None
@@ -341,9 +341,11 @@ def strap_geo(lod):
         g.merge(cord)
         r, t = a["r"], a["t"]                              # anodised black faces, a bright chamfered rim
         disc = Geo("disc")
-        disc.merge(revolve([(0.0, -t / 2), (r - 0.5, -t / 2)], ndisc, "black"))
-        disc.merge(revolve([(r - 0.5, -t / 2), (r, -t / 2 + 0.5), (r, t / 2 - 0.5), (r - 0.5, t / 2)], ndisc, "chrome"))
-        disc.merge(revolve([(r - 0.5, t / 2), (0.0, t / 2)], ndisc, "black"))
+        ch = 0.5 if lod != "manor" else 0.0                 # the Manor's disc: a plain prism (no chamfer rings)
+        disc.merge(revolve([(0.0, -t / 2), (r - ch, -t / 2)], ndisc, "black"))
+        rim = [(r - ch, -t / 2), (r, -t / 2 + ch), (r, t / 2 - ch), (r - ch, t / 2)] if ch else [(r, -t / 2), (r, t / 2)]
+        disc.merge(revolve(rim, ndisc, "chrome"))
+        disc.merge(revolve([(r - ch, t / 2), (0.0, t / 2)], ndisc, "black"))
         g.merge(disc, T(xc, yd, zc) @ AX_X)
         if key == "strap_right":                           # grip side, -X: faces the hero poses
             tag_frame = Matrix(((0, 0, -1, xc - t / 2 - LIFT), (0, 1, 0, yd), (1, 0, 0, zc), (0, 0, 0, 1)))
@@ -351,24 +353,30 @@ def strap_geo(lod):
 
 
 def add_decals_and_strap(coll, mats, regions, lod, empties):
-    """mark_fujifilm, mark_xt5 (body decals), and strap -> strap_mesh + strap_tag. Returns the new objects."""
+    """The decal nodes mark_fujifilm and mark_xt5 (on the body), and strap (cords and anchors in strap_mesh) with
+    strap_tag. Like the pivots, every named node is an empty carrying a <name>_mesh child: meshopt quantization moves
+    a scale into the node that holds a mesh, so the public names never hold one and keep their transforms."""
     objs = {}
+
+    def named(name, geo, parent=None):
+        e = bpy.data.objects.new(name, None)
+        e.empty_display_size = 0.004
+        coll.objects.link(e)
+        if parent is not None:
+            e.parent = parent
+        empties[name] = e
+        geo.name = name + "_mesh"
+        o = geo.finish(mats, (0, 0, 0), coll)
+        o.parent = e
+        objs[name + "_mesh"] = o
+        return e
     for node, (k, M) in mark_frames().items():
-        g = decal_quad(node, regions[k], M)
-        objs[node] = g.finish(mats, (0, 0, 0), coll)
+        named(node, decal_quad(node, regions[k], M))
     sg, tag_M = strap_geo(lod)
-    strap = bpy.data.objects.new("strap", None)
-    strap.empty_display_size = 0.004
-    coll.objects.link(strap)
-    empties["strap"] = strap
-    so = sg.finish(mats, (0, 0, 0), coll)
-    so.parent = strap
-    objs["strap_mesh"] = so
-    tg = decal_quad("strap_tag", regions["D64"], tag_M @ T(-(regions["D64"]["mm"][0] + regions["D64"]["mm"][2]) / 2,
-                                                           -(regions["D64"]["mm"][1] + regions["D64"]["mm"][3]) / 2, 0))
-    to = tg.finish(mats, (0, 0, 0), coll)
-    to.parent = strap
-    objs["strap_tag"] = to
+    strap = named("strap", sg)
+    c = regions["D64"]["mm"]
+    named("strap_tag", decal_quad("strap_tag", regions["D64"], tag_M @ T(-(c[0] + c[2]) / 2, -(c[1] + c[3]) / 2, 0)),
+          parent=strap)
     return objs
 
 
@@ -484,15 +492,29 @@ def prism(ring, y0, y1, mat, name):
     return loft([(y0, ring), (y1, ring)], mat, smooth=False)
 
 
+def manor_ring(y):
+    """The chassis plan at height y (xt5model.chassis_ctrl: grip front table, grip crease, rear panel), with every
+    third grip point and at most 2 segments per fillet, so rings at different heights share one topology."""
+    pts, rad, seg = X.chassis_ctrl(y)
+    G = len(X.GRIP_OUT)
+    first = 8                                     # the front-left corner, the 4-step crease fillet, 3 inner-wall points
+    keep = set(range(len(pts))) - {first + k for k in range(G) if k % 3 and k != G - 1}
+    idx = sorted(keep)
+    return fillet_poly([pts[i] for i in idx], [rad[i] for i in idx], [min(seg[i], 2) for i in idx])
+
+
 def build_manor(coll, mats, regions, pivots):
     """The Manor viewmodel (<= 1.5k tris): the same measured outlines at coarse resolution, flat slots
     (mat_silver, mat_graphite, mat_glass_dark, mat_brass) plus mat_lettering for the marks; pivots shutter_button and
     lens only (the Manor drives the rest from its UI); every marker and decal of the web LODs."""
     body = Geo("body")
-    pts, rad, seg = X.chassis_ctrl(30.0)
-    ring = dp_simplify(fillet_poly(pts, rad, seg), 0.9)
-    body.merge(prism(ring, 0.0, X.Y_PLATE, "silver", "base"))
-    body.merge(prism(dp_simplify(fillet_poly(pts, rad, seg, offset=-0.1), 0.9), X.Y_PLATE, X.Y_TOP0, "leather", "shell"))
+    body.merge(prism(manor_ring(20.0), 0.0, X.Y_PLATE, "silver", "base"))
+    body.merge(loft([(X.Y_PLATE, manor_ring(20.0)), (44.0, manor_ring(44.0)), (52.0, manor_ring(52.0)),
+                     (X.Y_TOP0, manor_ring(62.0))], "leather", smooth=False))      # the grip front recedes above 42
+    tr_ = X.cm("thumb_rest")["size"]                                                # the rear thumb rest
+    body.merge(xt5lib.rbox(tr_["x"][1] - tr_["x"][0], tr_["y"][1] - tr_["y"][0], 5.0, mat="leather",
+                           center=((tr_["x"][0] + tr_["x"][1]) / 2, (tr_["y"][0] + tr_["y"][1]) / 2,
+                                   tr_["max_rear_z"] + 2.5)))
     tp, tr, ts = X.top_ctrl(68.0)
     body.merge(prism(dp_simplify(fillet_poly(tp, tr, ts), 0.9), X.Y_TOP0, X.Y_TOP, "silver", "top"))
     lv = []
@@ -533,12 +555,13 @@ def build_manor(coll, mats, regions, pivots):
     body.merge(xt5lib.cyl(30.55, 13.6, X.MOUNT_Z, 16, "silver", cap0=False), T(0, 35.0, 0))
     c = X.cm("af_assist_lamp")["pos"]
     body.merge(xt5lib.cyl(1.6, X.Z_F, X.Z_F + 0.8, 6, "amber"), T(c["x"], c["y"], 0))
-    for key in ("strap_right", "strap_left"):            # lug plates with the eyelet as a square hole would add
-        xc, yc, zc = X.STRAP[key]                         # tris: solid tabs (the cord hides the eyelet)
+    lugs = Geo("lugs")                                    # solid tabs (an eyelet would add tris; the cord hides it),
+    for key in ("strap_right", "strap_left"):             # their own node as on the web LODs
+        xc, yc, zc = X.STRAP[key]
         tip = X.LUG_TIP[key]
         base = X.X_R + 1.0 if xc < 0 else X.X_L - 1.0
-        body.merge(xt5lib.rbox(abs(tip - base), 7.2, 4.0, mat="silver", center=((tip + base) / 2, 67.9, zc)))
-    objs = {"body": body.finish(mats, (0, 0, 0), coll)}
+        lugs.merge(xt5lib.rbox(abs(tip - base), 7.2, 4.0, mat="silver", center=((tip + base) / 2, 67.9, zc)))
+    objs = {"body": body.finish(mats, (0, 0, 0), coll), "lugs": lugs.finish(mats, (0, 0, 0), coll)}
     empties = {}
     # shutter button and lens: pivots with their parts (the Manor presses and swaps them), at LOD0's exact pivot
     # locations (rig.mjs: swapping LODs never moves a pivot); parts authored in pivot-local mm
@@ -714,7 +737,7 @@ def main():
     objs, empties, per_part = X.assemble(mats, c1)
     objs.update(add_decals_and_strap(c1, mats, regions, "lod1", empties))
     dissolve_flat(objs, LOD1_DISSOLVE_DEG)
-    ratio = collapse_to(objs, LOD1_TARGET, only=[n for n in objs if not n.startswith(("lens", "mark_", "strap_tag"))])
+    ratio = collapse_to(objs, LOD1_TARGET, only=("body", "lugs", "lcd_mesh", "lcd_portrait_mesh", "hot_shoe_cover_mesh", "strap_mesh"))
     set_web_textures("lod1", leather, atlas_rgba, atlas_n, cam_lettering)
     per = tri_count(objs)
     report["lods"]["lod1"] = {"tris": sum(per.values()), "nodes": per, "authored": per_part, "collapse": round(ratio, 4)}

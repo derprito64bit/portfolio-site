@@ -43,7 +43,7 @@ export function launch({ headed = false } = {}) {
   return chromium.launch({
     channel: "chrome",
     headless: !headed,
-    args: ["--mute-audio", "--autoplay-policy=user-gesture-required"], // as C:\Users\Aaron\AppData\Local\ion\pwcli\agent.config.json
+    args: ["--mute-audio", "--autoplay-policy=user-gesture-required"], // as the agents' playwright-cli config (muted)
   });
 }
 
@@ -52,17 +52,23 @@ export const SOFTWARE = /SwiftShader|llvmpipe|softpipe|Basic Render|Software/i;
 /** Opens page.html with the given query in a fresh page of `context`, waits for window.__done, returns it. */
 export async function runPage(context, origin, query, { keep = false } = {}) {
   const page = await context.newPage();
-  const errors = [];
+  const errors = [], aborted = [], finished = new Set();
   page.on("console", (m) => (m.type() === "error" || /\b(error|exception|GL_INVALID|CONTEXT_LOST)\b/i.test(m.text())) && errors.push(m.text()));
   page.on("pageerror", (e) => errors.push(String(e)));
   page.on("response", (r) => r.status() >= 400 && errors.push(`HTTP ${r.status()} ${r.url()}`));
-  page.on("requestfailed", (r) => errors.push(`request failed ${r.url()} ${r.failure()?.errorText}`));
+  page.on("requestfinished", (r) => finished.add(r.url()));
+  page.on("requestfailed", (r) => (r.failure()?.errorText === "net::ERR_ABORTED" ? aborted : errors)
+    .push({ url: r.url(), text: `request failed ${r.url()} ${r.failure()?.errorText}` }));
   const qs = new URLSearchParams(Object.entries(query).map(([k, v]) => [k, typeof v === "string" ? v : JSON.stringify(v)]));
   await page.goto(`${origin}/scripts/build/posters/page.html?${qs}`);
   await page.waitForFunction(() => window.__done !== undefined, null, { timeout: 60_000 });
   const done = await page.evaluate(() => window.__done);
   if (done.error) throw new Error(done.error);
-  if (errors.length) throw new Error(`console errors: ${errors.join(" | ")}`);
+  // Chrome intermittently reports an aborted request for a GLB the page did load (m1 saw the same with chunked
+  // replies; m2 still sees it with Content-Length). The page sets __done only after its loads resolved, so with no
+  // done.error an abort is noise: it is logged, not fatal. Every other failure, HTTP error or console error is.
+  for (const a of aborted) console.warn(`${a.text} (page completed; finished events: ${finished.has(a.url)})`);
+  if (errors.length) throw new Error(`console errors: ${errors.map((e) => e.text ?? e).join(" | ")}`);
   if (!keep) await page.close();
   return keep ? { done, page } : done;
 }

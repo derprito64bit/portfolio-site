@@ -1,7 +1,7 @@
 // wire.mjs (W-C13): wireframe posters of the camera with build-measured triangle counts (W-D020 'Show the mesh':
 // the static tier swaps to a pre-rendered wireframe poster and prints the count read from the geometry at build).
 //
-//   node scripts/build/posters/wire.mjs [--out public/posters/wire] [--widths 800,1600] [--allow-software]
+//   node scripts/build/posters/wire.mjs [--out public/posters/wire] [--widths 800,1200] [--allow-software]
 //
 // Same stage as the camera posters (stage.js framing from tokens.stage, three r186 in Chrome on the reference host's
 // GPU), LOD0 in flat proof grey with every triangle edge in ink. Writes wire-<band>-<w>.{avif,webp} and wire.json:
@@ -17,7 +17,7 @@ import { launch, repo, runPage, serve, SOFTWARE, stageTokens } from "./harness.m
 const args = process.argv.slice(2);
 const opt = (k, d) => (args.includes(k) ? args[args.indexOf(k) + 1] : d);
 const out = resolve(repo, opt("--out", "public/posters/wire"));
-const widths = opt("--widths", "800,1600").split(",").map(Number);
+const widths = opt("--widths", "800,1200").split(",").map(Number);
 const FILES = { lod0: "camera_xt_lod0.glb", lod1: "camera_xt_lod1.glb", manor: "camera_xt_manor.glb" };
 
 async function main() {

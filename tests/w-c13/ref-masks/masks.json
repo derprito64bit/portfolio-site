@@ -1,0 +1,87 @@
+{
+ "ppm": 10.0,
+ "frame": "refs mm: +X camera left, +Y up, +Z out of the lens; X=0 lens axis, Y=0 base, Z=0 sensor",
+ "rows": "row 0 is the frame's top (v1)",
+ "views": {
+  "front": {
+   "h": "X",
+   "v": "Y",
+   "hRange": [
+    -90.0,
+    70.0
+   ],
+   "vRange": [
+    -5.0,
+    100.0
+   ],
+   "size": [
+    1600,
+    1050
+   ],
+   "pixels": 1082320,
+   "source": "glz_body_silver_01.png",
+   "sourceUrl": "https://cdn.shopify.com/s/files/1/0397/6167/4285/files/23866_16953883_01_Hero.png",
+   "calibration": "front_silver2k"
+  },
+  "top": {
+   "h": "X",
+   "v": "Z",
+   "hRange": [
+    -90.0,
+    70.0
+   ],
+   "vRange": [
+    -45.0,
+    35.0
+   ],
+   "size": [
+    1600,
+    800
+   ],
+   "pixels": 608724,
+   "source": "glz_body_silver_07.png",
+   "sourceUrl": "https://cdn.shopify.com/s/files/1/0397/6167/4285/files/23866_16953883_07_Hero.png",
+   "calibration": "top_silver2k"
+  },
+  "left": {
+   "h": "Z",
+   "v": "Y",
+   "hRange": [
+    -45.0,
+    35.0
+   ],
+   "vRange": [
+    -5.0,
+    100.0
+   ],
+   "size": [
+    800,
+    1050
+   ],
+   "pixels": 471801,
+   "source": "glz_body_silver_05.png",
+   "sourceUrl": "https://cdn.shopify.com/s/files/1/0397/6167/4285/files/23866_16953883_05_Hero.png",
+   "calibration": "left_silver2k"
+  },
+  "right": {
+   "h": "Z",
+   "v": "Y",
+   "hRange": [
+    -45.0,
+    35.0
+   ],
+   "vRange": [
+    -5.0,
+    100.0
+   ],
+   "size": [
+    800,
+    1050
+   ],
+   "pixels": 478334,
+   "source": "glz_body_silver_03.png",
+   "sourceUrl": "https://cdn.shopify.com/s/files/1/0397/6167/4285/files/23866_16953883_03_Hero.png",
+   "calibration": "right_silver2k"
+  }
+ }
+}

@@ -2,7 +2,7 @@
 // GPU-free (CI). Run: node --test tests/w-c13/
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
@@ -31,6 +31,18 @@ for (const [file, budget] of Object.entries(BUDGET)) {
 test("every shipped model is accounted for by a budget", () => {
   const shipped = readdirSync(join(repo, "public/models")).filter((f) => f.endsWith(".glb")).sort();
   assert.deepEqual(shipped, Object.keys(BUDGET).sort());
+});
+
+test("the wireframe posters carry the build-measured triangle counts of the shipped GLBs (W-D020)", () => {
+  const wire = JSON.parse(readFileSync(join(repo, "public/posters/wire/wire.json"), "utf8"));
+  for (const [lod, m] of Object.entries(wire.models)) {
+    const file = m.file.split("/").pop();
+    assert.equal(m.tris, glbStat(readFileSync(join(repo, "public/models", file)), file).tris, `${lod} tris`);
+  }
+  for (const [band, b] of Object.entries(wire.bands)) {
+    assert.equal(b.tris, wire.models.lod0.tris, `${band} prints the LOD0 count`);
+    for (const p of b.posters) for (const f of [p.avif, p.webp]) assert.ok(existsSync(join(repo, "public/posters/wire", f)), f);
+  }
 });
 
 test("no .blend file is tracked in the repo (rules.web.md rule 7)", () => {

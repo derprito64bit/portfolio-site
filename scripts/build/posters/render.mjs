@@ -2,14 +2,15 @@
 // the same stage code the live canvas uses (stage.js framing, the look module), so a poster equals the first GL frame.
 //
 //   node scripts/build/posters/render.mjs [--out public/posters/camera] [--widths 480,800,1200,1600]
-//        [--lod1-widths 360,600] [--look <module, default scripts/build/posters/look.js>] [--quality 90] [--png]
-//        [--margin 0.06 (empty band around the model per side, as a share of the frame height)]
+//        [--lod1-widths 360,600,900,1200] [--look <module, default scripts/build/posters/look.js>] [--quality 90]
+//        [--png] [--margin 0.06 (empty band around the model per side, as a share of the frame height)]
 //        [--allow-software]
 //
 // Writes <out>/posters.json and, per band, one poster set per LOD: camera-<band>-<w>.{avif,webp} from LOD0 and
-// camera-<band>-lod1-<w>.{avif,webp} from LOD1. LOD1 frames are under 600 device px wide (tokens.stage.lod), so its
-// set stops at 600 px. The live stage reads posters.json: applyFraming() sets its camera, containRect() its viewport,
-// and posterSet() picks the set of the LOD it is about to draw. Re-run after a model, look or pose change.
+// camera-<band>-lod1-<w>.{avif,webp} from LOD1. Under D-021 the lite tier always draws LOD1 (stage.js pickLod), also
+// in wide slots (a tablet's stacked hero is ~1000 device px), so the LOD1 set runs to 1200 px. The live stage reads
+// posters.json: applyFraming() sets its camera, containRect() its viewport, and posterSet() picks the set of the LOD
+// it is about to draw. Re-run after a model, look or pose change.
 import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
@@ -22,7 +23,7 @@ const opt = (k, d) => (args.includes(k) ? args[args.indexOf(k) + 1] : d);
 const out = resolve(repo, opt("--out", "public/posters/camera"));
 const WIDTHS = {
   lod0: opt("--widths", "480,800,1200,1600").split(",").map(Number),
-  lod1: opt("--lod1-widths", "360,600").split(",").map(Number),
+  lod1: opt("--lod1-widths", "360,600,900,1200").split(",").map(Number),
 };
 const look = opt("--look", null);
 const quality = Number(opt("--quality", 90));
