@@ -5,7 +5,12 @@
 //   management), like the Manor's IonGrade.
 // - A 256 x 256 noise texture baked once replaces fbm (R blotches, G grain, B and A warp).
 // - Reveal order: light first from the eject edge; silver before dye; dye B, then G, then R; the cyan veil clears
-//   last. The per-channel warp is gone by d 0.85. Grain boils at 12 fps and reaches exactly 0 at d 1.
+//   last. The per-channel warp is gone by d 0.85.
+// - Grain is calm and forms once (D-026, fx-playbook section 2): two octaves of a fixed noise field at a cell of
+//   whole device pixels, never re-seeded (no boil), rising with each pixel's own development and exactly 0 at d 1.
+// - Roller tracks (fx-playbook section 2, effect 1): while a print passes the rollers (uRoll), its veil carries
+//   per-column density tracks, strongest at the pod edge, and the same track(x) offsets the develop threshold, so
+//   the image surfaces in streaks that merge. The rate offset is 0 by d 0.6, so d 1 is still exactly the still.
 // - LITE (the lite tier): one image fetch, no warp.
 // - Two vertex paths: the usual model-view projection, or SCREEN_CLIP, where the quad's four corners arrive as clip
 //   coordinates from another camera plus an affine remap into the current viewport (the hero print is posed in the
@@ -23,6 +28,10 @@ import {
   Vector3,
   Vector4,
 } from 'three';
+
+// The camera develop patch (D-024) ships in this chunk, so the Effects budget counts it and the camera chunk stays
+// free of src/gl/effects (src/gl/camera/drawing.ts reaches it through the loaded module).
+export { CAMERA_MAIN, CAMERA_PARS, GROUND_FRAG, GROUND_VERT, patchCameraFragment } from './camera.ts';
 
 /** d = 1 - (1 - t)^2.4 (tokens develop.curve). */
 export function developCurve(t: number): number {
@@ -139,7 +148,8 @@ precision highp float;
 uniform sampler2D uMap;
 uniform sampler2D uNoise;
 uniform float uD;        // develop, 0..1 (already on the curve)
-uniform float uTime;     // seconds, for the 12 fps grain boil
+uniform float uRoll;     // roller tracks, 1 while the print passes the rollers, 0 from eject end + 120 ms
+uniform vec2 uGrain;     // noise texels per card UV for a grain cell of whole device pixels (fixed per print)
 uniform vec2 uSeed;      // per-print offset into the noise
 uniform vec4 uWin;       // picture window in card UV: x0, y0, x1, y1
 uniform vec2 uPad;       // shadow margin of the quad, in quad UV
@@ -153,6 +163,7 @@ varying vec2 vUv;
 // leaves through the slot; the depth of the parts in front of it (dials, the top plate) hides the rest.
 uniform float uBodyClip;
 uniform vec3 uExit;
+uniform vec4 uBody;      // the body below the exit slot: half width (x), z min, z max (model space, metres)
 varying vec3 vWorld;
 #endif
 
@@ -167,7 +178,7 @@ float roundBox(vec2 p, vec2 b, float r) {
 
 void main() {
 #ifdef CLIP_BODY
-  if (uBodyClip > 0.5 && vWorld.y < uExit.y && abs(vWorld.x) < 0.068 && vWorld.z > -0.046 && vWorld.z < 0.03) discard;
+  if (uBodyClip > 0.5 && vWorld.y < uExit.y && abs(vWorld.x) < uBody.x && vWorld.z > uBody.y && vWorld.z < uBody.z) discard;
 #endif
   vec2 cuv = (vUv - uPad) / (1.0 - 2.0 * uPad);
   // Card-space distance in px-like units (card width = 1).
@@ -198,19 +209,28 @@ void main() {
   vec3 col = img;
   if (inWin > 0.5) {
     float lum = dot(img, vec3(0.2126, 0.7152, 0.0722));
-    // Light first, from the eject edge (the top of the window leaves the camera first), in blotches.
-    float delay = 0.13 * (1.0 - wuv.y) + 0.12 * nz.r + 0.07 * (1.0 - lum); // at most 0.32: every pixel is past 0.57 at d 0.7 (readable)
+    // Roller tracks: a density per column, from one row of the blotch and grain channels at this print's seed.
+    float track = 0.62 * texture2D(uNoise, vec2(cuv.x * 2.3 + uSeed.x, uSeed.y)).r + 0.38 * texture2D(uNoise, vec2(cuv.x * 0.9 + uSeed.y, uSeed.x + 0.5)).g;
+    float pod = 0.45 + 0.55 * (1.0 - wuv.y); // strongest at the pod edge (the bottom of the window)
+    // Light first, from the eject edge (the top of the window leaves the camera first), in blotches; the tracks
+    // shift the threshold early on and never after d 0.6.
+    float delay = 0.13 * (1.0 - wuv.y) + 0.12 * nz.r + 0.07 * (1.0 - lum) + 0.06 * (track - 0.5) * pod * (1.0 - smoothstep(0.0, 0.6, d));
+    delay = clamp(delay, 0.0, 0.34); // at most 0.34: every pixel is past 0.54 at d 0.7 (readable)
     float pr = clamp((d - delay) / (1.0 - delay), 0.0, 1.0);
     pr = pr * pr * (3.0 - 2.0 * pr);
     // Silver before dye; dye B, then G, then R.
     vec3 dye = vec3(smoothstep(0.42, 1.0, pr), smoothstep(0.28, 0.92, pr), smoothstep(0.14, 0.84, pr));
     vec3 c = mix(vec3(lum), img, dye);
     c = mix(UNDEV, c, smoothstep(0.0, 0.5, pr));
-    // The cyan veil clears last.
-    c = mix(c, VEIL, (1.0 - smoothstep(0.12, 0.8, pr)) * 0.6);
-    // Grain boils at 12 fps and is exactly 0 at d = 1.
-    float g = texture2D(uNoise, cuv * vec2(2.3, 3.7) + vec2(floor(uTime * 12.0) * 0.1373, floor(uTime * 12.0) * 0.0791)).g - 0.5;
-    c += g * 0.08 * (1.0 - d);
+    // The cyan veil clears last; while the print passes the rollers it carries their tracks.
+    float veil = (1.0 - smoothstep(0.12, 0.8, pr)) * 0.6;
+    veil = min(1.0, veil + uRoll * pod * 0.32 * smoothstep(0.35, 0.8, track) * (1.0 - pr));
+    c = mix(c, VEIL, veil);
+    // Calm grain: a fixed field (two octaves, soft clumps), formed with the pixel's development, 0 at d = 1.
+    vec2 gu = cuv * uGrain + uSeed * 7.0;
+    float g = 0.65 * (texture2D(uNoise, gu).g - 0.5) + 0.35 * (texture2D(uNoise, gu * 0.5 + 0.31).g - 0.5);
+    g = sign(g) * smoothstep(0.0, 0.18, abs(g)) * 0.5;
+    c += g * 0.09 * smoothstep(0.0, 0.3, pr) * (1.0 - d);
     col = c;
   }
   gl_FragColor = vec4(col, inside * uAlpha);
@@ -230,6 +250,16 @@ export interface DevelopOptions {
   /** Picture window in card UV (x0, y0, x1, y1), UV origin bottom-left. */
   window?: [number, number, number, number];
   seed?: number;
+  /** uGrain: noise texels per card UV (see grainScale). Defaults to a 512-device-px-wide print. */
+  grain?: [number, number];
+}
+
+/** The noise texture is 256 texels; a grain cell of `cellPx` whole device pixels (at least 1.25, D-026) on a card
+ *  drawn `widthPx` device pixels wide gives this uGrain. Constant per print: set it once, when the print is made. */
+export function grainScale(widthPx: number, card: [number, number] = [54, 86], cellPx = 2): [number, number] {
+  const cell = Math.max(1.25, Math.round(cellPx));
+  const u = widthPx / (256 * cell);
+  return [u, (u * card[1]) / card[0]];
 }
 
 /** One develop material per print. Uniform uD drives it; at uD = 1 it outputs the still exactly. */
@@ -250,7 +280,10 @@ export function createDevelopMaterial(o: DevelopOptions): any {
       uMap: { value: o.map },
       uNoise: { value: noiseTexture() },
       uD: { value: 0 },
+      // Kept for callers of v1 (W-S2): nothing reads it since D-026 (the grain no longer boils).
       uTime: { value: 0 },
+      uRoll: { value: 0 },
+      uGrain: { value: new Vector2(...(o.grain ?? grainScale(512, card))) },
       uSeed: { value: new Vector2(((seed * 0.6180339) % 1), ((seed * 0.4142136) % 1)) },
       uWin: { value: new Vector4(...win) },
       uPad: { value: new Vector2(...(o.pad ?? [0, 0])) },
@@ -268,6 +301,7 @@ export function createDevelopMaterial(o: DevelopOptions): any {
       uW2: { value: new Vector3() },
       uW3: { value: new Vector3() },
       uExit: { value: new Vector3() },
+      uBody: { value: new Vector4(0.068, -0.046, 0.03, 0) },
       uBodyClip: { value: 0 },
     },
     transparent: true,

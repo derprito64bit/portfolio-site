@@ -191,11 +191,12 @@ export function heroLayout(hero: HTMLElement, nudge = false): void {
  * diff <= 4/255). GL draws at the tier's effective DPR (W-D017: full DPR <= 2 and 4.5 Mpx, lite DPR <= 1.5 and
  * 1.5 Mpx over the riding canvas, 100lvh x 1.25), LOD0 only on full at 600 device px and wider (D-021); the static
  * tier has no GL frame to match and gets the sharpest LOD0. Runs inline right after the poster is parsed, then on
- * every layout change. Self-contained (stringified like heroLayout).
+ * every layout change. Self-contained (stringified like heroLayout). `load`: fetch it even under the drawing.
  */
-export function heroPoster(hero: HTMLElement): void {
+export function heroPoster(hero: HTMLElement, load = false): void {
   const doc = hero.ownerDocument;
   const win = doc.defaultView as Window;
+  const root = doc.documentElement;
   const img = hero.querySelector('.hero-poster') as HTMLImageElement | null;
   const src = hero.querySelector('.hero-poster-avif') as HTMLSourceElement | null;
   const camEl = hero.querySelector('[data-hero-camera]') as HTMLElement | null;
@@ -223,9 +224,15 @@ export function heroPoster(hero: HTMLElement): void {
   let pick = list[0];
   for (const p of list) if (Math.abs(Math.log(p[0] / need)) < Math.abs(Math.log(pick[0] / need))) pick = p;
   const base = hero.getAttribute('data-poster-base') || '';
-  if (img.getAttribute('data-file') === pick[2]) return;
-  img.setAttribute('data-file', pick[2]);
   img.setAttribute('data-lod', String(lod));
+  // Under the drawing (W-D012 data-cam=drawing) the poster is not on screen. On the full tier's opening GL develops
+  // the drawing itself, so the poster waits until hero.ts asks for it (a guard, the end of the opening); elsewhere it
+  // loads at low priority for the crossfade, never ahead of the LCP image.
+  const drawing = root.getAttribute('data-cam') === 'drawing';
+  if (drawing && !load && root.getAttribute('data-hero') === 'eject') return;
+  if (img.getAttribute('data-file') === pick[2]) return;
+  if (drawing) img.setAttribute('fetchpriority', 'low');
+  img.setAttribute('data-file', pick[2]);
   if (src) {
     src.srcset = base + pick[1];
     src.media = 'all';

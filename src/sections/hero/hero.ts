@@ -2,22 +2,43 @@
 // - Layout: re-runs layout.ts on width, font and text-spacing changes (never on a toolbar-only height change on touch).
 // - The strip: radios drive the readout (and the GL dials once they exist); Shutter and a tap on the camera print the
 //   next featured project. Without GL (static, reduced motion, GL not up yet) the print swaps with a 200 ms fade.
-// - The hero run (W-D012, full tier): the GL camera module is fetched when GL starts booting, the timeline starts at
-//   T0 = stage:gl-ready + 200 ms, and the guards jump it to the end state.
+// - The opening (D-024, #13 A1 and A2): the head script put the line drawing on screen (data-cam='drawing'). On the
+//   full tier GL develops the camera out of it at T0 (src/gl/camera); on lite it crossfades to the finished-camera
+//   poster as soon as that poster is decoded (GL never waits for it); a guard crossfades it too (at once under
+//   reduced motion; a cut when the tier drops to static). 'ion.hero' is written when the develop or a crossfade
+//   starts, so a reload, an anchor arrival or Back in the same session paints the finished camera (head script).
+// - The hero run (W-D012, full tier): the GL camera module is fetched only once GL starts booting (stage:gl-start,
+//   the pre-GL budget), T0 is the later of stage:gl-ready + 200 ms and the camera being ready, and the guards jump
+//   it to the end state.
 // GL work lives in src/gl/camera (its own chunk, loaded after first paint). The stage is reached through bridge.ts.
 import { heroLayout, heroPoster } from './layout.ts';
+import { svgDataUri, testStripSvg } from './still.ts';
 import { afterStage, markTime, onContentReplace, onHtmlAttr, reduced, stage, tier, whenGL, whenMark } from './bridge.ts';
-import { durations, heroTimeline, springs } from '../../lib/tokens.js';
-import type { CameraController, QueueItem } from '../../gl/camera/index.ts';
+import { develop as developTokens, durations, heroTimeline, springs } from '../../lib/tokens.js';
+import type { CameraController, IntroHooks, QueueItem } from '../../gl/camera/index.ts';
 
 const html = document.documentElement;
 const STACK_MAX = 3;
 const LENSES = [16, 28, 50, 85, 135];
+const SESSION_KEY = 'ion.hero';
+const EASE_OUT = 'cubic-bezier(0.23, 1, 0.32, 1)';
+/** W-D012's late guard: GL ready later than first contentful paint + 2.5 s jumps to the end state (no token holds it). */
+const LATE_GUARD_MS = 2500;
+/** The develop curve's exponent, from tokens.develop.curve (d = 1 - (1 - t)^2.4). */
+const CURVE_EXP = Number(/\^\s*([\d.]+)/.exec(developTokens.curve)?.[1] ?? 2.4);
+
+interface QueueData {
+  slug: string;
+  frame: string;
+  look: string;
+  name: string;
+  tint: string;
+}
 
 let hero: HTMLElement | null = null;
 let cam: CameraController | null = null;
 let camLoading: Promise<CameraController | null> | null = null;
-let queue: QueueItem[] = [];
+let queue: QueueData[] = [];
 let printed = 0;
 let busy = false;
 let introState: 'none' | 'waiting' | 'running' | 'done' = 'none';
@@ -57,6 +78,111 @@ function watchLayout(): void {
 }
 addEventListener('resize', () => layout(), { passive: true });
 document.fonts?.ready.then(() => layout(true));
+
+// ---------------------------------------------------------------- the opening: the drawing (D-024)
+const manualClock = new URLSearchParams(location.search).has('t');
+/** On the manual clock (?t=) the stage seeks every document animation to currentTime = ms; an animation started at
+ * stage time T gets delay T, so a seek shows its true phase (W-D030 seeked filmstrips). */
+const delayFor = (stageMs?: number) => (manualClock && stageMs !== undefined ? stageMs : 0);
+
+function writeSession(): void {
+  try {
+    sessionStorage.setItem(SESSION_KEY, '1');
+  } catch {
+    /* private mode: the next arrival plays the opening again, which is the safe side */
+  }
+}
+const drawingOn = () => html.dataset.cam === 'drawing';
+const drawingParts = () => ({
+  ground: hero?.querySelector<HTMLElement>('.hero-ground') ?? null,
+  lines: hero?.querySelector<HTMLElement>('.hero-lines') ?? null,
+  poster: hero?.querySelector<HTMLImageElement>('.hero-poster') ?? null,
+});
+
+function logPhase(id: string, t0: number, ms: number, trigger: string): void {
+  const w = window as unknown as { __motionLog?: unknown[] };
+  (w.__motionLog ??= []).push({ id, kind: 'drawing', spring: null, trigger, t0: Math.round(t0), t1: Math.round(t0 + ms), from: 0, to: 1, peak: 1, settle2Ms: null, tier: tier(), reduced: reduced() });
+}
+
+/** The finished-camera poster, loading (it waits under the drawing on the full tier) and decoded. */
+function posterDecoded(): Promise<void> {
+  if (!hero) return Promise.resolve();
+  heroPoster(hero, true);
+  const img = drawingParts().poster;
+  return img ? img.decode().catch(() => {}) : Promise.resolve();
+}
+
+/** The drawing is over: CSS shows the finished camera from here on (GL's, or the poster). */
+function drawingDone(): void {
+  if (!drawingOn()) return;
+  html.dataset.cam = 'camera';
+  const { ground, lines } = drawingParts();
+  for (const el of [ground, lines]) el?.getAnimations().forEach((a) => a.cancel());
+  // GL draws the finished camera; its poster loads behind it (a context loss hands the slot back to the poster).
+  if (hero && cam?.live) heroPoster(hero, true);
+}
+
+let crossfading = false;
+/**
+ * The drawing to the finished-camera poster in the DOM: lite's opening, a guard before GL has the camera, the 6 s
+ * safety. `ms` 0 cuts. The poster decodes first, so the crossfade never shows a half-loaded camera, and it starts
+ * from the drawing's state when it was called.
+ */
+async function drawingToPoster(ms: number, trigger: string): Promise<void> {
+  if (!drawingOn() || crossfading) return;
+  crossfading = true;
+  writeSession();
+  await posterDecoded();
+  if (!drawingOn()) return;
+  const { ground, lines, poster } = drawingParts();
+  const t0 = performance.now();
+  if (ms > 0 && poster) {
+    const opts: KeyframeAnimationOptions = { duration: ms, easing: 'linear', fill: 'forwards' };
+    const runs = [poster.animate([{ opacity: 0 }, { opacity: 1 }], opts)];
+    for (const el of [ground, lines]) if (el) runs.push(el.animate([{ opacity: Number(getComputedStyle(el).opacity) }, { opacity: 0 }], opts));
+    await Promise.all(runs.map((a) => a.finished)).catch(() => {});
+    drawingDone();
+    runs.forEach((a) => a.cancel());
+  } else drawingDone();
+  logPhase('hero:drawing:crossfade', t0, ms, trigger);
+}
+
+/** GL's opening at T0: GL's own ground takes over from the DOM ground in the same frame (the same colour, so the cut is
+ *  invisible and the clay shows from its first frame), and the strokes fade with the veil as it clears (develop values
+ *  0.08 to 0.84, src/gl/camera/drawing.ts). Called from the stage frame that draws T0. */
+function drawingStart(at: number): void {
+  writeSession();
+  const { ground, lines } = drawingParts();
+  const delay = delayFor(at);
+  if (ground) ground.style.opacity = '0';
+  if (lines) {
+    // The strokes' opacity is 1 - smoothstep(0.08, 0.84, d) on the develop curve, d = 1 - (1 - t)^2.4.
+    const total = durations.heroDrawingClay + durations.heroDrawingDevelop;
+    const frames: Keyframe[] = [];
+    for (let i = 0; i <= 24; i++) {
+      const ms = (total * i) / 24;
+      const t = Math.min(1, Math.max(0, (ms - durations.heroDrawingClay) / durations.heroDrawingDevelop));
+      const d = 1 - Math.pow(1 - t, CURVE_EXP);
+      const k = Math.min(1, Math.max(0, (d - 0.08) / 0.76));
+      frames.push({ opacity: 1 - k * k * (3 - 2 * k), offset: i / 24 });
+    }
+    lines.animate(frames, { duration: total, delay, fill: 'forwards' });
+  }
+}
+
+/** A guard during GL's develop: the strokes (and anything left of the DOM ground) go with GL's crossfade. */
+function drawingCrossfade(ms: number): void {
+  writeSession();
+  const { ground, lines } = drawingParts();
+  for (const el of [ground, lines]) {
+    if (!el) continue;
+    const from = Number(getComputedStyle(el).opacity);
+    el.getAnimations().forEach((a) => a.cancel());
+    if (ms > 0) el.animate([{ opacity: from }, { opacity: 0 }], { duration: ms, easing: 'linear', fill: 'forwards' });
+    else el.style.opacity = '0';
+  }
+  logPhase('hero:drawing:crossfade', performance.now(), ms, 'guard');
+}
 
 // ---------------------------------------------------------------- the strip
 function lookName(id: string): string {
@@ -150,11 +276,6 @@ function bindDrag(): void {
 }
 
 // ---------------------------------------------------------------- the brackets, the flash
-/** On the manual clock (?t=) the stage seeks every document animation to currentTime = ms; an animation started at
- * stage time T gets delay T, so a seek shows its true phase (W-D030 seeked filmstrips). */
-const manualClock = new URLSearchParams(location.search).has('t');
-const delayFor = (stageMs?: number) => (manualClock && stageMs !== undefined ? stageMs : 0);
-
 /** The viewfinder brackets close on the name (detent spring) and open again (settle spring). Never when reduced. */
 function closeBrackets(stageMs?: number): void {
   if (reduced()) return;
@@ -193,7 +314,7 @@ function flash(trigger: string, stageMs?: number): boolean {
   el.animate(
     [
       { opacity: 0, offset: 0 },
-      { opacity: 0.62, offset: 120 / durations.flash, easing: 'cubic-bezier(0.23, 1, 0.32, 1)' },
+      { opacity: 0.62, offset: 120 / durations.flash, easing: EASE_OUT },
       { opacity: 0, offset: 1 },
     ],
     { duration: durations.flash, easing: 'linear', delay: delayFor(stageMs) },
@@ -204,9 +325,10 @@ function flash(trigger: string, stageMs?: number): boolean {
 // ---------------------------------------------------------------- printing the next project
 function nextItem(): QueueItem | null {
   if (!queue.length) return null;
-  const item = queue[printed % queue.length];
+  const q = queue[printed % queue.length];
   printed++;
-  return item;
+  // The still is drawn here, on demand: the page carries only the project's slug, tint and frame code.
+  return { slug: q.slug, frame: q.frame, look: q.look, name: q.name, still: svgDataUri(testStripSvg({ slug: q.slug, tint: q.tint, frame: q.frame })) };
 }
 
 /** Add a still to the print stack (newest on top, at most 3). Returns the new <img>. */
@@ -256,11 +378,10 @@ function shutter(trigger: string): void {
   } else {
     cam?.press(trigger);
     flash(trigger);
-    // Static and reduced motion: the next print swaps in with a 200 ms fade (W-D011), no flight, no shift.
-    const img = addStill(item, false);
-    img?.animate([{ opacity: 0 }, { opacity: 1 }], { duration: durations.reduced, easing: 'cubic-bezier(0.23, 1, 0.32, 1)' }).finished.then(() => {
-      img.style.opacity = '1';
-    });
+    // Static and reduced motion: the next print swaps in with a 200 ms fade (W-D011), no flight, no shift. The
+    // final opacity is set first, so the still is never left hidden if the animation is cancelled.
+    const img = addStill(item, true);
+    img?.animate([{ opacity: 0 }, { opacity: 1 }], { duration: durations.reduced, easing: EASE_OUT });
   }
   stage()?.announce(`Printed ${item.name}.`);
 }
@@ -280,8 +401,15 @@ function finishIntro(why: string): void {
   introState = 'done';
   for (const off of guardOff.splice(0)) off();
   // A guard jumps to the end state: print 1 appears at once, with no crossfade (the GL print is let go at once too).
+  // A drawing still on screen crossfades to the finished camera (at once under reduced motion; a cut when the tier
+  // drops to static, which has no motion at all).
   html.dataset.heroCut = '';
-  cam?.finishIntro();
+  const fade = reduced() || tier() === 'static' ? 0 : durations.heroDrawingFade;
+  if (cam?.drawingLive) cam.finishIntro(fade);
+  else {
+    cam?.finishIntro(0);
+    void drawingToPoster(fade, why);
+  }
   if (html.dataset.hero === 'eject') html.dataset.hero = 'done';
   mark(`hero:guard=${why}`);
 }
@@ -333,10 +461,11 @@ function firstPaint(): Promise<number> {
 }
 
 // ---------------------------------------------------------------- GL camera
-/** Fetch the camera chunk (and through it the GLB) as soon as GL starts booting, so T0 is not late. */
+/** The camera chunk (and through it the GLB), only once GL has started booting: never in the pre-GL bytes. */
 function loadCamera(): Promise<CameraController | null> {
   if (camLoading) return camLoading;
-  camLoading = import('../../gl/camera/index.ts')
+  camLoading = whenMark('stage:gl-start')
+    .then(() => import('../../gl/camera/index.ts'))
     .then(async (mod) => {
       mod.prefetch(tier());
       const api = await whenGL();
@@ -359,6 +488,17 @@ function loadCamera(): Promise<CameraController | null> {
   return camLoading;
 }
 
+const introHooks: IntroHooks = {
+  closeBrackets: (at?: number) => closeBrackets(at),
+  flash: (at?: number) => flash('intro', at),
+  handback: () => {
+    if (html.dataset.hero === 'eject') html.dataset.hero = 'done';
+  },
+  drawingStart,
+  drawingCrossfade,
+  drawingEnd: drawingDone,
+};
+
 async function startIntro(): Promise<void> {
   introState = 'waiting';
   html.dataset.heroRun = '1';
@@ -367,7 +507,7 @@ async function startIntro(): Promise<void> {
   // Guard: GL ready later than FCP + 2.5 s jumps to the end state (print 1 developed in its slot).
   const late = setTimeout(() => {
     if (markTime('stage:gl-ready') === null) finishIntro('late');
-  }, Math.max(0, fcp + 2500 - performance.now()));
+  }, Math.max(0, fcp + LATE_GUARD_MS - performance.now()));
   guardOff.push(() => clearTimeout(late));
   const controller = await loadCamera();
   if (introState !== 'waiting') return;
@@ -378,13 +518,18 @@ async function startIntro(): Promise<void> {
   clearTimeout(late);
   introState = 'running';
   const glReady = markTime('stage:gl-ready') ?? performance.now();
-  await controller.intro(glReady + heroTimeline.t0AfterGlReady, {
-    closeBrackets: (at?: number) => closeBrackets(at),
-    flash: (at?: number) => flash('intro', at),
-    handback: () => {
-      if (html.dataset.hero === 'eject') html.dataset.hero = 'done';
-    },
-  });
+  // A camera that is still not up 2.5 s after GL is ready (a slow model download) ends the wait the same way.
+  // (Not on the manual clock, where T0 waits for the first seek.)
+  const slow = setTimeout(() => {
+    if (!manualClock && !performance.getEntriesByName('hero:t0').length) finishIntro('slow-camera');
+  }, Math.max(0, glReady + LATE_GUARD_MS - performance.now()));
+  guardOff.push(() => clearTimeout(slow));
+  const result = await controller.intro(glReady + heroTimeline.t0AfterGlReady, introHooks);
+  clearTimeout(slow);
+  if (result === 'failed') {
+    finishIntro('gl-empty');
+    return;
+  }
   if (introState === 'running') {
     introState = 'done';
     for (const off of guardOff.splice(0)) off();
@@ -392,6 +537,7 @@ async function startIntro(): Promise<void> {
 }
 
 // ---------------------------------------------------------------- boot (and again after a swap back home)
+let booted = false;
 function init(): void {
   hero = document.querySelector<HTMLElement>('[data-hero-section]');
   if (!hero) return;
@@ -400,15 +546,21 @@ function init(): void {
   } catch {
     queue = [];
   }
+  // A return to the home page (Swup) never replays the opening: the finished camera, print 1 developed.
+  if (booted && drawingOn()) html.dataset.cam = 'camera';
   if (!hero.hasAttribute('data-laid')) layout(true);
   lastW = html.clientWidth;
   watchLayout();
   bindStrip();
   syncReadout();
+  const first = !booted;
+  booted = true;
   afterStage(() => {
-    if (html.dataset.hero === 'eject' && introState === 'none') void startIntro();
+    if (first && html.dataset.hero === 'eject' && introState === 'none') void startIntro();
     else if (html.dataset.hero === 'eject') html.dataset.hero = 'done';
-    if (tier() !== 'static') whenMark('stage:gl-start').then(() => loadCamera().then((c) => c?.rebind(hero as HTMLElement)));
+    // Lite (and the full tier's demoted or reduced paths): the drawing crossfades to the poster once it is decoded.
+    if (drawingOn() && html.dataset.hero !== 'eject') void drawingToPoster(reduced() || tier() === 'static' ? 0 : durations.heroDrawingFade, 'lite');
+    if (tier() !== 'static') void loadCamera().then((c) => c?.rebind(hero as HTMLElement));
   });
 }
 
@@ -416,6 +568,10 @@ function init(): void {
 onHtmlAttr('data-motion', (m) => {
   if (m !== 'reduced') return;
   hero?.querySelectorAll<HTMLElement>('.br, .hero-flash').forEach((el) => el.getAnimations().forEach((a) => a.finish()));
+});
+// The tier dropping to static (no WebGL after all, context lost twice): any drawing left cuts to the poster.
+onHtmlAttr('data-tier', (t) => {
+  if (t === 'static' && drawingOn()) void drawingToPoster(0, 'static');
 });
 
 onContentReplace(() => init());

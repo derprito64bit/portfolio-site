@@ -67,8 +67,8 @@
   --dur-flash-min-gap: 1000ms;
   --dur-eject: 800ms;
   --dur-hang: 240ms;
-  --dur-hero-drawing-clay: 200ms;
-  --dur-hero-drawing-develop: 1000ms;
+  --dur-hero-drawing-clay: 150ms;
+  --dur-hero-drawing-develop: 850ms;
   --dur-hero-drawing-fade: 400ms;
   --dur-develop-hero: 2600ms;
   --dur-develop: 2400ms;
