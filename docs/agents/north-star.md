@@ -5,12 +5,12 @@ with `owner-voice.md`, the owner's words win.
 
 ## Purpose
 
-derprito64bit's portfolio: **one person, one portfolio, many projects. The game is one of them.**
+derprito64bit's portfolio: **one person, one portfolio, many projects** (D-023).
 
-- **The site** (`/`) is the portfolio. It shows all of the owner's work to anyone, on any hardware, in minutes.
-- **The game** (the owner's Unity game: the Manor gallery and the planned Painting Worlds, served at `/manor/`, with
-  `/play/` redirecting there) is one project in the portfolio. It has its own project page with a "Play" link for
-  desktop browsers, and stills and video for phones. It is not the site's destination, finale or door (D-023).
+The site (`/`) shows all of the owner's work, to anyone, on any hardware, in minutes: every project the owner
+chooses to show, of any kind (the content kinds in W-D005: software, game, 3D art, robotics and CAD), plus awards and
+medals. Each project has a print on the proof sheet and its own page. The owner's Unity game is one of these
+projects (see "What the game owns"); it is not the site's destination, finale or door.
 
 ## Audience
 
@@ -23,8 +23,8 @@ work laptop or a phone.
 |---|---|---|
 | 1. Identity | 10 s | who derprito64bit is and what they make |
 | 2. Best work | 60 s | the strongest projects, *shown*, not described |
-| 3. Everything | 3 min | every project (the game among them), award and medal, and how to reach the owner |
-| 4. Depth | on demand, any device | how a piece was made, on its project page; the game's page adds "Play" on a desktop |
+| 3. Everything | 3 min | every project, award and medal, and how to reach the owner |
+| 4. Depth | on demand, any device | how a piece was made, on its project page |
 
 The home page carries beats 1 to 3 and ends on beat 3: awards and medals, then contact. Beat 4 lives on the project
 pages: the lead exhibit, "Show the mesh" and the process media.
@@ -39,13 +39,16 @@ pages: the lead exhibit, "Show the mesh" and the process media.
 - **The opening** (D-024): the X-T5 line drawing develops into the real camera, generated from the 3D model. No copy
   says the owner drew it.
 - It is the SEO and sharing surface.
-- Phones see the whole portfolio, the game's page included. The game itself needs a desktop browser.
+- Phones see the whole portfolio, every project page included.
 
 ## What the game owns
 
 - Its own world: the candlelit royal home (seven rooms, D-003), with the Grand Gallery always one step away inside
-  it, and the Painting Worlds.
-- Its own budgets (`budgets.md`, Manor). Nothing on the site waits for it or leads into it.
+  it, and the Painting Worlds. It is served at `/manor/` (`/play/` redirects there) and needs a desktop browser.
+- Its own budgets (portfolio-site `docs/agents/budgets.md`, "Game").
+- On the site it is one project: a print on the proof sheet and a project page with "Play" for desktop browsers
+  (W-D021) and stills and video for phones. Nothing on the site waits for it, and the site is not a way into it: its
+  only links to the game are Play on its project page and its cartridge (W-D020).
 
 ## One maker, shared marks
 

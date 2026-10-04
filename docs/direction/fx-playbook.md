@@ -26,7 +26,7 @@ baked end state.
 | 1 | Roller tracks (1) | every eject: print 1 (1) and shutter prints | W-S1 #13 (hero), W-C2 #17 (all ejects, final) | full: all ejects; lite: shutter ejects | none | 0.5 (E) |
 | 2 | Calm grain over a light-first glow (2, 5) | print 1 (1); enlargements (2); sheet, faint (3) | W-S1 #13, W-C2 #17 | full; lite with larger cells | stills | 0.7 (E) |
 | 3 | Halation (5) | hero (1); non-Standard looks (2, 3) | W-C2 #17 | baked; hero map | still | 0.6 (E) |
-| 4 | Coated glass: loupe and lens eye (3) | loupe (3, project pages); lens glint (1) | W-C14 #19, W-C13 #16 | full: hover; lite: tap; focus: AF frame | snaps; fixed | 1.5 (E) |
+| 4 | Coated glass: loupe and lens eye (3) | loupe (3, proof sheet); lens glint (1) | W-C14 #19, W-C13 #16 | full: hover; lite: tap; focus: AF frame | snaps; fixed | 1.5 (E) |
 | 5 | Camera develop patch (D-024) | hero (1) | W-S1 #13, then W-C14 #19 on m2; shader final W-C2 #17 | full: develop; lite: crossfade | end state | 0.4 (E) |
 
 Static and no-WebGL: stills and posters. **Cut (D-023):** the research's effect 5, the enlarger light, existed only
@@ -99,15 +99,16 @@ Amber and warm white only (D-025).
 lines and posters re-baked. W-C13 #16 supplies any build-time line asset on request. W-C2 #17 finalises the shader.
 W-C3 #18 audits it. The A1 acceptance lines are the contract; this section is the design reference.
 
-**Trigger.** The first visit of the session on the full tier, once GL boots. Return visits in the session, anchor
-arrivals and Back land on the end state. The CTA and the strip stay live DOM throughout, and the W-D012 guards
+**Trigger** (W-D012, #13 A2). The head script sets `data-cam="drawing"` before first paint only with motion full,
+tier full or lite, no `ion.hero` session flag, no hash and no Back; otherwise the finished camera paints first, with
+no swap. The CTA and the strip stay live DOM throughout, and the W-D012 guards
 (late GL, scroll, hidden tab, first input) jump to the end state.
 
 | Phase | ms from T0 (E) | The visitor sees | How |
 |---|---|---|---|
 | First paint | before T0 | The X-T5 in its hero pose, in pale hairlines on an undeveloped teal-grey print ground, in the camera slot | An SVG or CSS poster with curated strokes in two weights and no hidden lines (A1) |
-| Clay | 0 to about 200 | The drawing gains a body: the untextured camera in the veil's tone fills the lines | The 8 patched `cam_*` materials write depth; **FOV 28**, the hero pose (W-D013) |
-| Develop | about 200 to 1,200 | Light first: silver top plate and dials, then black metal and leatherette, the amber shutter last. The hairlines fade with the veil | W-D011 curve, W-D016 noise |
+| Clay | 0 to 200 (`heroDrawingClay`) | The drawing gains a body: the untextured camera in the veil's tone fills the lines | The 8 patched `cam_*` materials write depth; **FOV 28**, the hero pose (W-D013) |
+| Develop | 200 to 1,200 (`heroDrawingDevelop`) | Light first: silver top plate and dials, then black metal and leatherette, the amber shutter last. The hairlines fade with the veil | W-D011 curve, W-D016 noise |
 | W-D012 sequence | from about 1,200 | Brackets close, shutter, flash, eject with roller tracks; print 1 develops and is handed back | W-D012 unchanged, offset by the camera develop |
 
 - **Totals:** print 1 is readable at about T0 + 3,004 ms, which is GL-ready + 3,204 ms. It is handed back by about
@@ -121,9 +122,9 @@ arrivals and Back land on the end state. The CTA and the strip stay live DOM thr
 
 **Tiers** (A1):
 - **Full, first visit:** the full sequence.
-- **Lite:** a short crossfade from the drawing to the finished camera. The finished-camera poster must not become the
+- **Lite:** a `heroDrawingFade` (400 ms) crossfade from the drawing to the finished camera. The finished-camera poster must not become the
   LCP element: the LCP stays the h1, or print 1's still on touch.
-- **Static, no-WebGL and reduced motion:** the finished camera's end state at once, with no drawing animation.
+- **Static, no-WebGL, reduced motion and repeat arrivals:** the finished camera from first paint.
 
 **Lines** (the W-D019 names are kept, so m2 swaps in unchanged):
 - At runtime, three's core `EdgesGeometry` (about 30°) on LOD0 creases is acceptable (A1). It uses a node allowlist:
@@ -132,8 +133,8 @@ arrivals and Back land on the end state. The CTA and the strip stay live DOM thr
   about 120 strokes in two weights.
 - Curved contours have no creases, so the body's tone carries them.
 - Before curation the m1 model gives 5,127 segments, 25.9 kB gz (V, fx-sketch3d-critic `edges.mjs`).
-- A build-time asset (`camera_xt_lines.bin`, or the SVG drawing in `public/posters/wire/`) is W-C13's on request.
-  Re-bake after m2.
+- A build-time asset (`camera_xt_lines.bin`, `public/models/`) is W-C13's on request. The drawing poster is W-S1's,
+  then W-C14's. Re-bake after m2.
 
 **Hidden lines.** The undeveloped body writes depth (polygonOffset while lines show), so back lines hide without a
 prepass; the SVG poster raycasts its strokes against LOD0 at build. Lines are core LineSegments hairlines; fat lines
@@ -141,8 +142,7 @@ prepass; the SVG poster raycasts its strokes against LOD0 at build. Lines are co
 (r186 tone-maps after `opaque_fragment`, V).
 
 **Posters and text.**
-- The drawing poster and the end-state posters (`public/posters/camera/`) are chosen by CSS keyed on `html[data-motion]`
-  and the head script's `data-hero`, with no page script (W-D015).
+- CSS picks the drawing or finished-camera poster (both in `public/posters/camera/`) from `data-cam`.
 - Alt text comes from content (W-D005). No copy or alt text implies that the owner drew the drawing.
 
 **Boot and draws.** The patch ships in the GL chunk (no scene chunk); the 8 patched programs compile in parallel with
@@ -162,7 +162,7 @@ the coated lenses against a photograph, and an iridescence assert in `rig.test.m
 | W-D012, W-D011 | The drawing develops into the camera before the hero sequence (D-024). The door story is cut (D-023) | W-S1 #13, W-C14 #19, W-C3 #18 |
 | W-D019 | Addendum: a lines asset on request; iridescence on `cam_glass` | W-C13 #16 |
 | Ownership | Camera patch: W-S1, then W-C14 on m2; the shader final is W-C2's. The enlarger and safelight are cut with the door | as listed |
-| Not changed | W-D013 (FOV 28), W-D014, W-D002, W-D031. Issue #31 lands first | n/a |
+| Not changed | W-D013's FOV 28, W-D014, W-D002, W-D031. Issue #31 lands first | n/a |
 
 ## 6. Budget ledger
 
@@ -185,8 +185,8 @@ section 9's order if over. Sheet-8: +0.1 to 0.3 ms on an iGPU (E), gated as a re
 
 ## 7. Dependencies
 
-None at runtime beyond three core and three/addons; no rejected library returns (curtains.js, @vfx-js/core,
-three-mesh-bvh, three-edge-projection and LYGIA were rejected in research, with sizes and licences there). Build:
+None at runtime beyond three core and three/addons; the libraries rejected in research stay out (sizes and licences
+there). Build:
 @gltf-transform/extensions and sharp. Optional dev tools (vite-plugin-glsl 1.6.1, spectorjs 0.9.33) need a `deps.md`
 entry first. CI compiles the patched programs in headless Chromium and asserts that every `replace()` matched.
 
@@ -196,8 +196,8 @@ entry first. CI compiles the patched programs in headless Chromium and asserts t
    show tracks on the veil; handback ≤ 2/255; at d 0.7 black ≤ 25% veil and tones 0.03, 0.10, 0.30 distinct; no
    crawl at DPR 1 to 2 tilted 1.5°; grain unchanged frame to frame once formed; flash and sheet-8 x30 pass; Effects
    ≤ 10 kB measured.
-2. **Hero drawing-to-camera** (W-S1 #13, then W-C14 #19 on m2). Accept: every A1 line; one session-first sequence
-   under 5,000 ms with print 1 readable within 3,300 ms of GL-ready; FOV 28; no hidden line against Freestyle, no
+2. **Hero drawing-to-camera** (W-S1 #13, then W-C14 #19 on m2). Accept: every A1 and A2 line and section 4's
+   budgets; FOV 28; no hidden line against Freestyle, no
    stipple; ≤ 40 draws; no task over 50 ms; stock camera at d 1; poster parity ≤ 4/255; all tiers in GES-1.
 3. **Loupe and coated glass** (W-C14 #19, W-C13 #16). Accept: ≤ 0.3 ms moving at GES-1 D2 (real radius, 5
    interleaved loads); 0 draws at rest; 1.6 ± 0.05x; never over text; focus shows the AF frame; coating matches a
@@ -229,13 +229,14 @@ The hero's roller tracks and grain go last.
 ## 10. Owner questions from the research
 
 Resolved by the owner on 2026-10-04: story order and the hand sketch (D-024), loupe grain and the boil (D-026), the
-moodboard (D-025). The 4.7 s question is replaced by the hero budgets in section 4, and the game's camera simply keeps
-its FlatToon look. **Still open:** halation on UI screenshots, band-pass or none? The default is band-pass in
+moodboard (D-025). The 4.7 s question gives way to section 4's budgets; the game's camera keeps its FlatToon
+look. **Still open:** halation on UI screenshots, band-pass or none? The default is band-pass in
 non-Standard looks, with `halation: false` per print.
 
 ## Changelog
 
 - **Site revision 1** (2026-10-04): research section 4 moved from the door to the hero, aligned with #13 Amendment
   A1; the enlarger light, door chunk, lift shot and Grand Gallery print cut; grain made calm (D-026); the budget
-  ledger re-summed; owner questions marked resolved.
+  ledger re-summed; owner questions marked resolved. D-024 overrides two research critic findings: fx-teardown
+  taste cut[2] ("T1 in the hero") and fx-sketch3d keep[0] ("the dark door section, not the hero").
 - **Research revision 3:** see `portfolio-evidence/research-fx/PLAYBOOK.md`.

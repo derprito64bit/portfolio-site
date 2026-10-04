@@ -3,7 +3,8 @@
 > Picked by the owner on 2026-10-02 after the Wave 1a tournament (judges: Darkroom 7.85 / 8.20 / 7.75; 2 of 3
 > first places; all three named its signature unprompted). This is the creative director's direction document,
 > followed by the grafts and must-fix items the build has to honour. Reference mock: `darkroom/index.html` (open it
-> in a browser); frames: `darkroom/frames/`.
+> in a browser); frames: `darkroom/frames/`. (D-023: the mock's highlighted "Enter the Manor" nav item and its
+> `#manor` door section are retired; do not build from them.)
 >
 > **(D-023 to D-026, 2026-10-04.)** The site is a standalone portfolio of all the owner's work, and the game is one
 > project in it. The handoff, the door section and the ink drip are cut. The site opens with the X-T5 drawing developing
@@ -11,15 +12,16 @@
 
 # Direction C: Darkroom (cd-c)
 
-**North star v1.1.** Placeholders marked. No AI images. Free tools only. Em-dash free.
+**North star v1.2 (D-023).** Placeholders marked. No AI images. Free tools only. Em-dash free.
 
 ## One idea
-The page is a backlit **light table**. Every project is an **instant print** that **develops** when it reaches you. The Manor's gold `[ ]` around the name are the camera's **viewfinder**. (D-023) The same camera and amber also appear in the owner's game, because it is the same maker's work; the game is one project here, not a room the site leads into. Camera is the hero object, not a gate: all content is plain DOM links under the GL layer.
+The page is a backlit **light table**. Every project is an **instant print** that **develops** when it reaches you. The owner's amber `[ ]` (D-002) around the name are the camera's **viewfinder**. (D-023) The game is one project here, not a room the site leads into. Camera is the hero object, not a gate: all content is plain DOM links under the GL layer.
 
 ## 3D signature (heavy, real three.js)
 - **Camera:** X-T5 silhouette, silver top plate, EVF hump, knurled dials, lens with aperture and focus rings, amber shutter, an amber film-look dial on the front. Ejects a print from a top slot. Tilts to the pointer and scroll (springs). Mock is procedural; real site ships one Blender GLB (target 250 kB or less, meshopt). Own look names, no Fujifilm marks.
 - **Print:** one card mesh, one shader. Undeveloped teal, then the image surfaces in blotches (light first), silver before dye, per-channel emulsion warp that decays, edge burn, calm grain that forms once and is gone at d = 1 (D-026). Four film looks graded in-shader per project: Classic, Vivid, Mono, Soft.
-- **Opening (D-024; replaces the handoff, D-023):** at first paint the X-T5 is a line drawing on an undeveloped print. It develops into the real camera, which ejects print 1 (`fx-playbook.md` section 4). The game's Camera Room reuses the GLB, the develop shader (HLSL port), the prints, the amber and the spring table.
+- **Opening (D-024; replaces the handoff, D-023):** at first paint the X-T5 is a line drawing on an undeveloped print. It develops into the real camera, which ejects print 1 (`fx-playbook.md` section 4).
+- **Shared marks (D-023):** the site and the owner's game are the same maker's work, so they share the `[ ]`, the amber and the spring table. The game's Camera Room reuses the GLB, the develop shader (HLSL port) and the prints.
 
 ## 2D system and beats
 1. **Identity (10 s):** name in brackets, one placeholder line, one CTA, the X-T5 drawing developing into the camera, which ejects print 1 (D-024). Hero text elements: 3.
@@ -59,7 +61,7 @@ First cut: AF cursor, then pointer and scroll turn, pencil boxes, film dial. (D-
 - Amber replaces the Manor's gold: owner to confirm.
 
 ## Evidence
-Mock: `cd-c\index.html` (serve over http if your browser blocks file: modules). Params: `?hero=0..1`, `?eject=0..1`, `?dev=0..1`, `?door=0..1`, `?tier=full|lite|still|static`. Natural-run states measured: eject at 1.5 s, flight 2.5 s, landed 3.5 s (dev 0.17), 6 s dev 0.81, 11.5 s dev 1.0. No console errors or page errors. Phone width: no horizontal overflow (390 of 390).
+Mock: `cd-c\index.html` (serve over http if your browser blocks file: modules). Params: `?hero=0..1`, `?eject=0..1`, `?dev=0..1`, `?door=0..1` (the retired door section, D-023), `?tier=full|lite|still|static`. Natural-run states measured: eject at 1.5 s, flight 2.5 s, landed 3.5 s (dev 0.17), 6 s dev 0.81, 11.5 s dev 1.0. No console errors or page errors. Phone width: no horizontal overflow (390 of 390).
 
 ## Grafts the owner accepted (D-001)
 

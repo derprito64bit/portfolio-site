@@ -1,10 +1,12 @@
 # portfolio-site
 
-The source of the 2D front door of **https://derprito64bit.github.io/**, derprito64bit's portfolio.
+The source of derprito64bit's portfolio at **https://derprito64bit.github.io/**: one portfolio of all the owner's
+work, fast on any hardware (D-023).
 
-The front door is fast, works on any hardware, and tells the whole story. The walkable 3D Manor is the second
-door, and it lives in the fork [`derprito64bit/derprito64bit.github.io`](https://github.com/derprito64bit/derprito64bit.github.io).
-There is no site code yet: the framework is locked in Wave 2 (see [`docs/agents/decisions.md`](docs/agents/decisions.md)).
+One of its projects, the owner's Unity game (the Manor), is served at `/manor/` from
+[`derprito64bit/derprito64bit.github.io`](https://github.com/derprito64bit/derprito64bit.github.io). On this site it is
+one project with its own page. The plan and the locked decisions are in [`docs/direction/`](docs/direction/) and
+[`docs/agents/decisions.md`](docs/agents/decisions.md).
 
 ## One domain, two repos
 
@@ -20,7 +22,7 @@ off for this repo**, so the site exists at one address only.
 
 ## Content is placeholder until the owner confirms it
 
-[`content/`](content/) is the source of truth for both doors. The fork copies it into the Manor.
+[`content/`](content/) is the one source of truth for the site and the game. The Manor repo copies it into the game.
 
 - Every entry carries `"placeholder": true` until the owner confirms it.
 - [`content/owner-facts.md`](content/owner-facts.md) is the only source of facts about the owner. Nothing else
