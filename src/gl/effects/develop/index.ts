@@ -199,7 +199,7 @@ void main() {
   if (inWin > 0.5) {
     float lum = dot(img, vec3(0.2126, 0.7152, 0.0722));
     // Light first, from the eject edge (the top of the window leaves the camera first), in blotches.
-    float delay = 0.17 * (1.0 - wuv.y) + 0.17 * nz.r + 0.12 * (1.0 - lum);
+    float delay = 0.13 * (1.0 - wuv.y) + 0.12 * nz.r + 0.07 * (1.0 - lum); // at most 0.32: every pixel is past 0.57 at d 0.7 (readable)
     float pr = clamp((d - delay) / (1.0 - delay), 0.0, 1.0);
     pr = pr * pr * (3.0 - 2.0 * pr);
     // Silver before dye; dye B, then G, then R.
@@ -207,7 +207,7 @@ void main() {
     vec3 c = mix(vec3(lum), img, dye);
     c = mix(UNDEV, c, smoothstep(0.0, 0.5, pr));
     // The cyan veil clears last.
-    c = mix(c, VEIL, (1.0 - smoothstep(0.3, 1.0, pr)) * 0.62);
+    c = mix(c, VEIL, (1.0 - smoothstep(0.12, 0.8, pr)) * 0.6);
     // Grain boils at 12 fps and is exactly 0 at d = 1.
     float g = texture2D(uNoise, cuv * vec2(2.3, 3.7) + vec2(floor(uTime * 12.0) * 0.1373, floor(uTime * 12.0) * 0.0791)).g - 0.5;
     c += g * 0.08 * (1.0 - d);

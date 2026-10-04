@@ -568,8 +568,9 @@ class HeroCamera implements CameraController {
     const f = springAt('settle', 0, 1, (rel - flightStart) / 1000);
     const a = this.ejectPose(RISE);
     const b = fl.landing;
-    // A short arc: up and toward the viewer first (out of the slot), then down onto the table.
-    const ctrl = a.pos.clone().lerp(b.pos, 0.3).add(new Vector3(0, 0.012, 0.03));
+    // An arc over the top of the camera: across first (out of the slot, toward the landing side), then down onto the
+    // table, so the print never sweeps across the lens on its way.
+    const ctrl = new Vector3(MathUtils.lerp(a.pos.x, b.pos.x, 0.8), Math.max(a.pos.y, b.pos.y) + 0.006, MathUtils.lerp(a.pos.z, b.pos.z, 0.45));
     const t = clamp01(f);
     const pos = a.pos.clone().multiplyScalar((1 - t) * (1 - t)).addScaledVector(ctrl, 2 * (1 - t) * t).addScaledVector(b.pos, t * t);
     // Past the target (the settle spring's 1.1 % overshoot) it keeps going along the end tangent.

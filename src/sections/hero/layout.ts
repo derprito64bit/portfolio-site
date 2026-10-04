@@ -12,7 +12,7 @@
 // - no text box over a GL rect at rest (the strip never touches the camera or the print);
 // - the LCP element stays the h1 on mouse profiles (the camera poster is kept below 85% of the h1's area) and the h1
 //   or print 1's still on touch (the poster stays below 85% of the print's area).
-export function heroLayout(hero: HTMLElement): void {
+export function heroLayout(hero: HTMLElement, nudge = false): void {
   const doc = hero.ownerDocument;
   const win = doc.defaultView as Window;
   const row = hero.querySelector('.hero-row') as HTMLElement | null;
@@ -104,7 +104,11 @@ export function heroLayout(hero: HTMLElement): void {
   const fxLeft = Math.max(0, Math.min(cam.x, pr.x) - 16);
   const fxBottom = Math.max(cam.y + cam.h, pr.y + pr.h) + 16;
   const s = hero.style;
-  const px = (k: string, v: number) => s.setProperty(k, r(v) + 'px');
+  // A re-layout can move a slot without resizing it, which the stage's ResizeObserver cannot see. A nudge of
+  // 0.01 px, alternating between runs, makes every slot report a resize, so the stage re-measures them all.
+  const eps = nudge && !hero.hasAttribute('data-nudge') ? 0.01 : 0;
+  if (nudge) hero.toggleAttribute('data-nudge');
+  const px = (k: string, v: number) => s.setProperty(k, r(v) + (k.endsWith('-w') ? eps : 0) + 'px');
   px('--row-h', rowH);
   px('--cam-x', cam.x);
   px('--cam-y', cam.y);

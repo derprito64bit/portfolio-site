@@ -30,7 +30,7 @@ function layout(force = false): void {
   // A height-only change on a touch screen is the toolbar: slots stay put (W-D013).
   if (!force && w === lastW && matchMedia('(pointer: coarse)').matches) return;
   lastW = w;
-  heroLayout(hero);
+  heroLayout(hero, true);
   stage()?.invalidate();
 }
 
