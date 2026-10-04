@@ -1,0 +1,134 @@
+// Shared helpers for W-S1's acceptance checks (issue #13). Built on the harness (tests/harness/lib.mjs, GES-1).
+// The site must be built first (npm run build); every check serves dist/ itself.
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { dirname } from 'node:path';
+import * as H from '../harness/lib.mjs';
+import { durations, heroTimeline } from '../../src/lib/tokens.js';
+
+export { H };
+
+/**
+ * The harness's waits, each a count of the tokens it waits on (A2: no literal duration in tests/w-s1). They are
+ * patience and settling, not acceptance numbers: a check that waits longer only takes longer.
+ */
+export const WAIT = {
+  /** The stage's idle detach: a page with nothing moving has gone to sleep after it (W-D012 'sleeps 1 s later'). */
+  settle: durations.idleDetach,
+  /** A beat: two poster fades, long enough for the page to paint what a step changed. */
+  beat: 2 * durations.posterFade,
+  /** One press on GL, whole: the sequence to developed, the handback, and the loop asleep. */
+  press: heroTimeline.developed + durations.glHandback + durations.idleDetach,
+  /** A press on static or reduced motion: its fade swap, twice over. */
+  fade: 2 * durations.reduced,
+  /** Patience before a wait is called failed: five hero budgets. */
+  patience: 5 * heroTimeline.budgetAfterGlReady,
+};
+export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/** GES-1 profiles plus the extra sizes the brief names (landscape phone, 960 x 900, 1180 x 820, 600 x 900), and more
+ *  landscape phones for line 3's landscape ruling (the round-4 review: more than one sample of the class). L667 and
+ *  L932 are acceptance rows; L568, L740 and L915 are probe sizes only (the manager's round-4 probe), not acceptance. */
+export const EXTRA = {
+  L844: { viewport: { width: 844, height: 390 }, deviceScaleFactor: 3, hasTouch: true, isMobile: true, input: 'touch', browser: 'chromium' },
+  L667: { viewport: { width: 667, height: 375 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true, input: 'touch', browser: 'chromium' },
+  L932: { viewport: { width: 932, height: 430 }, deviceScaleFactor: 3, hasTouch: true, isMobile: true, input: 'touch', browser: 'chromium' },
+  L568: { viewport: { width: 568, height: 320 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true, input: 'touch', browser: 'chromium' },
+  L740: { viewport: { width: 740, height: 360 }, deviceScaleFactor: 3, hasTouch: true, isMobile: true, input: 'touch', browser: 'chromium' },
+  L915: { viewport: { width: 915, height: 412 }, deviceScaleFactor: 2.625, hasTouch: true, isMobile: true, input: 'touch', browser: 'chromium' },
+  W960: { viewport: { width: 960, height: 900 }, deviceScaleFactor: 1, hasTouch: false, isMobile: false, input: 'mouse', browser: 'chromium' },
+  X1180: { viewport: { width: 1180, height: 820 }, deviceScaleFactor: 2, hasTouch: true, isMobile: false, input: 'touch', browser: 'chromium' },
+  X600: { viewport: { width: 600, height: 900 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true, input: 'touch', browser: 'chromium' },
+};
+export const profile = (name) => H.PROFILES[name] ?? EXTRA[name];
+
+/** A context for a GES-1 profile or one of the extras, in a mode (auto, reduced, static is a query). */
+export async function context(name, mode = 'auto', extra = {}) {
+  if (H.PROFILES[name]) return H.newContext(name, mode, extra);
+  const p = EXTRA[name];
+  const b = await H.browser(p.browser);
+  return b.newContext({
+    viewport: p.viewport,
+    deviceScaleFactor: p.deviceScaleFactor,
+    hasTouch: p.hasTouch,
+    isMobile: p.isMobile,
+    reducedMotion: mode === 'reduced' ? 'reduce' : 'no-preference',
+    colorScheme: extra.colorScheme ?? 'light',
+    serviceWorkers: 'block',
+    ...extra.context,
+  });
+}
+
+/** Open the home page; `mode` static adds ?tier=static; `route` ({ match, handler }) is installed before the visit.
+ *  Returns { page, ctx, gate } with the console gate attached. */
+export async function open(base, name, mode = 'auto', { query = '', colorScheme, init, route } = {}) {
+  const ctx = await context(name, mode, { colorScheme });
+  const page = await ctx.newPage();
+  const gate = H.consoleGate(page);
+  if (init) await page.addInitScript(init);
+  if (route) await page.route(route.match, route.handler);
+  const q = new URLSearchParams(query);
+  if (mode === 'static') q.set('tier', 'static');
+  const s = q.toString();
+  await page.goto(`${base}/${s ? `?${s}` : ''}`, { waitUntil: 'load' });
+  return { page, ctx, gate };
+}
+
+/** Wait until the hero is at rest: the intro (if any) handed back and the stage settled. */
+export async function heroAtRest(page, timeout = WAIT.patience) {
+  await page.waitForFunction(() => {
+    const h = document.documentElement.dataset.hero;
+    const cam = window.__hero;
+    return h !== 'eject' && (!cam || !cam.flying) && window.__stage?.settled === true;
+  }, null, { timeout, polling: 'raf' });
+}
+
+export function rectsIntersect(a, b) {
+  return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+}
+
+export function writeJson(path, data) {
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, `${JSON.stringify(data, null, 2)}\n`);
+  return path;
+}
+
+export const median = (xs) => {
+  const s = [...xs].sort((a, b) => a - b);
+  return s.length ? s[Math.floor(s.length / 2)] : null;
+};
+
+/** The hero's geometry at rest, in viewport CSS px. */
+export async function heroRects(page) {
+  return page.evaluate(() => {
+    const r = (el) => {
+      if (!el) return null;
+      const b = el.getBoundingClientRect();
+      return { x: b.x, y: b.y, w: b.width, h: b.height };
+    };
+    const q = (s) => document.querySelector(s);
+    const hero = q('[data-hero-section]');
+    const cs = getComputedStyle(hero);
+    const band = hero.dataset.band;
+    const printEl = q('[data-hero-print]');
+    return {
+      vw: document.documentElement.clientWidth,
+      vh: innerHeight,
+      band,
+      arrangement: hero.dataset.arrangement,
+      contentW: q('.hero-row').clientWidth,
+      h1: r(q('h1')),
+      line: r(q('.hero-line')),
+      cta: r(q('.hero-cta a')),
+      camera: r(q('[data-hero-camera]')),
+      print: r(printEl),
+      // Print 1's laid-out box, before its tilt (line 3's size rules use it, not the tilted bounding box).
+      printLayoutW: printEl.offsetWidth,
+      printLayoutH: printEl.offsetHeight,
+      wide: matchMedia('(min-width: 64rem)').matches,
+      strip: r(q('[data-camera-strip]')),
+      lens: { x: parseFloat(cs.getPropertyValue(`--mk-${band}-lens-x`)), y: parseFloat(cs.getPropertyValue(`--mk-${band}-lens-y`)) },
+      tier: document.documentElement.dataset.tier,
+      hero: document.documentElement.dataset.hero,
+    };
+  });
+}

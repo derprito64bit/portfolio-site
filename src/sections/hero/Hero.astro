@@ -1,19 +1,185 @@
 ---
-// STUB by W-F (Wave 3a). Owner: W-S1, then W-C14. The fitted wordmark, the line, the CTA, the camera stage and
-// its strip land here (W-D009, W-D012). Keep the h1 as the first heading on the page.
+// The first screen (W-S1, beat 1): the fitted [derprito64bit] wordmark, one line, one CTA, the real camera with its
+// strip, and print 1. Owner: W-S1, then W-C14.
+// - FCP paints the h1, the line, 'See the work', the strip and the baked camera poster as static DOM (W-D012, W-D029).
+// - The stage (camera, print 1, the effects slot, the strip) is laid out before first paint by an inline run of
+//   layout.ts, so nothing shifts; hero.ts re-runs it on width, font and text-spacing changes.
+// - The head script decides before the camera and print are parsed (W-D012, #13 A2):
+//   data-cam='drawing' (motion full, tier full or lite, no 'ion.hero' in the session, no hash, not a Back or Forward
+//   arrival): the camera slot shows the X-T5 line drawing on the undeveloped ground (drawing-<band>.svg, picked by
+//   media queries); otherwise data-cam='camera' and the finished-camera poster from first paint. With JS off there
+//   is no data-cam and CSS shows the finished camera (the noscript poster).
+//   data-hero='eject' only with the drawing, a fine hovering pointer, WebGL2, the full tier and no Save-Data:
+//   print 1 waits for the eject; otherwise it is a developed still from first paint.
+// - GL arrives later through whenGL(): src/gl/camera draws the X-T5 in its stage-local view, develops it out of the
+//   drawing on the full tier's first visit, and runs the timeline. Lite crossfades the drawing to the poster.
 import Wordmark from '../../components/wordmark/Wordmark.astro';
+import CameraStrip from '../../components/camera-strip/CameraStrip.astro';
 import Text from '../../layouts/Text.astro';
 import { content } from '../../lib/content/index.ts';
+import stillsManifest from '../../lib/content/stills.json';
+import posters from '../../../public/posters/camera/posters.json';
+import rig from '../../../assets-src/3d/camera_xt/rig.json';
+import { POSTER_CAP, heroLayout, heroPoster } from './layout.ts';
+import { CARD, svgDataUri, testStripSvg } from './still.ts';
+import drawings from '../../../public/posters/camera/drawing.json';
+import { bandMarks, type Framing, type Rig } from './framing.ts';
+import { cameraData } from '../../gl/camera/data.ts';
+import { heroTimeline } from '../../lib/tokens.js';
+
+type Band = 'split' | 'stacked' | 'phone';
+interface PosterFile { w: number; h: number; avif: string; webp: string }
+const BASE = '/posters/camera/';
+const bands = posters.bands as unknown as Record<Band, Framing & { posters: { lod0: PosterFile[]; lod1: PosterFile[] } }>;
+
+// Poster sets (stage.js posterSet): per band [LOD0, LOD1], each [file prefix, widths ascending]; a file is the prefix,
+// its width and .avif or .webp. heroPoster() (layout.ts) picks the file of the LOD GL will draw, at the size GL will
+// draw it, right after the poster is parsed. Prefixes and widths only: the full names cost the document about 600 B
+// gzip, which pushed it past the first congestion window (14,600 B), a round trip later for the LCP. A file that
+// posters.json names any other way stops the build here.
+const setOf = (files: PosterFile[]) => {
+  const sorted = [...files].sort((a, b) => a.w - b.w);
+  const prefix = sorted[0].webp.slice(0, sorted[0].webp.lastIndexOf(String(sorted[0].w)));
+  for (const f of sorted) if (f.avif !== `${prefix}${f.w}.avif` || f.webp !== `${prefix}${f.w}.webp`) throw new Error(`Hero: poster ${f.webp} is not ${prefix}${f.w}.webp`);
+  return [prefix, sorted.map((f) => f.w)];
+};
+const posterSets = JSON.stringify(Object.fromEntries((['split', 'stacked', 'phone'] as Band[]).map((b) => [b, [setOf(bands[b].posters.lod0), setOf(bands[b].posters.lod1)]])));
+const fallback = bands.stacked.posters.lod1.find((f) => f.w === 600) ?? bands.stacked.posters.lod1[0];
+// The two stringified functions go into the page without their indentation (neither holds a multi-line string).
+const inline = (fn: (...args: never[]) => void) => fn.toString().replace(/\n\s+/g, '\n');
+const posterScript = `(${inline(heroPoster)})(document.currentScript.closest('.hero'));`;
+
+// Rig markers projected into each band's poster: the flash centre (lens) and the drag hit areas (Look dial, lens).
+const nodes = (rig as unknown as { lods: { lod0: { nodes: Record<string, { translation: [number, number, number] }> } } }).lods.lod0.nodes;
+const markers: Rig = {
+  lens_mount: nodes.lens_mount.translation,
+  dial_look: nodes.dial_look.translation,
+  print_exit: nodes.print_exit.translation,
+  shutter_button: nodes.shutter_button.translation,
+};
+const marks = Object.fromEntries((['split', 'stacked', 'phone'] as Band[]).map((b) => [b, bandMarks(bands[b], markers)]));
+const markVars = (['split', 'stacked', 'phone'] as Band[])
+  .flatMap((b) => [
+    `--mk-${b}-lens-x:${marks[b].lens.x}`, `--mk-${b}-lens-y:${marks[b].lens.y}`,
+    `--mk-${b}-look-x:${marks[b].look.x}`, `--mk-${b}-look-y:${marks[b].look.y}`,
+  ])
+  .join(';');
+
+// Print 1: the first featured project (W-D005). Its still is the built image, else the placeholder test strip.
+const print1 = content.featured[0];
+const stills = (stillsManifest as { stills: { slug: string; kind: string; src: string; avif: string; webp: string; width: number; height: number }[] }).stills;
+const realStill = stills.find((s) => s.slug === print1.slug && s.kind === 'large' && s.src === print1.cover);
+const stripUri = svgDataUri(testStripSvg({ slug: print1.slug, tint: print1.tint, frame: print1.frame }));
+// The next prints the shutter makes: the following featured projects, as data the client reads (hero.ts draws their
+// test strips on demand, from the same still.ts).
+const queue = content.featured.slice(1).map((p) => ({ slug: p.slug, frame: p.frame, look: p.look, name: p.linkName, tint: p.tint }));
+// The first-paint drawing per band (drawing.json), chosen by the same media queries as the layout's bands.
+const draw = drawings.bands as Record<Band, { file: string; viewBox: number[] }>;
+const SPLIT_MQ = '(min-width: 64rem), (orientation: landscape) and (max-height: 500px)';
+const PHONE_MQ = '(max-width: 479px)';
+
+// The pre-paint layout run: layout.ts serialised, called on this section. Until hero.ts takes over, a ResizeObserver
+// on the row runs it again in the same frame when the row's width changes: a classic scrollbar appears once the rest
+// of the page has parsed and narrows the row by its width; re-laid out from the resize event instead, a frame later,
+// that would be a layout shift. Where scrollbars take room, the page keeps their gutter from the start (CSS below).
+const layoutScript = `(function(h,L,C){var d=document.documentElement,p=document.createElement('div');p.style.cssText='position:absolute;top:-200px;width:100px;height:100px;overflow:scroll;visibility:hidden';d.appendChild(p);if(p.offsetWidth-p.clientWidth>0)d.setAttribute('data-hero-gutter','');p.remove();L(h,!1,C);var r=h.querySelector('.hero-row');if(!r||!window.ResizeObserver)return;var w=r.clientWidth;h.__heroRo=new ResizeObserver(function(){if(r.clientWidth!==w){w=r.clientWidth;L(h,!1,C)}});h.__heroRo.observe(r)})(document.currentScript.closest('.hero'),${inline(heroLayout)},${POSTER_CAP});`;
+// data-cam and data-hero (W-D012, #13 A2): no fetch, under 0.8 kB (tests/w-s1 measures it). A storage error counts
+// as unset. A runtime that never arrives still reveals print 1 (heroTimeline.revealSafetyAfterHead after the script runs).
+const heroHead = `(function(h,c){var s=null,n,t=h.dataset.tier;try{s=sessionStorage.getItem('ion.hero')}catch(e){}try{n=performance.getEntriesByType('navigation')[0]}catch(e){}var d=h.dataset.motion==='full'&&(t==='full'||t==='lite')&&!s&&!location.hash&&!(n&&n.type==='back_forward');h.dataset.cam=d?'drawing':'camera';if(d&&t==='full'&&matchMedia('(pointer: fine) and (hover: hover)').matches&&window.WebGL2RenderingContext&&!(c&&c.saveData)){h.dataset.hero='eject';setTimeout(function(){if(h.dataset.hero==='eject'&&!h.dataset.heroRun)h.dataset.hero='done'},${heroTimeline.revealSafetyAfterHead})}else h.dataset.hero='still'})(document.documentElement,navigator.connection)`;
 ---
-<section class="hero wrap" data-ground aria-labelledby="hero-title">
+<section
+  class="hero wrap"
+  data-ground
+  aria-labelledby="hero-title"
+  data-hero-section
+  data-aspect-split={bands.split.aspect}
+  data-aspect-stacked={bands.stacked.aspect}
+  data-aspect-phone={bands.phone.aspect}
+  data-posters={posterSets}
+  data-poster-base={BASE}
+  style={markVars}
+>
+  <script is:inline set:html={heroHead}></script>
   <Wordmark id="hero-title" />
-  <p class="hero-line"><Text value={content.profile.line} /></p>
-  <p class="hero-cta"><a href="#work">See the work</a></p>
+  <div class="hero-row">
+    <div class="hero-copy">
+      <p class="hero-line"><Text value={content.profile.line} /></p>
+      <p class="hero-cta"><a href="#work">See the work</a></p>
+    </div>
+    <script is:inline set:html={layoutScript}></script>
+    <div class="hero-camera" data-gl="object" data-gl-id="camera" data-hero-camera>
+      <picture>
+        <source class="hero-poster-avif" type="image/avif" srcset={BASE + fallback.avif} media="not all" />
+        <img class="hero-poster" data-poster width={fallback.w} height={fallback.h} alt="" fetchpriority="high" decoding="async" />
+      </picture>
+      <script is:inline set:html={posterScript}></script>
+      <noscript><img class="hero-poster-noscript" src={BASE + fallback.webp} width={fallback.w} height={fallback.h} alt="" /></noscript>
+      <div class="hero-drawing" data-hero-drawing aria-hidden="true">
+        <span class="hero-ground"></span>
+        <picture>
+          <source media={SPLIT_MQ} srcset={BASE + draw.split.file} />
+          <source media={PHONE_MQ} srcset={BASE + draw.phone.file} />
+          <img class="hero-lines" src={BASE + draw.stacked.file} width={draw.stacked.viewBox[2]} height={Math.round(draw.stacked.viewBox[3])} alt="" decoding="sync" />
+        </picture>
+      </div>
+      <span class="hero-hit" data-drag="look" aria-hidden="true"></span>
+      <span class="hero-hit" data-drag="lens" aria-hidden="true"></span>
+    </div>
+    <div class="hero-print" data-gl="object" data-gl-id="hero-print" aria-hidden="true" data-hero-print data-slug={print1.slug} data-look={print1.look}>
+      {realStill ? (
+        <picture>
+          <source type="image/avif" srcset={realStill.avif} />
+          <img class="hero-still" data-poster data-lcp="print-1" src={realStill.webp} width={realStill.width} height={realStill.height} alt="" decoding="sync" />
+        </picture>
+      ) : (
+        <img class="hero-still" data-poster data-lcp="print-1" src={stripUri} width={CARD.w * 10} height={CARD.h * 10} alt="" decoding="sync" />
+      )}
+    </div>
+    <div class="hero-fx" data-gl="object" data-gl-id="hero-fx" aria-hidden="true"></div>
+    <CameraStrip look={print1.look} />
+    <div class="hero-flash" aria-hidden="true"></div>
+  </div>
+  <script type="application/json" data-hero-queue set:html={JSON.stringify(queue)}></script>
+  <script type="application/json" data-hero-camera-data set:html={JSON.stringify(cameraData(posters, rig))}></script>
 </section>
+{realStill && <link rel="preload" as="image" href={realStill.avif} type="image/avif" media="(pointer: coarse), (prefers-reduced-motion: reduce)" />}
+
+<script>
+  import './hero.ts';
+</script>
 
 <style>
-  .hero { display: grid; gap: var(--space-5); padding-block: var(--space-6) var(--space-8); }
-  .hero-line { font: 400 var(--type-lede) / 1.35 var(--font-text); max-inline-size: var(--measure-lede); }
+  /* The pre-paint layout measures the row once, mid-parse: with classic scrollbars the bar would appear only when
+     the rest of the page has parsed, narrow the row by its width and move the camera, print 1 and the strip (a
+     layout shift in Lighthouse's desktop runs). Keeping the gutter from the start makes that first width the final
+     one. Only where scrollbars take room (the layout script sets the attribute): a gutter without a bar (hidden
+     scrollbars) leaves the root's clientWidth and the stage's canvas width disagreeing. Requested for every page
+     (W-F, #59). */
+  :global(html[data-hero-gutter]) { scrollbar-gutter: stable; }
+
+  .hero {
+    /* Breathing room above the wordmark on tall screens only: 0 at 640 px, 28 px from about 1100 px. */
+    padding-block: clamp(0px, calc((100svh - 640px) * 0.06), 28px) var(--space-7);
+    /* The undeveloped print ground under the first-paint drawing: the prints' own undeveloped tone (the develop
+       shader's veil over its undeveloped base), so the camera and print 1 come out of the same emulsion. GL reads
+       this value for its own ground (src/gl/camera/drawing.ts), so the hand-over at T0 is pixel-identical. */
+    --hero-ground: #2d4547;
+  }
+  .hero-row {
+    position: relative; /* the stage's coordinate box; no z-index, so it is not a stacking context (W-D013) */
+    /* The wordmark's box is its glyphs (Wordmark.astro), so this is the whole gap under the name. */
+    margin-block-start: clamp(8px, calc((100svh - 600px) * 0.04), 24px);
+  }
+  .hero-copy {
+    display: grid;
+    gap: var(--space-3);
+    justify-items: start;
+  }
+  .hero-line {
+    font: 400 var(--type-lede) / 1.35 var(--font-text);
+    max-inline-size: var(--measure-lede);
+    color: var(--ink-2);
+  }
   .hero-cta a {
     display: inline-flex;
     align-items: center;
@@ -24,5 +190,117 @@ import { content } from '../../lib/content/index.ts';
     font: 600 var(--type-ui) / 1.3 var(--font-text);
     text-decoration: none;
     border-radius: var(--radius-ui);
+    transition: transform var(--spring-press-ms) var(--spring-press);
+  }
+  .hero-cta a:active { transform: scale(0.97); }
+  @media (hover: hover) and (pointer: fine) {
+    .hero-cta a:hover { box-shadow: inset 0 -2px 0 color-mix(in srgb, #13171a 35%, transparent); }
+  }
+  @media (min-width: 64rem), (orientation: landscape) and (max-height: 500px) {
+    .hero-copy { max-inline-size: calc(100% * 5 / 12 - var(--space-3)); }
+  }
+
+  /* ------------------------------------------------------------ the stage, unlaid (no JS): plain flow */
+  .hero-camera {
+    position: relative;
+    margin-block-start: var(--space-5);
+    inline-size: min(100%, 520px);
+    aspect-ratio: 1.35;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .hero-poster {
+    inline-size: 100%;
+    block-size: 100%;
+    object-fit: contain;
+    transition: opacity var(--dur-poster-fade) linear;
+  }
+  .hero-print {
+    position: relative;
+    inline-size: min(50%, 260px);
+    aspect-ratio: 54 / 86;
+    rotate: -1.2deg; /* layout.ts TILT: the LCP cap of a late still counts its rotated box */
+  }
+  /* Global inside the print slot: the shutter adds stills at runtime (hero.ts addStill), and those carry no scope
+     attribute, so a scoped rule would leave them in flow, unsized, under print 1. */
+  .hero-print :global(.hero-still) {
+    position: absolute;
+    inset: 0;
+    inline-size: 100%;
+    block-size: 100%;
+    border-radius: 2px;
+    box-shadow: 0 1px 2px color-mix(in srgb, #13171a 22%, transparent), 0 10px 24px -6px color-mix(in srgb, #13171a 30%, transparent);
+    transition: opacity var(--dur-gl-handback) linear;
+  }
+  /* The stills' visibility while GL holds the slot has one owner: the slot's .is-gl (base.css) hides every still while
+     GL draws the stack, and a still the shutter just made waits here until its GL copy hands back. No still carries an
+     inline opacity, which would beat both rules. */
+  .hero-print :global(.hero-still[data-pending]) { opacity: 0; }
+  .hero-fx { display: none; }
+
+  /* The first-paint drawing (D-024): only while data-cam is 'drawing'; the finished-camera poster waits under it. */
+  .hero-drawing { display: none; position: absolute; inset: 0; pointer-events: none; }
+  :global(html[data-cam='drawing']) .hero-drawing { display: block; }
+  :global(html[data-cam='drawing']) .hero-poster { opacity: 0; }
+  .hero-ground { position: absolute; inset: 0; background: var(--hero-ground); border-radius: 2px; }
+  .hero-lines { position: absolute; inset: 0; inline-size: 100%; block-size: 100%; object-fit: contain; }
+  @media (forced-colors: active) {
+    .hero-ground { forced-color-adjust: none; }
+  }
+  .hero :global(.camera-strip) { margin-block-start: var(--space-4); }
+  .hero-flash {
+    position: fixed;
+    inset: 0;
+    z-index: var(--z-flash);
+    pointer-events: none;
+    opacity: 0;
+    background: radial-gradient(circle at var(--flash-x, 50%) var(--flash-y, 50%), #fff 0, color-mix(in srgb, #fff 70%, transparent) 9%, color-mix(in srgb, #fff 22%, transparent) 30%, transparent 58%);
+  }
+  .hero-hit { display: none; }
+
+  /* ------------------------------------------------------------ the stage, laid out before first paint */
+  .hero[data-laid] .hero-row { block-size: var(--row-h); }
+  .hero[data-laid] .hero-camera,
+  .hero[data-laid] .hero-print,
+  .hero[data-laid] .hero-fx { position: absolute; margin: 0; aspect-ratio: auto; }
+  .hero[data-laid] .hero-camera { inset-inline-start: var(--cam-x); inset-block-start: var(--cam-y); inline-size: var(--cam-w); block-size: var(--cam-h); }
+  .hero[data-laid] .hero-print { inset-inline-start: var(--pr-x); inset-block-start: var(--pr-y); inline-size: var(--pr-w); block-size: var(--pr-h); }
+  .hero[data-laid] .hero-fx { inset-inline-start: var(--fx-x); inset-block-start: var(--fx-y); inline-size: var(--fx-w); block-size: var(--fx-h); }
+  .hero[data-laid][data-fx] .hero-fx { display: block; pointer-events: none; }
+  .hero[data-laid]:not([data-arrangement='flow']) :global(.camera-strip) {
+    position: absolute;
+    inset-inline-start: var(--strip-x);
+    inset-block-start: var(--strip-y);
+    margin: 0;
+  }
+  .hero[data-laid][data-arrangement='flow'] .hero-row { block-size: auto; min-block-size: var(--row-h); }
+  .hero[data-laid][data-arrangement='flow'] :global(.camera-strip) { margin-block-start: calc(var(--row-h) + var(--space-3)); }
+
+  /* Print 1 waits for the eject on the full tier (W-D012); everywhere else it is developed from first paint. */
+  :global(html[data-hero='eject']) .hero-print :global(.hero-still) { opacity: 0; transition: none; }
+  :global(html[data-hero-cut]) .hero-print :global(.hero-still) { transition: none; }
+
+  /* Drag hit areas over the Look dial and the lens ring: fine pointer and full tier only, aria-hidden bonuses. */
+  @media (pointer: fine) and (hover: hover) {
+    :global(html[data-tier='full']:not([data-motion='reduced'])) .hero[data-laid] .hero-hit {
+      display: block;
+      position: absolute;
+      inline-size: 22%;
+      aspect-ratio: 1;
+      translate: -50% -50%;
+      border-radius: 50%;
+      cursor: ew-resize;
+      touch-action: pan-y;
+    }
+  }
+  .hero[data-band='split'] .hero-hit[data-drag='look'] { inset-inline-start: calc(var(--mk-split-look-x) * 100%); inset-block-start: calc(var(--mk-split-look-y) * 100%); inline-size: 14%; }
+  .hero[data-band='split'] .hero-hit[data-drag='lens'] { inset-inline-start: calc(var(--mk-split-lens-x) * 100%); inset-block-start: calc(var(--mk-split-lens-y) * 100%); }
+  .hero[data-band='stacked'] .hero-hit[data-drag='look'] { inset-inline-start: calc(var(--mk-stacked-look-x) * 100%); inset-block-start: calc(var(--mk-stacked-look-y) * 100%); inline-size: 14%; }
+  .hero[data-band='stacked'] .hero-hit[data-drag='lens'] { inset-inline-start: calc(var(--mk-stacked-lens-x) * 100%); inset-block-start: calc(var(--mk-stacked-lens-y) * 100%); }
+  .hero[data-band='phone'] .hero-hit[data-drag='look'] { inset-inline-start: calc(var(--mk-phone-look-x) * 100%); inset-block-start: calc(var(--mk-phone-look-y) * 100%); inline-size: 14%; }
+  .hero[data-band='phone'] .hero-hit[data-drag='lens'] { inset-inline-start: calc(var(--mk-phone-lens-x) * 100%); inset-block-start: calc(var(--mk-phone-lens-y) * 100%); }
+
+  @media (forced-colors: active) {
+    .hero-cta a { border: 1px solid ButtonText; }
   }
 </style>

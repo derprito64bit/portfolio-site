@@ -53,6 +53,9 @@ export const durations = /*#__PURE__*/ Object.freeze({
   "flashMinGap": 1000,
   "eject": 800,
   "hang": 240,
+  "heroDrawingClay": 150,
+  "heroDrawingDevelop": 850,
+  "heroDrawingFade": 400,
   "developHero": 2600,
   "develop": 2400,
   "developSheet": 1600,
@@ -89,8 +92,13 @@ export const heroTimeline = /*#__PURE__*/ Object.freeze({
   "landingDip": 1620,
   "readable": 1804,
   "developed": 3380,
-  "readableAfterGlReady": 2004,
-  "budgetAfterGlReady": 2100
+  "readableAfterGlReady": 3004,
+  "budgetAfterGlReady": 3300,
+  "flashPeak": 370,
+  "rollerTracksEnd": 1300,
+  "lateGlAfterFcp": 2500,
+  "cameraAfterGlReady": 2500,
+  "revealSafetyAfterHead": 6000
 });
 
 export const develop = /*#__PURE__*/ Object.freeze({

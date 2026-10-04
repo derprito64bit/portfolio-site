@@ -1,4 +1,183 @@
 ---
-// STUB by W-F (Wave 3a). Owner: W-S1, then W-C14. The visible top-plate strip, a group named 'Camera': Shutter,
-// Lens and Look as native radio groups, and a mono readout (W-D032). Not mounted yet.
+// The camera's top-plate strip (W-D032): the camera's keyboard, screen-reader and touch control, visible at every band.
+// A group named 'Camera' (its visible label is in the readout): a Shutter button; Lens and Look as native radio
+// groups; a mono readout ('Lens 50 mm', 'Look Standard'). Every target is 44 x 44 px or more and none overlap.
+// Arrows step and taps select (native radios), so keys and taps give identical states; dragging the 3D dials (fine
+// pointer, full tier) only ever sets these same radios. Touching the strip boots GL on lite ([data-gl-boot]).
+// A fixed 344 x 96 block in two rows (src/sections/hero/layout.ts relies on it): Shutter + Lens, Look + readout.
+// Owner: W-S1, then W-C14.
+import { filmLooks } from '../../lib/tokens.js';
+
+interface Props {
+  /** Look id of the print in the landing slot (print 1's look at load). */
+  look?: string;
+}
+const { look = 'standard' } = Astro.props;
+const LENSES = [16, 28, 50, 85, 135];
+const DEFAULT_LENS = 50;
+const name = (id: string) => id.charAt(0).toUpperCase() + id.slice(1);
+const looks = filmLooks.ids.map((id: string) => ({ id, name: name(id) }));
+const current = looks.find((l: { id: string }) => l.id === look) ?? looks[0];
 ---
+<div class="camera-strip" role="group" aria-labelledby="camera-strip-name" data-camera-strip data-gl-boot>
+  <button type="button" class="cs-shutter" data-shutter>
+    <span class="cs-disc" aria-hidden="true"></span><span class="cs-shutter-text">Shutter</span>
+  </button>
+  <fieldset class="cs-group cs-lens">
+    <legend class="sr-only">Lens</legend>
+    {LENSES.map((mm) => (
+      <label class="cs-opt">
+        <input type="radio" name="camera-lens" value={String(mm)} checked={mm === DEFAULT_LENS} />
+        <span class="cs-mark">{mm}<span class="sr-only"> mm</span></span>
+      </label>
+    ))}
+  </fieldset>
+  <fieldset class="cs-group cs-look">
+    <legend class="sr-only">Look</legend>
+    {looks.map((l: { id: string; name: string }) => (
+      <label class="cs-opt">
+        <input type="radio" name="camera-look" value={l.id} checked={l.id === current.id} />
+        <span class="cs-mark"><span class="cs-chip" data-look={l.id} aria-hidden="true"></span><span class="sr-only">{l.name}</span></span>
+      </label>
+    ))}
+  </fieldset>
+  <p class="cs-readout">
+    <span class="cs-name" id="camera-strip-name">Camera</span>
+    <span data-readout="lens">Lens {DEFAULT_LENS} mm</span>
+    <span data-readout="look">Look {current.name}</span>
+  </p>
+</div>
+
+<style>
+  /* 344 x 96 in two rows wherever 344 px fit; narrower (320 px reflow, 200% zoom) the groups and their options wrap. */
+  .camera-strip {
+    display: flex;
+    flex-wrap: wrap;
+    column-gap: 12px;
+    row-gap: 8px;
+    inline-size: min(344px, 100%);
+    --cs-plate: var(--table-lit);
+    color: var(--ink);
+    font: 500 var(--type-ui) / 1.2 var(--font-text);
+  }
+  .cs-group {
+    display: flex;
+    flex-wrap: wrap;
+    max-inline-size: 100%;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    min-inline-size: 0;
+  }
+
+  /* The plate: each group sits on a machined strip of the table-lit tone with a hairline edge. */
+  .cs-group, .cs-shutter, .cs-readout {
+    background: var(--cs-plate);
+    border-radius: 4px;
+    box-shadow: inset 0 0 0 1px var(--rule), inset 0 1px 0 color-mix(in srgb, white 55%, transparent);
+  }
+
+  /* Options: the native radio is the 44 x 44 target and carries the focus ring. Its mark paints on top but takes no
+     pointer events, so the radio stays the hit target while the mark's text sits over a known plate for contrast
+     tools. The radio's 2 px radius keeps the ring's corners tight: square enough that >= 90 % of the band around a
+     44 px target changes. */
+  .cs-opt {
+    position: relative;
+    display: grid;
+    place-items: center;
+    inline-size: 44px;
+    block-size: 44px;
+    flex: none;
+    cursor: pointer;
+  }
+  .cs-opt input {
+    appearance: none;
+    position: absolute;
+    inset: 0;
+    margin: 0;
+    border-radius: 2px;
+    cursor: pointer;
+    background: transparent;
+  }
+  .cs-mark {
+    position: relative;
+    display: grid;
+    place-items: center;
+    min-inline-size: 30px;
+    block-size: 28px;
+    padding-inline: 2px;
+    border-radius: 3px;
+    color: var(--ink-2);
+    font: 500 0.8125rem / 1 var(--font-edge);
+    letter-spacing: 0.01em;
+    pointer-events: none;
+    transition: background-color var(--dur-list-toggle) var(--ease-out), color var(--dur-list-toggle) var(--ease-out), transform var(--spring-press-ms) var(--spring-press);
+  }
+  .cs-opt input:checked + .cs-mark { background: var(--ink); color: var(--table); }
+  @media (hover: hover) and (pointer: fine) {
+    .cs-opt input:not(:checked):hover + .cs-mark { color: var(--ink); background: color-mix(in srgb, var(--ink) 8%, transparent); }
+  }
+  .cs-opt input:active + .cs-mark { transform: scale(0.94); }
+
+  /* Look chips: word-free film swatches; the readout names the look. */
+  .cs-chip {
+    inline-size: 16px;
+    block-size: 20px;
+    border-radius: 2px;
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ink) 22%, transparent);
+  }
+  .cs-chip[data-look='standard'] { background: #b8b2a6; }
+  .cs-chip[data-look='candle'] { background: #c4874a; }
+  .cs-chip[data-look='vivid'] { background: #2f8a6e; }
+  .cs-chip[data-look='mono'] { background: #63686b; }
+  .cs-chip[data-look='cyanotype'] { background: #2c5d8f; }
+  .cs-look .cs-mark { min-inline-size: 28px; }
+  .cs-look input:checked + .cs-mark { background: transparent; box-shadow: inset 0 0 0 2px var(--ink); }
+
+  /* Shutter: the camera's amber release, pressed on the press spring. */
+  .cs-shutter {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    inline-size: 112px;
+    block-size: 44px;
+    padding: 0;
+    border: 0;
+    color: var(--ink);
+    font: 600 var(--type-ui) / 1 var(--font-text);
+    cursor: pointer;
+    transition: transform var(--spring-press-ms) var(--spring-press);
+  }
+  .cs-disc {
+    inline-size: 22px;
+    block-size: 22px;
+    border-radius: 50%;
+    background: var(--amber);
+    box-shadow: inset 0 0 0 1.5px color-mix(in srgb, #13171a 28%, transparent), 0 1px 0 color-mix(in srgb, #13171a 22%, transparent);
+    transition: transform var(--spring-press-ms) var(--spring-press);
+  }
+  .cs-shutter:active { transform: scale(0.98); }
+  .cs-shutter:active .cs-disc, .cs-shutter[data-pressed] .cs-disc { transform: translateY(1px) scale(0.9); }
+
+  .cs-readout {
+    display: grid;
+    align-content: center;
+    inline-size: 112px;
+    block-size: 44px;
+    margin: 0;
+    /* Three lines whose glyph boxes (1.33 em in the edge face, the extra sitting above the line) stay inside the
+       44 px plate, so contrast tools read them against it: 13.5 px lines, 1.5 px more room on top. */
+    padding: 1.5px 8px 0;
+    font: 500 var(--type-edge) / 1.125 var(--font-edge);
+    white-space: nowrap;
+  }
+  .cs-name { color: var(--ink-2); letter-spacing: 0.06em; text-transform: uppercase; }
+
+  :global(html[data-motion='reduced']) .camera-strip * { transition-duration: 0s !important; }
+  @media (forced-colors: active) {
+    .cs-opt input:checked + .cs-mark { forced-color-adjust: none; background: Highlight; color: HighlightText; }
+    .cs-look input:checked + .cs-mark { box-shadow: inset 0 0 0 2px Highlight; }
+    .cs-disc { forced-color-adjust: none; background: ButtonText; }
+  }
+</style>
