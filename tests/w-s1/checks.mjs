@@ -8,6 +8,7 @@ import { durations, heroTimeline, springs } from '../../src/lib/tokens.js';
 import { loadBudgets } from './budgets.mjs';
 import { POSTER_CAP } from '../../src/sections/hero/layout.ts';
 import { H, WAIT, context, heroAtRest, heroRects, median, open, profile, rectsIntersect, sleep } from './lib.mjs';
+import { RULINGS, lineThree } from './line3.mjs';
 
 const GES = ['D1', 'D2', 'D3', 'T1', 'T2', 'P1', 'P2', 'S1', 'S2'];
 const MOUSE = (p) => profile(p).input === 'mouse';
@@ -302,11 +303,19 @@ const BOUNDS_LOG = () => {
   requestAnimationFrame(tick);
 };
 
-/** 3. First screen: the whole camera and print 1 in the viewport, the lens never covered, print size rules, no text
- *  over a GL rect at rest, and the flight never crosses the h1, lede or CTA (the __stage.bounds log, every frame).
- *  844 x 390: the line's 50%-of-content-width rule cannot hold in a 390 px tall viewport; the row is reported
- *  BLOCKED pending the orchestrator's ruling (never exempted here), with the rule the manager proposed measured. */
-export async function firstScreen(base, { profiles = ['D1', 'D2', 'D3', 'S1', 'T1', 'T2', 'P1', 'P2', 'S2', 'L844'] } = {}) {
+/** 3. First screen (acceptance line 3), judged by line3.mjs under the orchestrator's rulings on PR #53
+ *  (https://github.com/derprito64bit/portfolio-site/pull/53#issuecomment-5981658588, clarified in
+ *  https://github.com/derprito64bit/portfolio-site/pull/53#issuecomment-5981743762). At every size: the whole camera
+ *  and print 1 in the viewport, the lens never covered, no text over a GL rect at rest, and no flight crosses the h1,
+ *  lede or CTA (the __stage.bounds log, every frame from the first: the opening, then one press at rest, which must
+ *  log a flight). The size rule by class:
+ *  - landscape phones (vw > vh, vh <= 500): print 1's laid-out height >= 50% of svh (innerHeight stands in for svh;
+ *    see line3.mjs); neither the width rule nor the 220 px window floor applies there;
+ *  - 64rem and wider: print 1's window >= 220 px; amended W-D009 allows print 1 in the copy column under the CTA,
+ *    clear of the copy;
+ *  - below 64rem otherwise: print 1 >= 50% of the content width, inside the stage (unchanged).
+ *  Every row is PASS or FAIL. L667, L844 and L932 sample the landscape class. */
+export async function firstScreen(base, { profiles = ['D1', 'D2', 'D3', 'S1', 'T1', 'T2', 'P1', 'P2', 'S2', 'L667', 'L844', 'L932'] } = {}) {
   const rows = [];
   for (const p of profiles) {
     const { page, ctx } = await open(base, p, 'auto', { init: BOUNDS_LOG });
@@ -327,27 +336,25 @@ export async function firstScreen(base, { profiles = ['D1', 'D2', 'D3', 'S1', 'T
       }
       return hits;
     });
+    // One press at rest, so every size's log holds a flight: on touch (lite) the opening has none, and the rulings keep
+    // 0 no-fly crossings at every size. The press is the strip's shutter on a mouse and a tap on the camera on touch.
+    await page.waitForFunction(() => window.__hero?.live, null, { timeout: WAIT.patience }).catch(() => {});
+    const touch = !MOUSE(p);
+    const spot = touch ? await page.evaluate(CAMERA_SPOT) : null;
+    if (touch) await page.touchscreen.tap(spot.x, spot.y);
+    else await page.click('[data-shutter]');
+    await sleep(WAIT.press);
+    const all = await page.evaluate(() => window.__noFly.slice());
+    const pressed = await page.evaluate(() => ({ stills: document.querySelectorAll('[data-hero-print] img.hero-still').length, flying: Boolean(window.__hero?.flying), tier: document.documentElement.dataset.tier }));
     await ctx.close();
-    const inView = (r) => r && r.x >= -0.5 && r.y >= -0.5 && r.x + r.w <= g.vw + 0.5 && r.y + r.h <= g.vh + 0.5;
-    const lens = { cx: g.camera.x + g.lens.x * g.camera.w, cy: g.camera.y + g.lens.y * g.camera.h, r: 0.17 * g.camera.w };
-    const lensClear = g.print.x + g.print.w <= lens.cx - lens.r || g.print.y >= lens.cy + lens.r || g.print.x >= lens.cx + lens.r;
-    const narrow = g.vw < 1024;
-    const landscapePhone = g.vh <= 500 && g.vw > g.vh;
-    const windowW = (g.printLayoutW * 46) / 54;
-    // Acceptance line 3: "Print 1 is >= 50% of content width below 64rem ... and its window is >= 220 px at 64rem and
-    // wider" (half a CSS px for subpixel layout).
-    const widthRule = g.printLayoutW >= 0.5 * g.contentW - 0.5;
-    const sizeRule = narrow && !landscapePhone ? widthRule : landscapePhone ? widthRule : windowW >= 220;
-    const proposed = landscapePhone ? { rule: 'print 1 at least 50% of the small viewport height (manager, round 1)', printH: Math.round(g.print.h), viewportH: g.vh, pass: g.print.h >= 0.5 * g.vh } : null;
     const noFly = [g.h1, g.line, g.cta];
-    const crossings = flight.filter((b) => noFly.some((r) => rectsIntersect(r, { x: b.x, y: b.y, w: b.w, h: b.h })));
-    const rest = inView(g.camera) && inView(g.print) && lensClear && textOverGl.length === 0 && crossings.length === 0;
-    const pass = rest && sizeRule;
-    const status = pass ? 'PASS' : landscapePhone && rest && !widthRule ? 'BLOCKED' : 'FAIL';
-    rows.push({ profile: p, pass, status, cameraInView: inView(g.camera), printInView: inView(g.print), lensClear, sizeRule, widthRule, proposed, printW: g.printLayoutW, contentW: g.contentW, windowW: Math.round(windowW), textOverGl, boundsFrames: flight.length, crossings: crossings.slice(0, 5), geometry: g });
+    const crossings = all.filter((b) => noFly.some((r) => rectsIntersect(r, { x: b.x, y: b.y, w: b.w, h: b.h })));
+    const press = { frames: all.length - flight.length, ...pressed };
+    rows.push({ profile: p, ...lineThree(g, { textOverGl, crossings, flightFrames: press.frames }), textOverGl, boundsFrames: { opening: flight.length, press: press.frames }, press, crossings: crossings.slice(0, 5), geometry: g });
   }
-  const blocked = rows.filter((r) => r.status === 'BLOCKED').map((r) => r.profile);
-  return { pass: rows.every((r) => r.pass), status: rows.every((r) => r.pass) ? 'PASS' : rows.every((r) => r.pass || r.status === 'BLOCKED') ? 'BLOCKED' : 'FAIL', blocked, rows };
+  const pass = rows.every((r) => r.pass);
+  const classes = Object.fromEntries([...new Set(rows.map((r) => r.class))].map((c) => [c, rows.filter((r) => r.class === c).map((r) => r.profile)]));
+  return { pass, status: pass ? 'PASS' : 'FAIL', rulings: RULINGS, classes, failed: rows.filter((r) => !r.pass).map((r) => ({ profile: r.profile, failed: r.failed })), rows };
 }
 
 /** 4a. hero:readable minus stage:gl-ready, median of 3 cold loads (a fresh browser each), against the token budget

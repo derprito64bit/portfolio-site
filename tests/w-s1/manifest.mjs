@@ -3,10 +3,15 @@
 // ../portfolio-evidence/<wave>/W-S1/<sha7>/<role>/ (the acceptance suite, the node tests, check and ownership logs,
 // the crew.mjs shoot, a11y and Lighthouse manifests, the W-F harness re-run). It only reads and hashes; the steps run
 // before it (see the PR body for the commands).
-//   node tests/w-s1/manifest.mjs [--role crew] [--wave wave3a] [--issue 13] [--pr 53]
+//   node tests/w-s1/manifest.mjs [--role crew] [--wave wave3a] [--issue 13] [--pr 53] [--carry <sha7>]
+// --carry <sha7>: a round that changes no input of the build carries <sha7>'s crew.mjs shoot, a11y and Lighthouse and
+// its W-F harness run instead of re-running them. The proof is dist-identity.json in this folder (dist-hash.mjs at this
+// SHA against <sha7>'s build): a carried item names the SHA it ran at, and fails unless the two builds are identical.
+// The W-F harness: when it holds rerun-lighthouse/ (its Lighthouse step re-run at the same SHA), that rerun is the
+// harness's Lighthouse result, and the first pass's Lighthouse items are listed as superseded.
 import { createHash } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { dirname, join, relative } from 'node:path';
 import os from 'node:os';
 import { H } from './lib.mjs';
 
@@ -32,7 +37,7 @@ const suite = join(dir, 'w-s1');
 const summary = json(join(suite, 'summary.json'));
 if (summary) {
   items.push({ path: 'w-s1/summary.json', sha256: sha256(join(suite, 'summary.json')), kind: 'acceptance-summary', route: '/', pass: summary.pass, metrics: { checks: summary.checks.length, statuses: Object.fromEntries(summary.checks.map((c) => [c.check, c.status ?? (c.pass ? 'PASS' : 'FAIL')])) } });
-  steps.push({ step: 'acceptance-summary', pass: summary.pass, blocked: summary.checks.filter((c) => c.status === 'BLOCKED').map((c) => c.check) });
+  steps.push({ step: 'acceptance-summary', pass: summary.pass, failed: summary.checks.filter((c) => !c.pass).map((c) => c.check) });
   for (const c of summary.checks) {
     const f = join(suite, `${c.check}.json`);
     if (existsSync(f)) items.push({ path: rel(f), sha256: sha256(f), kind: `w-s1:${c.check}`, route: '/', pass: c.pass, metrics: { ms: c.ms, status: c.status } });
@@ -50,16 +55,64 @@ for (const [file, kind, re] of [['check.log', 'check', /all \d+ steps passed/], 
   items.push({ path: file, sha256: sha256(f), kind, pass });
   steps.push({ step: kind, pass });
 }
+// What a carried run stands on: this SHA's build against the carried SHA's, file by file (dist-hash.mjs).
+const carry = opts.carry ? String(opts.carry) : null;
+const carryDir = carry ? join(dir, '..', '..', carry, role) : null;
+const identity = json(join(dir, 'dist-identity.json'));
+const distIdentical = Boolean(identity?.identical && identity.sha === H.gitSha() && carry && identity.against?.sha?.startsWith(carry));
+if (identity) {
+  items.push({ path: 'dist-identity.json', sha256: sha256(join(dir, 'dist-identity.json')), kind: 'dist-identity', pass: distIdentical, metrics: { sha: identity.sha, tree: identity.tree, files: identity.files, against: identity.against?.sha ?? null, againstTree: identity.against?.tree ?? null, differ: identity.differ?.length ?? null } });
+  steps.push({ step: 'dist-identity', pass: distIdentical, against: identity.against?.sha ?? null });
+}
 // crew.mjs and the W-F harness keep their own manifests: each becomes one item with its counts.
 for (const [sub, kind] of [['shoot', 'ges1:shoot'], ['a11y', 'ges1:a11y'], ['lighthouse', 'ges1:lighthouse'], ['w-f-harness', 'w-f-harness']]) {
-  const f = [join(dir, sub, 'manifest.json'), join(dir, sub, 'summary.json')].find(existsSync);
+  const own = [join(dir, sub, 'manifest.json'), join(dir, sub, 'summary.json')].find(existsSync);
+  const carried = !own && carryDir ? [join(carryDir, sub, 'manifest.json'), join(carryDir, sub, 'summary.json')].find(existsSync) : null;
+  const f = own ?? carried;
   if (!f) continue;
   const m = json(f);
-  const list = m?.items ?? m?.steps ?? [];
+  let list = m?.items ?? m?.steps ?? [];
+  const metrics = {};
+  let rerunPass = null;
+  if (kind === 'w-f-harness') {
+    const rf = join(dirname(f), 'rerun-lighthouse', 'manifest.json');
+    const rerun = existsSync(rf) ? json(rf) : null;
+    if (rerun) {
+      // The first pass's Lighthouse step and its run log give way to the rerun's.
+      const superseded = new Set(['ges1-lighthouse', 'runlog']);
+      metrics.superseded = list.filter((i) => superseded.has(i.kind)).map((i) => ({ path: i.path, pass: i.pass }));
+      list = [...list.filter((i) => !superseded.has(i.kind)), ...rerun.items.map((i) => ({ ...i, path: `rerun-lighthouse/${i.path}` }))];
+      metrics.lighthouse = rel(join(dirname(rf), 'lighthouse', 'manifest.json'));
+      // The valid run's medians, one item of their own.
+      const lhDir = join(dirname(rf), 'lighthouse');
+      const lm = json(join(lhDir, 'manifest.json'));
+      const forms = {};
+      for (const form of ['mobile', 'desktop']) {
+        const s = json(join(lhDir, `home-${form}-summary.json`));
+        if (!s) continue;
+        forms[form] = { lcp: Math.round(s.medians?.lcp ?? s.median?.lcp), tbt: s.medians?.tbt ?? s.median?.tbt, cls: s.medians?.cls ?? s.median?.cls, lcpElement: s.median?.lcpElement?.selector ?? null, validRuns: s.runs?.filter((r) => r.valid).length ?? null, budgetPass: s.budgetPass, glOrderPass: s.glOrderPass };
+      }
+      rerunPass = Boolean(lm) && (lm.items ?? []).every((i) => i.pass !== false) && Object.keys(forms).length === 2 && Object.values(forms).every((x) => x.budgetPass && x.glOrderPass && x.validRuns === 5);
+      items.push({ path: metrics.lighthouse, sha256: sha256(join(lhDir, 'manifest.json')), kind: 'w-f-harness:lighthouse', route: '/', pass: rerunPass && (!carried || distIdentical), metrics: { sha: lm?.sha ?? null, runsPerForm: 5, ...forms, ...(carried ? { carriedFrom: lm?.sha ?? carry, distIdentical } : {}) } });
+    }
+  }
   const failed = list.filter((i) => i.pass === false).length;
-  const pass = m?.pass ?? failed === 0;
-  items.push({ path: rel(f), sha256: sha256(f), kind, route: '/', pass, metrics: { items: list.length, failed } });
-  steps.push({ step: kind, pass, items: list.length, failed });
+  let pass = rerunPass === null ? (m?.pass ?? failed === 0) : rerunPass && failed === 0;
+  if (carried) {
+    metrics.carriedFrom = m?.sha ?? carry;
+    metrics.distIdentical = distIdentical;
+    pass = pass && distIdentical;
+  }
+  items.push({ path: rel(f), sha256: sha256(f), kind, route: '/', pass, metrics: { items: list.length, failed, ...metrics } });
+  steps.push({ step: kind, pass, items: list.length, failed, ...(carried ? { carriedFrom: metrics.carriedFrom } : {}) });
+}
+// Probes beyond the acceptance rows (probes/*.json): informational, so their pass is null, never a verdict.
+const probes = join(dir, 'probes');
+if (existsSync(probes)) {
+  for (const f of walk(probes).filter((x) => /\.json$/.test(x))) {
+    const p = json(f);
+    items.push({ path: rel(f), sha256: sha256(f), kind: 'probe', route: '/', pass: null, metrics: { note: p?.note ?? null, rows: p?.rows?.map((r) => ({ profile: r.profile, status: r.status })) ?? null } });
+  }
 }
 const gl = summary ? json(join(suite, 'gpu.json')) : null;
 const manifest = {
@@ -70,7 +123,8 @@ const manifest = {
   createdAt: new Date().toISOString(),
   host: { os: `${os.type()} ${os.release()}`, gpuRenderer: gl?.renderer ?? null, graphicsDeviceType: /D3D11/.test(gl?.renderer ?? '') ? 'Direct3D11' : null, cores: os.cpus().length },
   agent: { model: 'claude-opus-5-5', effort: 'xhigh' },
-  command: 'tests/w-s1/run.mjs + node --test tests/w-s1 + scripts/check/run.mjs + scripts/check/ownership.mjs --crew W-S1 + scripts/crew.mjs shoot|a11y|lighthouse --routes / + tests/w-f/run.mjs (moved to w-f-harness/)',
+  command: 'tests/w-s1/run.mjs + node --test tests/w-s1 + scripts/check/run.mjs + scripts/check/ownership.mjs --crew W-S1 + scripts/crew.mjs shoot|a11y|lighthouse --routes / + tests/w-f/run.mjs (moved to w-f-harness/)' + (carry ? ` + tests/w-s1/dist-hash.mjs against ${carry} (carried: ${carry}'s shoot, a11y, lighthouse and w-f-harness)` : ''),
+  ...(carry ? { carriedFrom: { sha: carry, dir: rel(carryDir), distIdentical } } : {}),
   role,
   issue: Number(opts.issue || 13),
   pr: Number(opts.pr || 53),

@@ -3,8 +3,9 @@
 //   node tests/w-s1/run.mjs [--only fcp,wordmark,...] [--out <dir>]
 // Checks: fcp, firstPaint, wordmark, firstScreen, readable, delayedGl, inputGuard, parity, strip, motion, flashLight,
 // flashDark, reducedStatic, preGl, glBytes, liteLcp, tokensOnly, gpu, filmstrips (evidence). Each writes <out>/<check>.json; the
-// run writes <out>/summary.json and exits 1 unless every check passes. A check whose only open rows wait on an
-// orchestrator ruling reports BLOCKED (not a pass).
+// run writes <out>/summary.json and exits 1 unless every check passes. Every check reports PASS or FAIL: line 3's
+// landscape phones and W-D009 are judged under the orchestrator's rulings on PR #53 (firstScreen, line3.mjs), so no
+// check waits on a ruling any more.
 // GL and timing checks are only valid on a real renderer and with no Blender job loading the CPU (tools.md).
 import { mkdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -57,7 +58,7 @@ try {
     }
     await H.closeBrowsers();
     writeJson(join(out, `${name}.json`), { check: name, sha: H.gitSha(), at: new Date().toISOString(), ms: Date.now() - t, ...r });
-    const status = r.pass ? 'PASS' : r.status === 'BLOCKED' ? 'BLOCKED' : 'FAIL';
+    const status = r.pass ? 'PASS' : 'FAIL';
     summary.push({ check: name, pass: r.pass, status, ms: Date.now() - t, ...(r.error ? { error: r.error.split('\n')[0] } : {}) });
     console.log(`${name.padEnd(14)} ${status}  ${Math.round((Date.now() - t) / 1000)} s${r.error ? `  ${r.error.split('\n')[0]}` : ''}`);
   }

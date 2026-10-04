@@ -25,9 +25,16 @@ export const WAIT = {
 };
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-/** GES-1 profiles plus the extra sizes the brief names (landscape phone, 960 x 900, 1180 x 820, 600 x 900). */
+/** GES-1 profiles plus the extra sizes the brief names (landscape phone, 960 x 900, 1180 x 820, 600 x 900), and more
+ *  landscape phones for line 3's landscape ruling (the round-4 review: more than one sample of the class). L667 and
+ *  L932 are acceptance rows; L568, L740 and L915 are probe sizes only (the manager's round-4 probe), not acceptance. */
 export const EXTRA = {
   L844: { viewport: { width: 844, height: 390 }, deviceScaleFactor: 3, hasTouch: true, isMobile: true, input: 'touch', browser: 'chromium' },
+  L667: { viewport: { width: 667, height: 375 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true, input: 'touch', browser: 'chromium' },
+  L932: { viewport: { width: 932, height: 430 }, deviceScaleFactor: 3, hasTouch: true, isMobile: true, input: 'touch', browser: 'chromium' },
+  L568: { viewport: { width: 568, height: 320 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true, input: 'touch', browser: 'chromium' },
+  L740: { viewport: { width: 740, height: 360 }, deviceScaleFactor: 3, hasTouch: true, isMobile: true, input: 'touch', browser: 'chromium' },
+  L915: { viewport: { width: 915, height: 412 }, deviceScaleFactor: 2.625, hasTouch: true, isMobile: true, input: 'touch', browser: 'chromium' },
   W960: { viewport: { width: 960, height: 900 }, deviceScaleFactor: 1, hasTouch: false, isMobile: false, input: 'mouse', browser: 'chromium' },
   X1180: { viewport: { width: 1180, height: 820 }, deviceScaleFactor: 2, hasTouch: true, isMobile: false, input: 'touch', browser: 'chromium' },
   X600: { viewport: { width: 600, height: 900 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true, input: 'touch', browser: 'chromium' },
@@ -114,7 +121,10 @@ export async function heroRects(page) {
       cta: r(q('.hero-cta a')),
       camera: r(q('[data-hero-camera]')),
       print: r(printEl),
+      // Print 1's laid-out box, before its tilt (line 3's size rules use it, not the tilted bounding box).
       printLayoutW: printEl.offsetWidth,
+      printLayoutH: printEl.offsetHeight,
+      wide: matchMedia('(min-width: 64rem)').matches,
       strip: r(q('[data-camera-strip]')),
       lens: { x: parseFloat(cs.getPropertyValue(`--mk-${band}-lens-x`)), y: parseFloat(cs.getPropertyValue(`--mk-${band}-lens-y`)) },
       tier: document.documentElement.dataset.tier,
