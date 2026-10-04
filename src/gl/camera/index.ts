@@ -109,6 +109,7 @@ const PAD: [number, number] = [0.12, 0.09]; // shadow margin of the print quad, 
 const LAND_DEPTH = 0.1; // view-space depth of a landed print: in front of the body, beyond the near plane
 const FOCUS_STEP_DEG = 24; // the focus ring turns this far per lens stop (W-C14 tunes the final verbs)
 const ROLL_TAIL = 120; // roller tracks end this long after the eject (fx-playbook section 2)
+const PRESENT_TAIL = 3; // frames presented after a change (WebKit shows a canvas one frame late)
 const html = document.documentElement;
 const reduced = () => html.dataset.motion === 'reduced';
 const tierNow = () => html.dataset.tier || 'static';
@@ -334,6 +335,8 @@ class HeroCamera implements CameraController {
   /** The body below the exit slot (half width, z min, z max), from the model's own bounds. */
   private readonly body: [number, number, number] = [0.068, -0.046, 0.03];
   private time = 0;
+  /** Frames still to present after the last change (see step). */
+  private tail = 0;
   private prints: GLPrint[] = [];
   private flying: Flight | null = null;
   private introHooks: IntroHooks | null = null;
@@ -747,6 +750,14 @@ class HeroCamera implements CameraController {
       if (this.aa) this.aa.dirty = true;
       moving = true;
     }
+    // WebKit presents a canvas one frame late (measured on its Windows build: a screenshot after one render shows
+    // the buffer before it), so a camera that changes and then rests would stay on its old frame. After any change
+    // the stage presents PRESENT_TAIL more frames (W-F does the same for a re-anchor).
+    if (moving) this.tail = PRESENT_TAIL;
+    else if (this.tail > 0) {
+      this.tail--;
+      moving = true;
+    }
     return moving;
   }
 
@@ -1087,6 +1098,7 @@ class HeroCamera implements CameraController {
     this.ready.then((ok) => {
       if (this.live || !ok) return;
       this.live = true;
+      this.tail = PRESENT_TAIL;
       this.hero.querySelector('[data-hero-camera]')?.classList.add('is-gl');
       this.invalidate();
     });
