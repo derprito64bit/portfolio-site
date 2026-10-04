@@ -2,7 +2,7 @@
 // W-S1 acceptance runner (issue #13). Build first (npm run build), on the reference host (RX 6700 XT).
 //   node tests/w-s1/run.mjs [--only fcp,wordmark,...] [--out <dir>]
 // Checks: fcp, firstPaint, wordmark, firstScreen, readable, delayedGl, inputGuard, parity, strip, motion, flashLight,
-// flashDark, reducedStatic, preGl, liteLcp, tokensOnly, gpu, filmstrips (evidence). Each writes <out>/<check>.json; the
+// flashDark, reducedStatic, preGl, glBytes, liteLcp, tokensOnly, gpu, filmstrips (evidence). Each writes <out>/<check>.json; the
 // run writes <out>/summary.json and exits 1 unless every check passes. A check whose only open rows wait on an
 // orchestrator ruling reports BLOCKED (not a pass).
 // GL and timing checks are only valid on a real renderer and with no Blender job loading the CPU (tools.md).
@@ -14,7 +14,7 @@ import * as C from './checks.mjs';
 const opts = H.cliOpts();
 const out = resolve(opts.out || join(H.evidenceDir('W-S1', 'wave3a', 'crew'), 'w-s1'));
 mkdirSync(out, { recursive: true });
-const ALL = ['tokensOnly', 'fcp', 'firstPaint', 'wordmark', 'firstScreen', 'readable', 'delayedGl', 'inputGuard', 'parity', 'strip', 'motion', 'flashLight', 'flashDark', 'reducedStatic', 'preGl', 'liteLcp', 'gpu', 'filmstrips'];
+const ALL = ['tokensOnly', 'fcp', 'firstPaint', 'wordmark', 'firstScreen', 'readable', 'delayedGl', 'inputGuard', 'parity', 'strip', 'motion', 'flashLight', 'flashDark', 'reducedStatic', 'preGl', 'glBytes', 'liteLcp', 'gpu', 'filmstrips'];
 const only = opts.only ? String(opts.only).split(',') : ALL;
 
 const srv = await H.serve();

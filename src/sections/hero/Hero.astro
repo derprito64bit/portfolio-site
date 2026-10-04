@@ -24,6 +24,7 @@ import { heroLayout, heroPoster } from './layout.ts';
 import { CARD, svgDataUri, testStripSvg } from './still.ts';
 import drawings from '../../../public/posters/camera/drawing.json';
 import { bandMarks, type Framing, type Rig } from './framing.ts';
+import { cameraData } from '../../gl/camera/data.ts';
 
 type Band = 'split' | 'stacked' | 'phone';
 interface PosterFile { w: number; h: number; avif: string; webp: string }
@@ -128,6 +129,7 @@ const heroHead = `(function(h,c){var s=null,n,t=h.dataset.tier;try{s=sessionStor
     <div class="hero-flash" aria-hidden="true"></div>
   </div>
   <script type="application/json" data-hero-queue set:html={JSON.stringify(queue)}></script>
+  <script type="application/json" data-hero-camera-data set:html={JSON.stringify(cameraData(posters, rig))}></script>
 </section>
 {realStill && <link rel="preload" as="image" href={realStill.avif} type="image/avif" media="(pointer: coarse), (prefers-reduced-motion: reduce)" />}
 

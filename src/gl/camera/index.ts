@@ -27,7 +27,6 @@ import {
   Mesh,
   MeshBasicMaterial,
   NoColorSpace,
-  OrthographicCamera,
   PlaneGeometry,
   Quaternion,
   Scene,
@@ -38,8 +37,7 @@ import {
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { applyFraming } from '../../../scripts/build/posters/stage.js';
-import posters from '../../../public/posters/camera/posters.json';
-import rig from '../../../assets-src/3d/camera_xt/rig.json';
+import { readCameraData, type Band, type CameraData } from './data.ts';
 import { applyLook } from './look.js';
 import { CameraDrawing, drawingPhases, drawingTiming, rgbOf } from './drawing.ts';
 import type * as Develop from '../effects/develop/index.ts';
@@ -95,12 +93,8 @@ export interface CameraController {
   rebind(hero: HTMLElement): void;
 }
 
-type Band = 'split' | 'stacked' | 'phone';
-type Framing = { fovDeg: number; aspect: number; position: number[]; quaternion: number[]; near: number; far: number };
-const BANDS = posters.bands as unknown as Record<Band, Framing>;
-const SPEC = (rig as unknown as { spec: { pivots: Record<string, { detents?: number; stepDeg?: number; travelM?: number }> } }).spec;
-/** The exit slot from the rig contract (a root node, so its translation is its position): known before the model loads. */
-const EXIT = (rig as unknown as { lods: { lod0: { nodes: { print_exit: { translation: [number, number, number] } } } } }).lods.lod0.nodes.print_exit.translation;
+/** posters.json's framings and rig.json's exit slot and pivots, as the page carries them (data.ts). */
+let CAM: CameraData;
 const PRINT_W = 0.054; // the instant print in metres (W-D006: 54 x 86 mm)
 const PRINT_H = 0.086;
 const RISE = 0.4 * PRINT_H; // how far the eject pushes the print out of the slot before the flight takes it
@@ -373,6 +367,7 @@ class HeroCamera implements CameraController {
   constructor(gl: GLApi, opts: CameraOptions) {
     this.gl = gl;
     this.hero = opts.hero;
+    CAM = readCameraData(opts.hero);
     this.stageHooks = opts.stage as () => StageHooks | null;
     this.onMark = opts.onMark;
     this.lookAt0 = opts.lookIndex;
@@ -383,8 +378,8 @@ class HeroCamera implements CameraController {
     this.fxView = gl.createStageView('hero-fx');
     this.fxView.visible = false;
     this.band = bandOf(this.hero);
-    applyFraming(this.camView.camera, BANDS[this.band]);
-    this.exitPos.set(EXIT[0], EXIT[1], EXIT[2]);
+    applyFraming(this.camView.camera, CAM.bands[this.band]);
+    this.exitPos.set(CAM.exit[0], CAM.exit[1], CAM.exit[2]);
     this.printReady = developReady;
     if (tierNow() !== 'full' && gl.renderer?.extensions?.has?.('EXT_color_buffer_float')) this.aa = this.createAA();
     this.ready = this.boot().catch((e) => {
@@ -467,7 +462,7 @@ class HeroCamera implements CameraController {
     this.mark('hero:cam-model');
     await new Promise((r) => setTimeout(r, 0));
     this.setModel(model);
-    applyFraming(this.camView.camera, BANDS[this.band]);
+    applyFraming(this.camView.camera, CAM.bands[this.band]);
     // The opening (A2): only on the run that will play it (the drawing on screen, the eject armed, the full tier).
     if (html.dataset.cam === 'drawing' && html.dataset.hero === 'eject' && tierNow() === 'full' && !this.introCancelled) {
       const ground = getComputedStyle(this.hero).getPropertyValue('--hero-ground') || '#2d4547';
@@ -544,7 +539,7 @@ class HeroCamera implements CameraController {
     const r = this.gl.renderer;
     const ctx = r.getContext() as WebGL2RenderingContext;
     const camera = this.camView.camera;
-    const aspect = BANDS[this.band ?? 'stacked'].aspect;
+    const aspect = CAM.bands[this.band ?? 'stacked'].aspect;
     const lw = 96;
     const lh = Math.max(2, Math.round(lw / aspect));
     const pr = r.getPixelRatio();
@@ -735,11 +730,11 @@ vec3 ionNeutral(vec3 color) {
   private applyRig(): void {
     const n = this.nodes;
     if (n.shutter_button) {
-      const travel = SPEC.pivots.shutter_button?.travelM ?? 0.0012;
+      const travel = CAM.shutterTravelM;
       n.shutter_button.obj.position.copy(n.shutter_button.pos).add(new Vector3(0, -travel * this.shutterSpring.value, 0));
     }
     if (n.dial_look) {
-      const step = MathUtils.degToRad(SPEC.pivots.dial_look?.stepDeg ?? 30);
+      const step = MathUtils.degToRad(CAM.lookStepDeg);
       n.dial_look.obj.quaternion.copy(n.dial_look.quat).multiply(new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), -step * this.lookSpring.value));
     }
     if (n.lens_focus_ring) {
@@ -828,11 +823,11 @@ vec3 ionNeutral(vec3 color) {
     }
     if (this.fade) moving = this.stepFade(time) || moving;
     if (this.flying) moving = this.stepFlight(time) || moving;
-    // A layout change across a band re-frames from posters.json (the pose never follows the viewport otherwise).
+    // A layout change across a band re-frames from the band's framing (posters.json) (the pose never follows the viewport otherwise).
     const band = bandOf(this.hero);
     if (band !== this.band && this.model) {
       this.band = band;
-      applyFraming(this.camView.camera, BANDS[band]);
+      applyFraming(this.camView.camera, CAM.bands[band]);
       if (this.aa) this.aa.dirty = true;
       moving = true;
     }
@@ -938,7 +933,7 @@ vec3 ionNeutral(vec3 color) {
     const ty = (s.cy - s.h / 2 - f.anchor) * by;
     const tw = s.w * bx;
     const th = s.h * by;
-    const A = BANDS[this.band ?? 'stacked'].aspect;
+    const A = CAM.bands[this.band ?? 'stacked'].aspect;
     const ch = tw / th > A ? th : tw / A;
     const fullW = ch * (w / h); // the full frustum at the aspect W-F gives the camera, square pixels
     camera.setViewOffset(fullW, ch, vx - (tx + tw / 2 - fullW / 2), vy - (ty + th / 2 - ch / 2), vw, vh);
@@ -1361,62 +1356,23 @@ vec3 ionNeutral(vec3 color) {
   }
 
   // ------------------------------------------------------------ GPU bench (tests/w-s1, W-D030 GPU)
-  /**
-   * The hero's wet moment on the GPU: three hero-size prints (520 x 828 CSS px, the bench's hero3 size) developing
-   * at once with this tier's develop shader, over the real canvas at its real DPR. Same method as /bench/: warm-up
-   * frames, then readPixels-fenced frames; returns ms per frame. Test hook only (nothing calls it on its own).
-   */
+  /** The hero's wet moment on the GPU (bench.ts, loaded only when called: a test hook, never on its own). */
   async bench(opts: { warmup?: number; frames?: number } = {}): Promise<Record<string, unknown>> {
     await this.ready;
-    const warmup = opts.warmup ?? 30;
-    const frames = opts.frames ?? 60;
-    const r = this.gl.renderer;
-    const view = this.stageHooks()?.view ?? { W: innerWidth, Hc: innerHeight, dpr: 1 };
-    const W = view.W;
-    const H = view.Hc;
-    const scene = new Scene();
-    const cam = new OrthographicCamera(0, W, H, 0, -1, 1);
-    const still = this.hero.querySelector<HTMLImageElement>('[data-hero-print] img.hero-still');
-    const tex = await stillTexture(still?.getAttribute('src') || '', 520 * view.dpr, 828 * view.dpr);
-    const geo = new PlaneGeometry(1, 1);
-    const lite = tierNow() !== 'full';
-    const dev = develop as typeof Develop;
-    const mats = [0, 1, 2].map((i) => dev.createDevelopMaterial({ map: tex, lite, seed: i * 0.37, grain: dev.grainScale(520 * view.dpr) }));
-    mats.forEach((m, i) => {
-      m.depthTest = false;
-      const mesh = new Mesh(geo, m);
-      mesh.scale.set(520, 828, 1);
-      mesh.position.set(24 + i * (520 + 24) + 260, H - 24 - 414, 0);
-      scene.add(mesh);
-    });
-    if (r.compileAsync) await r.compileAsync(scene, cam);
-    const ctx = r.getContext() as WebGL2RenderingContext;
-    const px = new Uint8Array(4);
-    const samples: number[] = [];
-    r.setRenderTarget(null);
-    r.setScissorTest(false);
-    r.setViewport(0, 0, W, H);
-    for (let i = 0; i < warmup + frames; i++) {
-      mats.forEach((m, k) => {
-        m.uniforms.uD.value = ((i + k * 7) % 60) / 60;
-        m.uniforms.uRoll.value = ((i + k * 11) % 30) / 30;
-      });
-      const a = performance.now();
-      r.clear();
-      r.render(scene, cam);
-      ctx.readPixels(0, 0, 1, 1, ctx.RGBA, ctx.UNSIGNED_BYTE, px);
-      const b = performance.now();
-      if (i >= warmup) samples.push(Math.round((b - a) * 1000) / 1000);
-      if (i % 10 === 9) await new Promise((res) => setTimeout(res, 0));
-    }
-    geo.dispose();
-    mats.forEach((m) => m.dispose());
-    tex.dispose();
-    r.clear();
-    this.invalidate();
-    const sorted = [...samples].sort((x, y) => x - y);
-    const q = (f: number) => sorted[Math.min(sorted.length - 1, Math.floor(f * sorted.length))];
-    return { schema: 1, scenario: 'hero3-develop', shader: lite ? 'develop v1.1 LITE' : 'develop v1.1', tier: tierNow(), dpr: view.dpr, canvas: { w: Math.round(W * view.dpr), h: Math.round(H * view.dpr) }, warmup, frames, medianMs: q(0.5), p95Ms: q(0.95), samples };
+    const { benchHero } = await import('./bench.ts');
+    return benchHero(
+      {
+        renderer: this.gl.renderer,
+        view: this.stageHooks()?.view ?? { W: innerWidth, Hc: innerHeight, dpr: 1 },
+        stillSrc: this.print1()?.getAttribute('src') || '',
+        lite: tierNow() !== 'full',
+        tier: tierNow(),
+        develop: develop as typeof Develop,
+        stillTexture,
+        invalidate: () => this.invalidate(),
+      },
+      opts,
+    );
   }
 }
 

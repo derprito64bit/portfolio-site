@@ -18,6 +18,8 @@ const SPEC = {
   motionCapMs: 5000,
   /** budgets.md: pre-GL JS <= 35 kB gz from the network log. */
   preGlBytes: 35_000,
+  /** budgets.md: GL chunk (three, addons, anime, stage GL, effects) <= 185 kB gz. */
+  glBytes: 185_000,
   /** A2: the head script stays under 0.8 kB. */
   headScriptBytes: 800,
   /** Mean diff of a poster against the first GL frame (gate line 5), in 8-bit levels. */
@@ -890,6 +892,51 @@ export async function preGl(base, { runs = 3 } = {}) {
   }
   await H.closeBrowsers();
   return { pass: rows.every((r) => r.pass), cameraChunk: camChunk, budgetBytes: SPEC.preGlBytes, rows };
+}
+
+/** The built chunks that are GL code by budgets.md's list (three and its addons, anime, stage GL, src/gl: effects and
+ *  the camera), from the Vite manifest; W-F's /bench/ tools are never on the home page. */
+function glChunks() {
+  const m = JSON.parse(readFileSync(join(H.ROOT, 'node_modules/.cache/portfolio-build/vite-manifest.json'), 'utf8'));
+  const gl = (mod) => /^(node_modules\/(three|animejs)\/|src\/stage\/gl\/|src\/gl\/)/.test(mod) && !/src\/stage\/gl\/(bench|fixtures)\.ts$/.test(mod);
+  return Object.values(m).filter((c) => c.modules.some(gl)).map((c) => ({ file: c.file, modules: c.modules.filter(gl) }));
+}
+
+/** budgets.md's GL chunk (review round 2 must-fix 3: the camera chunk counts). Every GL script in the network log of a
+ *  first full-tier visit (D2) up to hero:readable, summed as delivered (gzip bodies from the harness server), plus each
+ *  file's gzip -9 size; fails over the budget. 3 cold loads. */
+export async function glBytes(base, { runs = 3 } = {}) {
+  const { gzipSync } = await import('node:zlib');
+  const chunks = glChunks();
+  const isGl = (url) => chunks.some((c) => url.endsWith(`/${c.file}`));
+  const rows = [];
+  for (let i = 0; i < runs; i++) {
+    await H.closeBrowsers();
+    const ctx = await context('D2');
+    const page = await ctx.newPage();
+    const cdp = await ctx.newCDPSession(page);
+    await cdp.send('Network.enable');
+    const reqs = new Map();
+    cdp.on('Network.requestWillBeSent', (e) => reqs.set(e.requestId, { url: e.request.url }));
+    // The body as delivered: everything received minus the response headers.
+    cdp.on('Network.responseReceived', (e) => { const r = reqs.get(e.requestId); if (r) r.head = e.response.encodedDataLength; });
+    cdp.on('Network.loadingFinished', (e) => { const r = reqs.get(e.requestId); if (r) r.bytes = e.encodedDataLength - (r.head ?? 0); });
+    await page.goto(`${base}/`, { waitUntil: 'load' });
+    await page.waitForFunction(() => performance.getEntriesByName('hero:readable').length > 0, null, { timeout: WAIT.patience }).catch(() => {});
+    const t = await page.evaluate(() => ({ readable: performance.getEntriesByName('hero:readable')[0]?.startTime ?? null, resources: performance.getEntriesByType('resource').map((r) => ({ url: r.name, start: r.startTime })) }));
+    await ctx.close();
+    const startOf = (url) => t.resources.find((r) => r.url === url)?.start ?? Infinity;
+    const scripts = [...reqs.values()].filter((r) => r.bytes && isGl(r.url) && startOf(r.url) < (t.readable ?? Infinity));
+    const files = scripts.map((r) => {
+      const file = r.url.replace(`${base}/`, '');
+      return { file, deliveredBytes: r.bytes, gzip9Bytes: gzipSync(readFileSync(join(H.ROOT, 'dist', file)), { level: 9 }).length };
+    });
+    const delivered = files.reduce((n, f) => n + f.deliveredBytes, 0);
+    const gzip9 = files.reduce((n, f) => n + f.gzip9Bytes, 0);
+    rows.push({ run: i + 1, readableMs: t.readable === null ? null : Math.round(t.readable), deliveredBytes: delivered, gzip9Bytes: gzip9, files, pass: t.readable !== null && files.some((f) => /camera\./.test(f.file)) && Math.max(delivered, gzip9) <= SPEC.glBytes });
+  }
+  await H.closeBrowsers();
+  return { pass: rows.every((r) => r.pass), budgetBytes: SPEC.glBytes, chunks, rows };
 }
 
 /** A2. On lite, the drawing's crossfade never makes the finished-camera poster the LCP element: the LCP stays the h1
