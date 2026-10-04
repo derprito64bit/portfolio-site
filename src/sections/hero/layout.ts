@@ -32,7 +32,7 @@ export function heroLayout(hero: HTMLElement, nudge = false): void {
   const GS = 8; // gap between the camera and the strip
   const PR = 54 / 86; // print width / height
   const WIN = 46 / 54; // image window / print width
-  const HEAD = 0.12; // eject headroom above the camera, as a share of its width
+  const HEAD = 0.15; // eject headroom above the camera, as a share of its width (the flight's measured apex + margin)
   const OVER = 0.32; // most of the camera's width print 1 may cover (the grip side; the lens starts near 44%)
   const r = (n: number) => Math.round(n);
   const rowBox = row.getBoundingClientRect();
@@ -54,14 +54,15 @@ export function heroLayout(hero: HTMLElement, nudge = false): void {
   let strip: { x: number; y: number } | null;
   const capArea = (printArea: number) => 0.85 * (touch ? Math.max(h1Area, printArea) : h1Area);
   if (split) {
-    const avail = vh - rowTop - 12;
+    const avail = vh - rowTop - 6;
     const short = avail < SH + 260 || !fits;
     arrangement = short ? 'short' : 'beside';
     rowH = Math.max(avail, 200);
     const stripRoom = short ? 0 : SH + GS;
     // Print 1: as tall as the row allows, at least a 220 px window, about a quarter of the content width.
-    let pw = Math.min(rowH * PR, Math.max(258.4, 0.24 * W));
-    if (short) pw = Math.min(rowH * PR, 0.3 * W);
+    // 10 px under the row's top stays free: the landing lift and the 2.2 degree tilt never reach the h1.
+    let pw = Math.min((rowH - 10) * PR, Math.max(259, 0.24 * W));
+    if (short) pw = Math.min((rowH - 10) * PR, 0.3 * W);
     // Where the row is tall enough, print 1 may sit under the copy; otherwise it keeps clear of the lede and CTA.
     const under = rowH - copyBottom - 16 >= pw / PR;
     const left = under ? 0 : textRight + 24;

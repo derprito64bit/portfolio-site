@@ -25,6 +25,10 @@ const AMBER = 0xe39b2b;
 const ENV_SIZE = 256;
 const GGX_SAMPLES = 64;
 
+/**
+ * @param {{ renderer: any, scene: any, tier?: string, compile?: (() => Promise<unknown>) | null }} o
+ * @returns {Promise<{ dispose(): void }>}
+ */
 export async function applyLook({ renderer, scene, tier = 'full', compile = null }) {
   void tier; // one look on every tier, so the poster stays the first frame everywhere
   renderer.toneMapping = NeutralToneMapping;

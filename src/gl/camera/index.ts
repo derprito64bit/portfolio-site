@@ -10,7 +10,7 @@
 //   (W-D016), and hands back to its DOM still.
 // - The intro (W-D012) is a pure function of the stage clock from T0, so __stage.seek(ms) can film it.
 // The stage is reached through the hooks the hero passes in (no import of src/stage: see sections/hero/bridge.ts).
-import { Box3, CanvasTexture, LinearFilter, MathUtils, Matrix4, Mesh, NoColorSpace, PlaneGeometry, Quaternion, Vector3 } from 'three';
+import { Box3, CanvasTexture, LinearFilter, MathUtils, Matrix4, Mesh, NoColorSpace, OrthographicCamera, PlaneGeometry, Quaternion, Scene, Vector3 } from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { applyFraming } from '../../../scripts/build/posters/stage.js';
@@ -31,12 +31,13 @@ export interface QueueItem {
   still: string;
 }
 export interface IntroHooks {
-  closeBrackets(): void;
-  flash(): boolean;
+  /** `at`: the stage time it fires at (the manual clock delays the DOM animation by it, so seeks show its phase). */
+  closeBrackets(at?: number): void;
+  flash(at?: number): boolean;
   handback(): void;
 }
 interface StageHooks {
-  readonly view: { dpr: number };
+  readonly view: { dpr: number; W: number; Hc: number };
   invalidate(): void;
 }
 export interface CameraOptions {
@@ -64,7 +65,7 @@ const BANDS = posters.bands as unknown as Record<Band, Framing>;
 const SPEC = (rig as unknown as { spec: { pivots: Record<string, { detents?: number; stepDeg?: number; travelM?: number }> } }).spec;
 const PRINT_W = 0.054; // the instant print in metres (W-D006: 54 x 86 mm)
 const PRINT_H = 0.086;
-const RISE = 0.42 * PRINT_H; // how far the eject pushes the print out of the slot before the flight takes it
+const RISE = 0.4 * PRINT_H; // how far the eject pushes the print out of the slot before the flight takes it
 const PAD: [number, number] = [0.12, 0.09]; // shadow margin of the print quad, each side, as a share of the quad
 const LAND_DEPTH = 0.1; // view-space depth of a landed print: in front of the body, beyond the near plane
 const FOCUS_STEP_DEG = 24; // the focus ring turns this far per lens stop (W-C14 tunes the final verbs)
@@ -570,7 +571,7 @@ class HeroCamera implements CameraController {
     const b = fl.landing;
     // An arc over the top of the camera: across first (out of the slot, toward the landing side), then down onto the
     // table, so the print never sweeps across the lens on its way.
-    const ctrl = new Vector3(MathUtils.lerp(a.pos.x, b.pos.x, 0.8), Math.max(a.pos.y, b.pos.y) + 0.006, MathUtils.lerp(a.pos.z, b.pos.z, 0.45));
+    const ctrl = new Vector3(MathUtils.lerp(a.pos.x, b.pos.x, 0.8), Math.max(a.pos.y, b.pos.y), MathUtils.lerp(a.pos.z, b.pos.z, 0.45));
     const t = clamp01(f);
     const pos = a.pos.clone().multiplyScalar((1 - t) * (1 - t)).addScaledVector(ctrl, 2 * (1 - t) * t).addScaledVector(b.pos, t * t);
     // Past the target (the settle spring's 1.1 % overshoot) it keeps going along the end tangent.
@@ -578,7 +579,7 @@ class HeroCamera implements CameraController {
     const quat = a.quat.clone().slerp(b.quat, t);
     // The landing dip: it arrives a hair lifted and is seated on the detent spring (its 9.5 % overshoot is the dip).
     const seat = rel < dipStart ? 1 : springAt('detent', 1, 0, (rel - dipStart) / 1000);
-    const lift = 1 + 0.03 * seat * t;
+    const lift = 1 + 0.02 * seat * t;
     p.pose = { pos, quat, w: MathUtils.lerp(a.w, b.w, f) * lift, h: MathUtils.lerp(a.h, b.h, f) * lift };
     p.shadow = t * (1 - 0.4 * seat);
     // The body clips the print only while part of it is still inside the slot.
@@ -700,11 +701,11 @@ class HeroCamera implements CameraController {
     };
     fire('t0', 0, () => {
       this.mark('hero:t0');
-      this.introHooks?.closeBrackets();
+      this.introHooks?.closeBrackets(this.time);
       this.takeCamera();
     });
     fire('shutter', heroTimeline.shutter, () => this.press('intro'));
-    fire('flash', heroTimeline.flash, () => this.introHooks?.flash());
+    fire('flash', heroTimeline.flash, () => this.introHooks?.flash(this.time));
     fire('readable', heroTimeline.readable, () => this.mark('hero:readable'));
     if (rel >= heroTimeline.developed + 200) this.introT0 = null;
   }
@@ -780,6 +781,64 @@ class HeroCamera implements CameraController {
     }
     const b = this.project(pts);
     return b ? { ...b, angleDeg: 0 } : null;
+  }
+
+  // ------------------------------------------------------------ GPU bench (tests/w-s1/gpu.mjs, W-D030 GPU)
+  /**
+   * The hero's wet moment on the GPU: three hero-size prints (520 x 828 CSS px, the bench's hero3 size) developing
+   * at once with this tier's develop shader, over the real canvas at its real DPR. Same method as /bench/: warm-up
+   * frames, then readPixels-fenced frames; returns ms per frame. Test hook only (nothing calls it on its own).
+   */
+  async bench(opts: { warmup?: number; frames?: number } = {}): Promise<Record<string, unknown>> {
+    await this.ready;
+    const warmup = opts.warmup ?? 30;
+    const frames = opts.frames ?? 60;
+    const r = this.gl.renderer;
+    const view = this.stageHooks()?.view ?? { W: innerWidth, Hc: innerHeight, dpr: 1 };
+    const W = view.W;
+    const H = view.Hc;
+    const scene = new Scene();
+    const cam = new OrthographicCamera(0, W, H, 0, -1, 1);
+    const still = this.hero.querySelector<HTMLImageElement>('[data-hero-print] img.hero-still');
+    const tex = await stillTexture(still?.getAttribute('src') || '', 520 * view.dpr, 828 * view.dpr);
+    const geo = new PlaneGeometry(1, 1);
+    const lite = tierNow() !== 'full';
+    const mats = [0, 1, 2].map((i) => (develop as typeof Develop).createDevelopMaterial({ map: tex, lite, seed: i * 0.37 }));
+    mats.forEach((m, i) => {
+      m.depthTest = false;
+      const mesh = new Mesh(geo, m);
+      mesh.scale.set(520, 828, 1);
+      mesh.position.set(24 + i * (520 + 24) + 260, H - 24 - 414, 0);
+      scene.add(mesh);
+    });
+    if (r.compileAsync) await r.compileAsync(scene, cam);
+    const ctx = r.getContext() as WebGL2RenderingContext;
+    const px = new Uint8Array(4);
+    const samples: number[] = [];
+    r.setRenderTarget(null);
+    r.setScissorTest(false);
+    r.setViewport(0, 0, W, H);
+    for (let i = 0; i < warmup + frames; i++) {
+      mats.forEach((m, k) => {
+        m.uniforms.uD.value = ((i + k * 7) % 60) / 60;
+        m.uniforms.uTime.value = i / 60;
+      });
+      const a = performance.now();
+      r.clear();
+      r.render(scene, cam);
+      ctx.readPixels(0, 0, 1, 1, ctx.RGBA, ctx.UNSIGNED_BYTE, px);
+      const b = performance.now();
+      if (i >= warmup) samples.push(Math.round((b - a) * 1000) / 1000);
+      if (i % 10 === 9) await new Promise((res) => setTimeout(res, 0));
+    }
+    geo.dispose();
+    mats.forEach((m) => m.dispose());
+    tex.dispose();
+    r.clear();
+    this.invalidate();
+    const sorted = [...samples].sort((x, y) => x - y);
+    const q = (f: number) => sorted[Math.min(sorted.length - 1, Math.floor(f * sorted.length))];
+    return { schema: 1, scenario: 'hero3-develop', shader: lite ? 'develop v1 LITE' : 'develop v1', tier: tierNow(), dpr: view.dpr, canvas: { w: Math.round(W * view.dpr), h: Math.round(H * view.dpr) }, warmup, frames, medianMs: q(0.5), p95Ms: q(0.95), samples };
   }
 }
 

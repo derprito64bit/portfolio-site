@@ -49,28 +49,26 @@ const current = looks.find((l: { id: string }) => l.id === look) ?? looks[0];
 </div>
 
 <style>
+  /* 344 x 96 in two rows wherever 344 px fit; narrower (320 px reflow, 200% zoom) the groups and their options wrap. */
   .camera-strip {
-    display: grid;
-    grid-template-columns: 112px 220px;
-    grid-template-rows: 44px 44px;
+    display: flex;
+    flex-wrap: wrap;
     column-gap: 12px;
     row-gap: 8px;
-    inline-size: 344px;
-    block-size: 96px;
+    inline-size: min(344px, 100%);
     --cs-plate: var(--table-lit);
     color: var(--ink);
     font: 500 var(--type-ui) / 1.2 var(--font-text);
   }
   .cs-group {
     display: flex;
+    flex-wrap: wrap;
+    max-inline-size: 100%;
     margin: 0;
     padding: 0;
     border: 0;
     min-inline-size: 0;
   }
-  .cs-lens { grid-column: 2; grid-row: 1; }
-  .cs-look { grid-column: 1 / span 2; grid-row: 2; inline-size: 220px; }
-  .cs-readout { grid-column: 2; grid-row: 2; justify-self: end; }
 
   /* The plate: each group sits on a machined strip of the table-lit tone with a hairline edge. */
   .cs-group, .cs-shutter, .cs-readout {
@@ -133,8 +131,6 @@ const current = looks.find((l: { id: string }) => l.id === look) ?? looks[0];
 
   /* Shutter: the camera's amber release, pressed on the press spring. */
   .cs-shutter {
-    grid-column: 1;
-    grid-row: 1;
     display: inline-flex;
     align-items: center;
     justify-content: center;

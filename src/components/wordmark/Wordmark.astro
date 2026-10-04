@@ -4,7 +4,7 @@
 // name reads as one word). One line at default spacing; under user text spacing or zoom it wraps instead of clipping
 // (overflow-wrap anywhere). 0 JS for the fit.
 // The brackets are the viewfinder: they rest 0.07em outside the name and close on it (detent spring) when the camera
-// fires, at T0 and on every shutter press, never under reduced motion. hero.ts toggles [data-close].
+// fires, at T0 and on every shutter press, never under reduced motion (hero.ts animates them, seekable on ?t=).
 interface Props {
   id: string;
 }
@@ -14,18 +14,26 @@ const { id } = Astro.props;
   <h1 id={id} class="wordmark"><span class="br br-l" aria-hidden="true">[</span>derprito64bit<span class="br br-r" aria-hidden="true">]</span></h1>
 </div>
 
+<style is:global>
+  /* The wordmark's own face: the same file as BG Mark (one download, preloaded by the layout), with its line box
+     drawn to the glyphs. Measured in Chromium (canvas, 1000 px): ascenders and brackets reach 0.703em, the p's
+     descender 0.141em (wght 540); the file's own box is 0.930 + 0.270em. With ascent 72% and descent 15% the text's
+     box is the glyphs plus a hair, so the h1's box is exactly its text: nothing GL ever sits on it (W-D013) and the
+     hero row can start right under it. The fallback carries the same metrics, so the swap moves nothing. */
+  @font-face { font-family: "BG Mark Tight"; src: url(/fonts/bricolage-mark.woff2) format("woff2"); font-weight: 300 800; font-stretch: 75% 100%; font-display: swap; ascent-override: 72%; descent-override: 15%; line-gap-override: 0%; }
+  @font-face { font-family: "BG Mark Tight Fallback"; src: local("Arial Bold"), local("Arial-BoldMT"), local("Helvetica Neue Bold"); size-adjust: 90.9%; ascent-override: 72%; descent-override: 15%; line-gap-override: 0%; }
+</style>
+
 <style>
   .wordmark-fit { container-type: inline-size; }
   .wordmark {
-    font-family: var(--font-mark);
+    font-family: "BG Mark Tight", "BG Mark Tight Fallback", system-ui, sans-serif;
     font-weight: 540;
     font-stretch: 100%;
     font-size: var(--type-wordmark);
     letter-spacing: -0.012em;
-    /* 0.86: the ascenders stay inside the box and the one descender (p) hangs 0.13em below it; the hero row's gap
-       below the h1 clears it. */
-    line-height: 0.86;
-    padding-block-end: 0.13em;
+    /* = ascent + descent of the face above: the line box is the text's box, no half-leading. */
+    line-height: 0.87;
     white-space: normal;
     overflow-wrap: anywhere;
     text-wrap: wrap;
@@ -35,14 +43,9 @@ const { id } = Astro.props;
     position: relative;
     color: var(--accent);
     font-weight: 800;
-    transition: inset-inline-start var(--spring-detent-ms) var(--spring-detent);
   }
   .br-l { inset-inline-start: -0.07em; }
   .br-r { inset-inline-start: 0.07em; }
-  /* Close on the name: the detent spring in, the settle spring back out (set and cleared by hero.ts). */
-  .wordmark[data-close] .br { inset-inline-start: 0; }
-  .wordmark:not([data-close]) .br { transition-duration: var(--spring-settle-ms); transition-timing-function: var(--spring-settle); }
-  :global(html[data-motion='reduced']) .br { transition: none; }
   @media (forced-colors: active) {
     .br { color: CanvasText; }
   }

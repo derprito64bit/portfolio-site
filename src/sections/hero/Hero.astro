@@ -137,6 +137,8 @@ const heroHead = `(function(h,c){if(matchMedia('(pointer: fine) and (hover: hove
   }
   .hero-row {
     position: relative; /* the stage's coordinate box; no z-index, so it is not a stacking context (W-D013) */
+    /* The wordmark's box is its glyphs (Wordmark.astro), so this is the whole gap under the name. */
+    margin-block-start: clamp(8px, calc((100svh - 600px) * 0.04), 24px);
   }
   .hero-copy {
     display: grid;

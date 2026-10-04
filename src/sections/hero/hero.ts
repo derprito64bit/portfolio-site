@@ -7,7 +7,7 @@
 // GL work lives in src/gl/camera (its own chunk, loaded after first paint). The stage is reached through bridge.ts.
 import { heroLayout } from './layout.ts';
 import { afterStage, markTime, onContentReplace, onHtmlAttr, reduced, stage, tier, whenGL, whenMark } from './bridge.ts';
-import { durations, heroTimeline } from '../../lib/tokens.js';
+import { durations, heroTimeline, springs } from '../../lib/tokens.js';
 import type { CameraController, QueueItem } from '../../gl/camera/index.ts';
 
 const html = document.documentElement;
@@ -137,16 +137,35 @@ function bindDrag(): void {
 }
 
 // ---------------------------------------------------------------- the brackets, the flash
-function closeBrackets(): void {
+/** On the manual clock (?t=) the stage seeks every document animation to currentTime = ms; an animation started at
+ * stage time T gets delay T, so a seek shows its true phase (W-D030 seeked filmstrips). */
+const manualClock = new URLSearchParams(location.search).has('t');
+const delayFor = (stageMs?: number) => (manualClock && stageMs !== undefined ? stageMs : 0);
+
+/** The viewfinder brackets close on the name (detent spring) and open again (settle spring). Never when reduced. */
+function closeBrackets(stageMs?: number): void {
   if (reduced()) return;
   const h1 = hero?.querySelector<HTMLElement>('.wordmark');
   if (!h1) return;
-  h1.setAttribute('data-close', '');
-  setTimeout(() => h1.removeAttribute('data-close'), durations.shutter + durations.hang);
+  const delay = delayFor(stageMs);
+  // One animation per bracket: in on the detent spring's own curve, then back out on the settle spring's.
+  const close = springs.detent.cssLinearMs;
+  const total = close + springs.settle.cssLinearMs;
+  h1.querySelectorAll<HTMLElement>('.br').forEach((br) => {
+    const rest = br.classList.contains('br-l') ? '-0.07em' : '0.07em';
+    br.animate(
+      [
+        { insetInlineStart: rest, offset: 0, easing: springs.detent.css },
+        { insetInlineStart: '0em', offset: close / total, easing: springs.settle.css },
+        { insetInlineStart: rest, offset: 1 },
+      ],
+      { duration: total, delay },
+    );
+  });
 }
 
 /** The flash from the lens (W-D011): 350 ms, peak 0.62 at +120 ms, through the stage's one global limiter. */
-function flash(trigger: string): boolean {
+function flash(trigger: string, stageMs?: number): boolean {
   if (!hero || !stage()?.requestFlash(trigger, 'hero:flash')) return false;
   const el = hero.querySelector<HTMLElement>('.hero-flash');
   const camEl = hero.querySelector<HTMLElement>('[data-hero-camera]');
@@ -164,7 +183,7 @@ function flash(trigger: string): boolean {
       { opacity: 0.62, offset: 120 / durations.flash, easing: 'cubic-bezier(0.23, 1, 0.32, 1)' },
       { opacity: 0, offset: 1 },
     ],
-    { duration: durations.flash, easing: 'linear' },
+    { duration: durations.flash, easing: 'linear', delay: delayFor(stageMs) },
   );
   return true;
 }
@@ -345,8 +364,8 @@ async function startIntro(): Promise<void> {
   introState = 'running';
   const glReady = markTime('stage:gl-ready') ?? performance.now();
   await controller.intro(glReady + heroTimeline.t0AfterGlReady, {
-    closeBrackets,
-    flash: () => flash('intro'),
+    closeBrackets: (at?: number) => closeBrackets(at),
+    flash: (at?: number) => flash('intro', at),
     handback: () => {
       if (html.dataset.hero === 'eject') html.dataset.hero = 'done';
     },
@@ -377,6 +396,12 @@ function init(): void {
     if (tier() !== 'static') whenMark('stage:gl-start').then(() => loadCamera().then((c) => c?.rebind(hero as HTMLElement)));
   });
 }
+
+// Reduced motion turned on mid-flourish: the brackets and the flash end at once (the GL side snaps itself).
+onHtmlAttr('data-motion', (m) => {
+  if (m !== 'reduced') return;
+  hero?.querySelectorAll<HTMLElement>('.br, .hero-flash').forEach((el) => el.getAnimations().forEach((a) => a.finish()));
+});
 
 onContentReplace(() => init());
 init();
