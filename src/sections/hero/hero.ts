@@ -91,8 +91,18 @@ function bindStrip(): void {
   hero.querySelector('[data-shutter]')?.addEventListener('click', () => shutter('strip'));
   const camera = hero.querySelector<HTMLElement>('[data-hero-camera]');
   // A tap or click on the camera presses the shutter. A vertical swipe stays a scroll: no touch-action override.
-  camera?.addEventListener('click', () => {
+  camera?.addEventListener('click', (e) => {
     if (dragMoved) return;
+    // A click on the Look dial or the lens ring (their hit areas exist on a fine pointer only) turns it one detent,
+    // through the same radios; anywhere else on the camera presses the shutter.
+    const hit = (e.target as HTMLElement).closest<HTMLElement>('[data-drag]');
+    if (hit && hero) {
+      const inputs = [...hero.querySelectorAll<HTMLInputElement>(`input[name="${hit.dataset.drag === 'lens' ? 'camera-lens' : 'camera-look'}"]`)];
+      const next = inputs[(inputs.findIndex((i) => i.checked) + 1) % inputs.length];
+      next.checked = true;
+      next.dispatchEvent(new Event('change', { bubbles: true }));
+      return;
+    }
     shutter('camera');
   });
   bindDrag();
