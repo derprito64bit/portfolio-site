@@ -1,7 +1,7 @@
 // W-F self-break (the crew loop's list), Chromium and WebKit. Each case tries to break the stage, then checks that the
 // page is whole: the console gate (only the failures a case plants are expected), GL still presents what it last drew,
 // and the stage still sleeps.
-//   rest       rest past the idle detach (2.5 s), then act: a recolour is presented after the stage wakes
+//   rest       rest past the idle detach (2.5 x durations.idleDetach), then act: a recolour is presented after the stage wakes
 //   tierDrop   a recolour, then a demotion to lite and to static inside its present tail
 //   ctxLoss    a recolour, then a context loss inside its tail; a restore; a recolour is presented again
 //   throw      an entity whose step() throws once in the middle of a spin: reported once, the spin finishes, the
@@ -12,6 +12,7 @@
 //   reduced    reduced motion turned on in the middle of a spin: the spin ends at once
 // Usage: node tests/w-f/selfbreak.mjs [--out selfbreak.json] [--profiles D2,WK-P2]
 import sharp from 'sharp';
+import { durations } from '../../src/lib/tokens.js';
 import { PROFILES, cliMain, consoleGate, newContext, serve, sleep, waitSettled } from '../harness/lib.mjs';
 
 const near = (a, b, tol = 4) => a.every((v, i) => Math.abs(v - b[i]) <= tol);
@@ -51,7 +52,7 @@ const verdict = (gate, expectErrors = 0) => {
 const CASES = {
   async rest(base, profile) {
     const { ctx, page, gate } = await bench(base, profile);
-    await sleep(2500);
+    await sleep(durations.idleDetach * 2.5); // well past the idle detach: the stage is asleep
     const asleep = await page.evaluate(() => window.__stage.settled);
     const got = await tintAndRest(page, [250, 30, 30]);
     const c = verdict(gate);
