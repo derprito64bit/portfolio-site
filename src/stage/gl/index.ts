@@ -12,7 +12,7 @@ import { containRect } from '../../../scripts/build/posters/stage.js';
 import { canvas, measureViewport, place, view } from '../rail.ts';
 import { demote, getTier, onTier, tierReason } from '../tier.ts';
 import { flags, mark, stats } from '../state.ts';
-import { invalidate, isInFrame, markDirty, onActive, onBefore, onStep, presentTail, setRender, wake } from '../ticker.ts';
+import { guard, invalidate, isInFrame, markDirty, onActive, onBefore, onStep, presentTail, setRender, wake } from '../ticker.ts';
 import { allSlots, getSlot, giveAll, onScan, onUnscan, type Slot } from '../slots.ts';
 import { scrollState } from '../scroll.ts';
 import { onMotion } from '../motion.ts';
@@ -189,7 +189,8 @@ function render(sy: number, tailFrame = false): void {
   renderer.setScissorTest(false);
   renderer.setViewport(0, 0, view.W, view.Hc);
   renderer.clear();
-  for (const e of entities.values()) e.place(f);
+  // One entity that throws is reported and skipped; the others still draw this frame.
+  for (const e of entities.values()) guard(() => e.place(f), undefined);
   updatePageCamera(sy, anchor);
   if (pageScene.children.some((c: any) => c.visible)) renderer.render(pageScene, pageCamera);
   for (const v of views) {
@@ -410,7 +411,7 @@ export async function boot(): Promise<GLApi | null> {
   onStep(() => scrollState.moved && hasContent());
   onStep((dt, time) => {
     let moving = false;
-    for (const e of entities.values()) if (e.step?.(dt, time)) moving = true;
+    for (const e of entities.values()) if (guard(() => Boolean(e.step?.(dt, time)), false)) moving = true;
     return moving;
   });
   onTier((t) => {

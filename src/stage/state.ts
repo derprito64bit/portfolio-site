@@ -28,6 +28,8 @@ export const stats = {
   restores: 0,
   governorSteps: 0,
   motionLogInvalid: 0,
+  /** Errors thrown by a crew's hook inside a frame (reported as uncaught; the ticker keeps running). */
+  hookErrors: 0,
   /** Gauges. */
   dpr: 0,
   canvasPx: 0,

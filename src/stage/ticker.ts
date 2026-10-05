@@ -124,8 +124,27 @@ function schedule(): void {
 }
 function onFrame(): void {
   stats.ticks++;
-  frame(now());
-  if (running) schedule();
+  try {
+    frame(now());
+  } finally {
+    if (running) schedule();
+  }
+}
+
+/**
+ * One crew's hook that throws must not stop the one ticker (self-break: a thrown error mid-animation). The error is
+ * reported as uncaught (the console gate sees it), counted in stats.hookErrors, and the hook counts as idle for this
+ * frame, so the loop still renders the rest and still detaches when nothing moves.
+ */
+export function guard<T>(fn: () => T, idle: T): T {
+  try {
+    return fn();
+  } catch (e) {
+    stats.hookErrors++;
+    if (typeof window.reportError === 'function') window.reportError(e);
+    else window.setTimeout(() => { throw e; }, 0);
+    return idle;
+  }
 }
 
 function spin(ms: number): void {
@@ -142,19 +161,20 @@ export function frame(time: number): void {
     const dt = lastTime ? Math.min(Math.max((time - lastTime) / 1000, 0), 0.05) : 1 / 60;
     if (lastTime) interval = time - lastTime;
     lastTime = time;
-    for (const fn of before) fn(time);
+    for (const fn of before) guard(() => fn(time), undefined);
     const sy = readScroll();
     if (dirty && measure) {
+      const m = measure;
       dirty = false;
-      measure();
+      guard(() => m(), undefined);
       stats.measuresInTick++;
       need = true;
     }
     let active = need;
     need = false;
-    for (const fn of steps) if (fn(dt, time, sy)) active = true;
+    for (const fn of steps) if (guard(() => fn(dt, time, sy), false)) active = true;
     if (anyActive()) active = true;
-    for (const fn of activeChecks) if (fn()) active = true;
+    for (const fn of activeChecks) if (guard(() => fn(), false)) active = true;
 
     // A frame with nothing new still renders while a present tail is owed (presentTail).
     const tailFrame = !active && tail > 0 && render !== null;
@@ -162,14 +182,18 @@ export function frame(time: number): void {
     if (active || tailFrame) {
       lastActive = time;
       if (flags.busyMs) spin(flags.busyMs);
-      render?.(sy, tailFrame);
+      const r = render;
+      if (r) guard(() => r(sy, tailFrame), undefined);
       if (tailFrame) stats.tailFrames++;
       if (prevActive) governorSample(interval);
     } else {
       governorReset();
     }
     prevActive = active || tailFrame;
-    while (afterFrame.length) afterFrame.shift()?.();
+    while (afterFrame.length) {
+      const fn = afterFrame.shift();
+      if (fn) guard(fn, undefined);
+    }
 
     // Detach on the frame that would otherwise run past 1 s of idle.
     if (!active && time + interval * 1.5 - lastActive >= durations.idleDetach) sleep();
@@ -183,5 +207,5 @@ function sleep(): void {
   prevActive = false;
   stats.sleeps++;
   if (idleMarks++ < 20) mark('stage:idle');
-  for (const fn of idleListeners) fn();
+  for (const fn of idleListeners) guard(fn, undefined);
 }
