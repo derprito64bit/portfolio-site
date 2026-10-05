@@ -115,10 +115,14 @@ const hooks = {
       .filter((m) => m.name.startsWith('stage:'))
       .map((m) => ({ name: m.name, t: Math.round(m.startTime), detail: (m as PerformanceMark).detail ?? null })),
   effects,
+  /** Plug a real effect in behind effects.develop() and the others (#54): callers of __stage.effects never change. */
+  registerEffect,
   requestFlash,
   announce,
   setMotion,
   invalidate,
+  /** Layout moved a slot without resizing it: re-measure every slot on the next frame, then render (#54). */
+  markDirty,
   raise,
   lower,
   demote,

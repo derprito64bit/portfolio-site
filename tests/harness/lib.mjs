@@ -87,20 +87,19 @@ export async function serve(root = join(ROOT, 'dist')) {
 
 // ---------------------------------------------------------------- console gate (W-D030)
 export const CONSOLE_RE = /\b(error|exception|uncaught|failed|GL_INVALID|CONTEXT_LOST|VALIDATE_STATUS)\b/i;
-export function loadAllowlist() {
-  const file = join(ROOT, 'tests/harness/console-allow.json');
+/** The dated allowlist entries still in force on `today` (YYYY-MM-DD); an entry with no expiry never matches. */
+export function loadAllowlist(today = new Date().toISOString().slice(0, 10), file = join(ROOT, 'tests/harness/console-allow.json')) {
   const list = existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')).allow : [];
-  const today = new Date().toISOString().slice(0, 10);
-  return list.filter((a) => !a.expiry || a.expiry >= today).map((a) => ({ ...a, re: new RegExp(a.regex) }));
+  return list.filter((a) => a.regex && a.reason && a.addedBy && a.expiry && a.expiry >= today).map((a) => ({ ...a, re: new RegExp(a.regex) }));
 }
 
 /**
  * Attach the console gate to a page. Collects every console level, pageerror, requestfailed and every response of 400
  * or more. verdict() fails on errors, page errors, failed requests, unexpected statuses, regex hits and warnings that
  * are not on the dated allowlist. expectStatus lets a test accept a known status for a URL (the 404 route itself).
+ * `allow` replaces the allowlist (tests of the gate itself).
  */
-export function consoleGate(page, { expectStatus = [] } = {}) {
-  const allow = loadAllowlist();
+export function consoleGate(page, { expectStatus = [], allow = loadAllowlist() } = {}) {
   const events = [];
   page.on('console', (m) => events.push({ channel: 'console', level: m.type(), text: m.text() }));
   page.on('pageerror', (e) => events.push({ channel: 'pageerror', level: 'error', text: String(e?.stack || e) }));

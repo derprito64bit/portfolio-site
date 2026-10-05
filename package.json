@@ -25,6 +25,7 @@
     "serve": "node scripts/serve-dist.mjs",
     "crew": "node scripts/crew.mjs",
     "test:w-f": "node tests/w-f/run.mjs",
+    "test:w-f-unit": "node --test \"tests/w-f/**/*.test.mjs\"",
     "glb": "node scripts/build/glb/optimize.mjs && node scripts/build/glb/rig.mjs",
     "glb:check": "node scripts/build/glb/optimize.mjs --check && node scripts/build/glb/rig.mjs --check",
     "posters": "node scripts/build/posters/render.mjs",

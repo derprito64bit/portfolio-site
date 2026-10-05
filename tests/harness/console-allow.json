@@ -1,4 +1,11 @@
 {
   "$comment": "Dated console-warning allowlist (W-D030). Every entry needs a regex, a reason, who added it and an expiry (YYYY-MM-DD); expired entries stop matching. Errors are never allowlisted.",
-  "allow": []
+  "allow": [
+    {
+      "regex": "warning X4122\\b",
+      "reason": "ANGLE's D3D11 HLSL compiler note on three r186's PMREMGGXConvolution program ('THREE.WebGLProgram: Program Info Log: (210,81-129): warning X4122: sum of 0.996094 and -2.98545e-017 cannot be represented accurately in double precision'). The program links and runs; three echoes the program log as a console warning (#54 item 3, from W-S1).",
+      "addedBy": "W-F (crew/w-f-m2, #54)",
+      "expiry": "2027-01-01"
+    }
+  ]
 }
