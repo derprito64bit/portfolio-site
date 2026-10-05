@@ -7,7 +7,7 @@ A change that exceeds a budget fails its gate. Evidence standard: GES-1 (W-D030)
 - **X-T5 camera (D-021, overrides the 3D camera line below):** LOD0 at most 100k tris and 800 kB gz, full tier only, after first paint; LOD1 at most 15k tris and 150 kB gz; Manor LOD about 1.5k tris.
 
 - Lighthouse 13.5.0 under the GES-1 protocol (built dist over gzip, 5 runs, median by score, auto tier, valid only on a real renderer and under Measurement validity R1-R5 below): performance >= 90 mobile and >= 95 desktop; accessibility 100; best practices >= 95. SEO is not gated while noindex is on.
-- LCP <= 2.5 s mobile and <= 2.0 s desktop. The LCP element is the h1 on mouse profiles, or the h1 or print 1's still on touch profiles. CLS <= 0.02. TBT <= 150 ms, mobile and desktop.
+- LCP <= 2.5 s mobile and <= 2.0 s desktop. The LCP element is the h1 on mouse profiles, or the h1 or print 1's still on touch profiles. On `/work/<slug>/` pages it is the h1 or the dock print's still (`data-lcp="dock"`), on mouse and touch profiles (orchestrator ruling 9 on #15, comment 5995441183, W-S3 day one, 2026-10-05). CLS <= 0.02. TBT <= 150 ms, mobile and desktop.
 - JS: pre-GL JS <= 35 kB gz, summed from the network log before the stage:gl-start mark. GL chunk (three, addons, anime, stage GL, effects) <= 185 kB gz. Effects <= 10 kB gz (6.0 measured; `docs/direction/fx-playbook.md` section 6 books 9.2 kB with D-025's effects, estimate).
 - Fonts <= 100 kB woff2 (96.8 planned); preloaded <= 46 kB.
 - 3D: camera LOD0 <= 30k tris and <= 250 kB gz; LOD1 <= 5k and <= 60 kB gz; Manor LOD <= 1.5k tris; cartridge <= 1.5k and 20 kB gz; loupe <= 3k and 40 kB gz; gear <= 4k and 40 kB gz; an owner work model <= 50k and 1 MB gz, on its own project only. 3D per page <= 1.5 MB gz.
