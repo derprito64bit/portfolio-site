@@ -139,7 +139,7 @@ async function shoot() {
           const logFile = `${base}-console.json`;
           lib.writeJson(join(dir, logFile), { verdict, events: gate.events });
           items.push(lib.item(dir, logFile, { kind: 'console', route, profile, mode, tier: st?.tier ?? null, pass: verdict.pass, metrics: { failures: verdict.failures.length } }));
-          items.push({ kind: 'page', path: null, sha256: null, route, profile, mode, tier: st?.tier ?? null, pass: settled && tierOk && ovf.maxOverflowPx === 0 && ovf.offenders.length === 0, metrics: { settled, expectedTier: wantTier, tierReason: st?.tierReason ?? null, renderer: st?.renderer ?? null, overflowPx: ovf.maxOverflowPx, overflowOffenders: ovf.offenders } });
+          items.push({ kind: 'page', path: null, sha256: null, route, profile, mode, tier: st?.tier ?? null, pass: settled && tierOk && ovf.maxOverflowPx <= lib.budget('site.layout.overflowPx') && ovf.offenders.length === 0, metrics: { settled, expectedTier: wantTier, tierReason: st?.tierReason ?? null, renderer: st?.renderer ?? null, overflowPx: ovf.maxOverflowPx, overflowOffenders: ovf.offenders } });
           await ctx.close();
         }
       }
@@ -177,7 +177,7 @@ async function a11y() {
           const contrastIncomplete = r.incomplete.filter((x) => x.id === 'color-contrast');
           const file = `axe/${slug(route)}-${profile}-${mode}.json`;
           lib.writeJson(join(dir, file), { violations: r.violations, incomplete: r.incomplete.map((x) => ({ id: x.id, nodes: x.nodes.map((n) => ({ target: n.target, why: n.any.map((a) => a.message).join(' | ') })) })), passes: r.passes.length, testEngine: r.testEngine });
-          items.push(lib.item(dir, file, { kind: 'axe', route, profile, mode, tier: null, pass: r.violations.length === 0 && !(mode === 'static' && contrastIncomplete.length), metrics: { violations: r.violations.length, incomplete: r.incomplete.length, contrastIncomplete: contrastIncomplete.length } }));
+          items.push(lib.item(dir, file, { kind: 'axe', route, profile, mode, tier: null, pass: r.violations.length <= lib.budget('site.zero.axeViolationsWcag') && !(mode === 'static' && contrastIncomplete.length), metrics: { violations: r.violations.length, incomplete: r.incomplete.length, contrastIncomplete: contrastIncomplete.length } }));
           await ctx.close();
         }
       }
@@ -227,7 +227,7 @@ async function a11y() {
         const tsFile = `spacing/${slug(route)}-${profile}.png`;
         mkdirSync(join(dir, 'spacing'), { recursive: true });
         await tp.screenshot({ path: join(dir, tsFile), fullPage: true });
-        items.push(lib.item(dir, tsFile, { kind: 'text-spacing', route, profile, mode: 'auto', tier: null, pass: clipped.length === 0 && ovf.maxOverflowPx === 0, metrics: { clipped, overflowPx: ovf.maxOverflowPx } }));
+        items.push(lib.item(dir, tsFile, { kind: 'text-spacing', route, profile, mode: 'auto', tier: null, pass: clipped.length === 0 && ovf.maxOverflowPx <= lib.budget('site.layout.overflowPx'), metrics: { clipped, overflowPx: ovf.maxOverflowPx } }));
         await ts.close();
 
         // Forced colours: the focus ring stays visible (an outline, not only a box-shadow).
@@ -253,7 +253,7 @@ async function a11y() {
         mkdirSync(join(dir, 'dark'), { recursive: true });
         await dp.screenshot({ path: join(dir, dkFile), fullPage: true });
         const dovf = await measure(dp);
-        items.push(lib.item(dir, dkFile, { kind: 'dark', route, profile, mode: 'auto', tier: null, pass: dovf.maxOverflowPx === 0, metrics: { overflowPx: dovf.maxOverflowPx } }));
+        items.push(lib.item(dir, dkFile, { kind: 'dark', route, profile, mode: 'auto', tier: null, pass: dovf.maxOverflowPx <= lib.budget('site.layout.overflowPx'), metrics: { overflowPx: dovf.maxOverflowPx } }));
         await dk.close();
       }
     }

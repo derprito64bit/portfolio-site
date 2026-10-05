@@ -1,6 +1,7 @@
 // Keyboard instrument (W-D015, W-D032).
-//  walk       Tab through a route; at every stop, >= 90% of the focus-ring band (outline-offset to offset + width
-//             outside the border box) differs from the unfocused frame by >= 3:1 (WCAG contrast of the two colours).
+//  walk       Tab through a route; at every stop, at least site.focusRing.coverageMinPct of the focus-ring band
+//             (outline-offset to offset + width outside the border box) differs from the unfocused frame by at least
+//             site.focusRing.contrastMin:1 (WCAG contrast of the two colours); both from the json budgets block.
 //             On /bench/?debug=ring the fixture quads draw GL 12 px past their slots, so the band sits over GL.
 //  roundtrip  sheet -> project -> Back leaves focus on the same print link, and the next Tab reaches the next print.
 //  hash       a cross-page hash visit (/work/project-01/ -> /#contact, the footer's contact heading) focuses the target.
@@ -9,7 +10,11 @@
 //  anchor     an anchor scroll (the nav's Contact on /) moves one way only (no double scroll) and focuses #contact.
 // Usage: npm run h:keyboard -- [--profiles D2,P2] [--routes /,/bench/?debug=ring] [--out keyboard.json]
 import sharp from 'sharp';
-import { cliMain, newContext, serve, sleep, waitSettled } from '../lib.mjs';
+import { budget, cliMain, newContext, serve, sleep, waitSettled } from '../lib.mjs';
+
+/** budgets.md: focus ring >= 3:1 with >= 90% ring coverage at every Tab stop (the json budgets block). */
+const RING_CONTRAST = budget('site.focusRing.contrastMin');
+const RING_COVERAGE = budget('site.focusRing.coverageMinPct') / 100;
 
 const lin = (c) => { const s = c / 255; return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4; };
 const lum = (r, g, b) => 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
@@ -70,7 +75,7 @@ export async function ringCoverage(page) {
       band++;
       const i = (y * focused.w + x) * 3;
       const c = contrast(lum(focused.data[i], focused.data[i + 1], focused.data[i + 2]), lum(plain.data[i], plain.data[i + 1], plain.data[i + 2]));
-      if (c >= 3) good++;
+      if (c >= RING_CONTRAST) good++;
       else {
         const side = dy > dx ? (cy < inner.y0 ? 'top' : 'bottom') : cx < inner.x0 ? 'left' : 'right';
         misses[`${side}@${Math.floor(d)}`] = (misses[`${side}@${Math.floor(d)}`] || 0) + 1;
@@ -87,7 +92,7 @@ export async function walk(page, maxStops = 40) {
     await sleep(80);
     const r = await ringCoverage(page);
     if (!r) break;
-    stops.push({ ...r, pass: r.coverage === null ? r.note === 'off screen' : r.coverage >= 0.9 });
+    stops.push({ ...r, pass: r.coverage === null ? r.note === 'off screen' : r.coverage >= RING_COVERAGE });
     const before = await page.evaluate(() => document.activeElement);
     await page.keyboard.press('Tab');
     const same = await page.evaluate((b) => document.activeElement === b, before);
