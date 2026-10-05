@@ -1,11 +1,12 @@
 {
-  "$comment": "Dated console-warning allowlist (W-D030). Every entry needs a regex, a reason, who added it and an expiry (YYYY-MM-DD); expired entries stop matching. Errors are never allowlisted.",
+  "$comment": "Dated console-warning allowlist (W-D030), read by tests/harness/lib.mjs loadAllowlist. Every entry needs a regex, a reason, who added it and an expiry (a zero-padded YYYY-MM-DD that is a real date); a malformed entry throws, and expired entries stop matching. Each regex is matched against one whole line of a warning (anchored), and a warning passes only when every line of it matches an entry. A regex that matches a generic line (ALLOW_BREADTH_PROBES) throws. An optional example is one real message the entry must match line by line. Errors, and any message with a W-D030 failure word, are never allowlisted.",
   "allow": [
     {
-      "regex": "warning X4122\\b",
-      "reason": "ANGLE's D3D11 HLSL compiler note on three r186's PMREMGGXConvolution program ('THREE.WebGLProgram: Program Info Log: (210,81-129): warning X4122: sum of 0.996094 and -2.98545e-017 cannot be represented accurately in double precision'). The program links and runs; three echoes the program log as a console warning (#54 item 3, from W-S1).",
+      "regex": "(?:THREE\\.WebGLProgram: Program Info Log: )?\\(\\d+,\\d+(?:-\\d+)?\\): warning X4122: sum of [-+.\\de]+ and [-+.\\de]+ cannot be represented accurately in double precision",
+      "reason": "ANGLE's D3D11 HLSL compiler note on three r186's PMREMGGXConvolution program. The program links and runs; three echoes the trimmed program info log as one console warning: 'THREE.WebGLProgram: Program Info Log: ' and then one line per HLSL note (#54 item 3, from W-S1).",
       "addedBy": "W-F (crew/w-f-m2, #54)",
-      "expiry": "2027-01-01"
+      "expiry": "2027-01-01",
+      "example": "THREE.WebGLProgram: Program Info Log: (210,81-129): warning X4122: sum of 0.996094 and -2.98545e-017 cannot be represented accurately in double precision"
     }
   ]
 }

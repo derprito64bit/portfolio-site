@@ -99,18 +99,77 @@ export async function serve(root = join(ROOT, 'dist')) {
 }
 
 // ---------------------------------------------------------------- console gate (W-D030)
-export const CONSOLE_RE = /\b(error|exception|uncaught|failed|GL_INVALID|CONTEXT_LOST|VALIDATE_STATUS)\b/i;
-/** The dated allowlist entries still in force on `today` (YYYY-MM-DD); an entry with no expiry never matches. */
+// W-D030's words. GL_INVALID and CONTEXT_LOST are read as prefixes: real messages carry them as GL_INVALID_OPERATION,
+// GL_INVALID_ENUM or CONTEXT_LOST_WEBGL, where the plan's literal \bGL_INVALID\b never matches ('_' is a word
+// character), so the literal form would let every one of them through below the error level.
+export const CONSOLE_RE = /\b(error|exception|uncaught|failed|GL_INVALID\w*|CONTEXT_LOST\w*|VALIDATE_STATUS)\b/i;
+
+/** True for a zero-padded YYYY-MM-DD that names a real calendar day. */
+export function isIsoDate(s) {
+  if (typeof s !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
+  const [y, m, d] = s.split('-').map(Number);
+  const t = new Date(Date.UTC(y, m - 1, d));
+  return t.getUTCFullYear() === y && t.getUTCMonth() === m - 1 && t.getUTCDate() === d;
+}
+/**
+ * Lines no allowlist entry may match. An entry is tested against one whole line of a message (anchored), so one that
+ * matches any of these (nothing, whitespace, one character, a bare word, a generic sentence, another compiler warning,
+ * three's log prefix alone) would let unrelated text through: it is too broad to be an allowlist line.
+ */
+export const ALLOW_BREADTH_PROBES = [
+  '', ' ', 'x', '0', 'warning', 'Warning: something happened', 'THREE.WebGLProgram: Program Info Log:',
+  'THREE.WebGLRenderer: an unrelated warning', '(1,1): warning X3571: pow(f, e) will not work for negative f',
+  '(12,3-40): warning X3557: loop only executes for 1 iteration(s), forcing loop to unroll',
+  'The quick brown fox jumps over the lazy dog', 'x'.repeat(240),
+];
+/** The lines of a console message an allowlist entry is judged on: trimmed, blank lines dropped. */
+export const messageLines = (text) => String(text).split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+
+/**
+ * The dated allowlist (W-D030: regex, reason, added-by, expiry), checked for form, not only presence: a malformed
+ * entry throws, so every gate built on it fails loudly instead of letting an entry stay in force.
+ * - regex, reason and addedBy are non-empty strings; the regex compiles and is anchored to one whole line here;
+ * - expiry is a zero-padded YYYY-MM-DD that names a real day (so the comparison with `today` is a date comparison);
+ * - the regex matches none of ALLOW_BREADTH_PROBES (a catch-all such as '.', '.*' or 'warning.*' throws);
+ * - an optional `example` (one real message) must have every line match the entry and no CONSOLE_RE word.
+ * Returns the entries still in force on `today`; an expired entry stops matching.
+ */
 export function loadAllowlist(today = new Date().toISOString().slice(0, 10), file = join(ROOT, 'tests/harness/console-allow.json')) {
-  const list = existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')).allow : [];
-  return list.filter((a) => a.regex && a.reason && a.addedBy && a.expiry && a.expiry >= today).map((a) => ({ ...a, re: new RegExp(a.regex) }));
+  if (!isIsoDate(today)) throw new Error(`console allowlist: today '${today}' is not a YYYY-MM-DD date`);
+  if (!existsSync(file)) return [];
+  const doc = JSON.parse(readFileSync(file, 'utf8'));
+  if (!Array.isArray(doc?.allow)) throw new Error(`console allowlist ${file}: "allow" must be an array`);
+  return doc.allow.map((a, i) => validateAllowEntry(a, i)).filter((a) => a.expiry >= today);
+}
+export function validateAllowEntry(a, i = 0) {
+  const where = `console allowlist entry ${i}`;
+  for (const k of ['regex', 'reason', 'addedBy', 'expiry']) {
+    if (typeof a?.[k] !== 'string' || !a[k].trim()) throw new Error(`${where}: "${k}" must be a non-empty string`);
+  }
+  if (!isIsoDate(a.expiry)) throw new Error(`${where}: expiry '${a.expiry}' is not a zero-padded YYYY-MM-DD date`);
+  let re;
+  try {
+    re = new RegExp(`^(?:${a.regex})$`);
+  } catch (e) {
+    throw new Error(`${where}: regex does not compile (${e.message})`);
+  }
+  const hit = ALLOW_BREADTH_PROBES.find((p) => re.test(p));
+  if (hit !== undefined) throw new Error(`${where}: regex /${a.regex}/ is too broad (it matches the probe line ${JSON.stringify(hit.slice(0, 60))})`);
+  if (a.example !== undefined) {
+    const lines = messageLines(a.example);
+    if (!lines.length || !lines.every((l) => re.test(l))) throw new Error(`${where}: its example does not match the regex line by line`);
+    if (CONSOLE_RE.test(a.example)) throw new Error(`${where}: its example holds a W-D030 failure word, which no entry can allow`);
+  }
+  return { ...a, re };
 }
 
 /**
  * Attach the console gate to a page. Collects every console level, pageerror, requestfailed and every response of 400
- * or more. verdict() fails on errors, page errors, failed requests, unexpected statuses, regex hits and warnings that
- * are not on the dated allowlist. expectStatus lets a test accept a known status for a URL (the 404 route itself).
- * `allow` replaces the allowlist (tests of the gate itself).
+ * or more. verdict() fails on errors, page errors, failed requests, unexpected statuses, any message with a CONSOLE_RE
+ * word (whatever the allowlist says: W-D030), and warnings that are not wholly allowlisted: a warning passes only when
+ * every line of it matches an entry, so a multi-line log (three logs a program's whole info log in one warning) cannot
+ * carry another warning through on an allowed line. expectStatus lets a test accept a known status for a URL (the 404
+ * route itself). `allow` replaces the allowlist (tests of the gate itself).
  */
 export function consoleGate(page, { expectStatus = [], allow = loadAllowlist() } = {}) {
   const events = [];
@@ -131,16 +190,19 @@ export function consoleGate(page, { expectStatus = [], allow = loadAllowlist() }
     verdict() {
       const failures = [];
       const expectedStatuses = new Set(events.filter((e) => e.channel === 'response' && e.expected).map((e) => Number(e.text.split(' ')[0])));
+      const wholly = (text) => {
+        const lines = messageLines(text);
+        return lines.length > 0 && lines.every((l) => allow.some((a) => a.re.test(l)));
+      };
       for (const e of events) {
-        const allowed = allow.find((a) => a.re.test(e.text));
         if (e.channel === 'response' && e.expected) continue;
         // Chrome echoes every 4xx response to the console; an expected status covers its echo.
         const echo = e.channel === 'console' && e.text.match(/Failed to load resource: the server responded with a status of (\d+)/);
         if (echo && expectedStatuses.has(Number(echo[1]))) continue;
-        if (e.channel !== 'console') failures.push(e);
-        else if (e.level === 'error') failures.push(e);
-        else if (CONSOLE_RE.test(e.text) && !allowed) failures.push(e);
-        else if ((e.level === 'warning' || e.level === 'warn') && !allowed) failures.push(e);
+        if (e.channel !== 'console') failures.push({ ...e, why: e.channel });
+        else if (e.level === 'error') failures.push({ ...e, why: 'error level' });
+        else if (CONSOLE_RE.test(e.text)) failures.push({ ...e, why: 'W-D030 failure word' });
+        else if ((e.level === 'warning' || e.level === 'warn') && !wholly(e.text)) failures.push({ ...e, why: 'warning not wholly allowlisted' });
       }
       return { pass: failures.length === 0, failures, events: events.length };
     },
