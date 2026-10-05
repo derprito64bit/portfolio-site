@@ -131,11 +131,21 @@ export function scheduleGL(): void {
   };
   addEventListener('pointerdown', touch, true);
   addEventListener('focusin', touch, true);
-  addEventListener('load', () => window.setTimeout(() => request('timer', 1000), 5000), { once: true });
+  const timer = () => window.setTimeout(() => request('timer', 1000), 5000);
+  if (document.readyState === 'complete') timer();
+  else addEventListener('load', timer, { once: true });
 }
 
-/** After a swap, a lite page may now hold a print slot in range. */
+/**
+ * After a swap: a lite page may now hold a print slot in range; and a session that started on a page without GL (the
+ * 404) schedules GL the first time a swap lands on a page with GL, as a full load of that page would.
+ */
 export function rescanGLIntent(): void {
-  if (state !== 'deferred' || started) return;
+  if (started) return;
+  if (state === 'off' && getTier() !== 'static' && document.documentElement.dataset.glPage !== 'off') {
+    scheduleGL();
+    return;
+  }
+  if (state !== 'deferred') return;
   armNear();
 }

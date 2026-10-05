@@ -47,10 +47,13 @@ const docTitle = `${title} · derprito64bit`;
       // Render tier, motion and the scrollbar gutter before first paint (W-D017). Never reads core or touch-point counts.
       // - The gutter (#59): only where a scrollbar takes room (a 100 px overflow:scroll probe). The page keeps its first
       //   width when the bar appears mid-parse; a gutter without a bar (hidden scrollbars) would narrow the canvas.
-      // - WebGL2 means a context, not only its constructor (#61): where none can be made (a blocklisted GPU, Chromium
-      //   --disable-3d-apis) the tier is static from first paint. The probe context is released at once.
+      // - WebGL2 means a context, not only its constructor (#61, W-D017): where none can be made (a blocklisted GPU,
+      //   Chromium --disable-3d-apis) the tier is static from first paint. Probed on every load whose tier is not static:
+      //   under a ?tier= override too (it cannot make WebGL2 exist), and on pages without GL (the 404), so a Swup visit
+      //   from them starts on the right tier. The probe context is released at once, and the answer is kept for the
+      //   session (ion.webgl2), so later full loads skip the probe.
       (function (d, w) {
-        var h = d.documentElement, q = new URLSearchParams(location.search), t = q.get('tier'), m, c = navigator.connection, p = d.createElement('div'), g, x;
+        var h = d.documentElement, q = new URLSearchParams(location.search), t = q.get('tier'), m, c = navigator.connection, p = d.createElement('div'), g, x, k;
         try { m = localStorage.getItem('ion.motion'); } catch (e) {}
         h.dataset.motion = m === 'reduced' || (m !== 'full' && matchMedia('(prefers-reduced-motion: reduce)').matches) ? 'reduced' : 'full';
         p.style.cssText = 'position:absolute;top:-200px;width:100px;height:100px;overflow:scroll;visibility:hidden';
@@ -58,10 +61,15 @@ const docTitle = `${title} · derprito64bit`;
         if (p.offsetWidth - p.clientWidth > 0) h.setAttribute('data-gutter', '');
         p.remove();
         if (!/^(full|lite|static)$/.test(t || '')) {
-          t = !w.WebGL2RenderingContext ? 'static' : matchMedia('(pointer: fine) and (hover: hover)').matches && !(c && c.saveData) ? 'full' : 'lite';
+          t = matchMedia('(pointer: fine) and (hover: hover)').matches && !(c && c.saveData) ? 'full' : 'lite';
           try { if (sessionStorage.getItem('ion.gl-off')) t = 'static'; } catch (e) {}
-          if (t !== 'static' && h.getAttribute('data-gl-page') !== 'off') {
-            try { g = d.createElement('canvas').getContext('webgl2'); x = g && g.getExtension('WEBGL_lose_context'); x && x.loseContext(); } catch (e) { g = null; }
+        }
+        if (t !== 'static') {
+          try { k = sessionStorage.getItem('ion.webgl2'); } catch (e) {}
+          if (k !== '1') {
+            g = null;
+            if (k !== '0' && w.WebGL2RenderingContext) try { g = d.createElement('canvas').getContext('webgl2'); x = g && g.getExtension('WEBGL_lose_context'); x && x.loseContext(); } catch (e) { g = null; }
+            try { sessionStorage.setItem('ion.webgl2', g ? '1' : '0'); } catch (e) {}
             if (!g) { t = 'static'; h.dataset.tierReason = 'no-webgl2'; }
           }
         }

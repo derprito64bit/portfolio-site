@@ -386,6 +386,12 @@ export async function boot(): Promise<GLApi | null> {
     context = null;
   }
   if (!context) {
+    // Later full loads in this session start static before first paint (the head script reads this).
+    try {
+      sessionStorage.setItem('ion.webgl2', '0');
+    } catch {
+      /* storage blocked: the head script probes again */
+    }
     demote('static', 'no-webgl2');
     return null;
   }

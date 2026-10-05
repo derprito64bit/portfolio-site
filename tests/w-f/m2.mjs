@@ -17,7 +17,9 @@
 //              control sized from html.clientWidth fails
 //   zero       round-1 must-fix: an iframe collapsed to 0 px wide or tall keeps the geometry finite and the stage idle
 //              (counters' motion-end window), and it settles again when restored (Chromium and WebKit)
-//   hooks      #54 item 2: __stage.registerEffect plugs an effect in behind __stage.effects; __stage.markDirty re-measures
+//   hooks      #54 item 2 under #14 ruling 2: a chunk loaded after stage:gl-start registers develop through
+//              __stage.registerEffect and hands other ids to `next` (the no-op: take, then give); a second
+//              registration chains and falls through on undefined; __stage.markDirty re-measures
 // Usage: node tests/w-f/m2.mjs [--out m2.json] [--dist <dir>] [--only door,noWebgl,...]
 //   --dist runs the browser checks against another build (the negative controls run them on main's dist).
 import sharp from 'sharp';
@@ -110,26 +112,52 @@ const ATTR_INIT = `(() => {
   }).observe(document, { attributes: true, subtree: true, attributeFilter: ['data-tier', 'data-cam', 'data-hero'] });
 })();`;
 
+/**
+ * Every way into the site with no WebGL2 context (#61 item 3 as amended by the Orchestrator, 5982885690; Breakers 1.1
+ * #2 and 1.3 #1): / at eight profiles, a project page, ?tier=lite and ?tier=full (an override cannot make WebGL2
+ * exist), the 404 (a page without GL), a Swup visit from the 404 to /, and a second full load in the same session (the
+ * probe's answer is kept, ion.webgl2). Static with reason no-webgl2 before first paint, never anything else, GL off,
+ * and 0 console failures; on / by a full load, data-cam camera and print 1's still too.
+ */
 async function noWebgl(base) {
   const rows = [];
-  const cases = [...['D1', 'D2', 'D3', 'S1', 'T1', 'T2', 'P1', 'P2'].map((p) => [p, '/']), ['D2', '/work/project-01/'], ['P2', '/work/project-01/']];
-  for (const [profile, route] of cases) {
+  const cases = [
+    ...['D1', 'D2', 'D3', 'S1', 'T1', 'T2', 'P1', 'P2'].map((p) => [p, '/', 'load']),
+    ['D2', '/work/project-01/', 'load'], ['P2', '/work/project-01/', 'load'],
+    ['D2', '/?tier=full', 'load'], ['S1', '/?tier=full', 'load'], ['D2', '/?tier=lite', 'load'], ['P2', '/?tier=lite', 'load'],
+    ['D2', '/404.html', 'load'], ['P2', '/404.html', 'load'],
+    ['D2', '/404.html', 'swup-home'], ['P2', '/404.html', 'swup-home'],
+    ['D2', '/work/project-01/', 'second-load'],
+  ];
+  for (const [profile, route, kind] of cases) {
     const ctx = await newContext(profile, 'auto', { browser: 'chromium-no3d' });
     await ctx.addInitScript({ content: ATTR_INIT });
     const page = await ctx.newPage();
     const gate = consoleGate(page);
+    if (kind === 'second-load') {
+      await page.goto(`${base}/`, { waitUntil: 'load' });
+      await waitSettled(page, 15000);
+    }
     await page.goto(base + route, { waitUntil: 'load' });
     await waitSettled(page, 15000);
+    if (kind === 'swup-home') {
+      await page.click('a.site-mark');
+      await page.waitForFunction(() => location.pathname === '/' && document.documentElement.dataset.page === 'home', null, { polling: 100, timeout: 10000 });
+      await waitSettled(page, 15000);
+    }
     await sleep(800); // a GL boot would have run by now (full: an idle callback after FCP)
     const s = await page.evaluate(() => {
       const h = document.documentElement;
       const still = document.querySelector('.hero-still');
+      let cached = null;
+      try { cached = sessionStorage.getItem('ion.webgl2'); } catch (e) { cached = 'blocked'; }
       return {
+        path: location.pathname + location.search,
         constructorExists: typeof window.WebGL2RenderingContext === 'function',
         contextNow: Boolean(document.createElement('canvas').getContext('webgl2')),
         tier: h.dataset.tier, cam: h.dataset.cam ?? null, hero: h.dataset.hero ?? null,
         reason: window.__stage?.tierReason ?? null, glState: window.__stage?.glState ?? null,
-        stillOpacity: still ? getComputedStyle(still).opacity : null,
+        stillOpacity: still ? getComputedStyle(still).opacity : null, cached,
         fcp: window.__fcp, log: window.__attrLog,
       };
     });
@@ -137,11 +165,13 @@ async function noWebgl(base) {
     await ctx.close();
     const after = s.fcp === null ? s.log : s.log.filter((e) => e.t > s.fcp);
     const tiers = s.log.filter((e) => e.attr === 'data-tier').map((e) => e.value);
-    const hero = route === '/';
+    // The hero's first-paint attributes on a full load of / (a Swup arrival on / leaves the hero unlaid on main too:
+    // W-S1's, recorded only).
+    const hero = kind === 'load' && route.startsWith('/') && route.split('?')[0] === '/';
     rows.push({
-      profile, route, ...s, consoleFailures: v.failures.map((f) => `${f.channel}/${f.level}: ${f.text.slice(0, 160)}`), changesAfterFcp: after,
-      pass: s.constructorExists && !s.contextNow && s.fcp !== null && s.tier === 'static' && tiers.every((t) => t === 'static') && after.length === 0
-        && s.reason === 'no-webgl2' && s.glState === 'off' && v.pass
+      profile, route, kind, ...s, consoleFailures: v.failures.map((f) => `${f.channel}/${f.level}: ${f.text.slice(0, 160)}`), changesAfterFcp: after,
+      pass: s.constructorExists && !s.contextNow && s.fcp !== null && s.tier === 'static' && tiers.every((t) => t === 'static') && (kind === 'swup-home' || after.length === 0)
+        && s.reason === 'no-webgl2' && s.glState === 'off' && s.cached === '0' && v.pass
         && (!hero || (s.cam === 'camera' && s.hero === 'still' && s.stillOpacity === '1' && !s.log.some((e) => e.attr === 'data-hero' && e.value === 'eject'))),
     });
   }
@@ -161,6 +191,23 @@ async function withGl(base) {
     await ctx.close();
     const want = expectedTier(profile);
     rows.push({ profile, ...s, expected: want, consolePass: v.pass, pass: (s.tier === want || (want === 'full' && s.tier === 'lite' && s.reason === 'probe')) && s.tierReasonAttr === null && v.pass });
+  }
+  // A session that starts on a page without GL (the 404) boots GL once a Swup visit lands on a page with GL (round-1
+  // should-fix: scheduleGL ran once at load and never again).
+  for (const profile of ['D2', 'P2']) {
+    const ctx = await newContext(profile);
+    const page = await ctx.newPage();
+    const gate = consoleGate(page);
+    await page.goto(`${base}/404.html`, { waitUntil: 'load' });
+    await waitSettled(page, 15000);
+    const before = await page.evaluate(() => window.__stage.glState);
+    await page.click('a.site-mark');
+    await page.waitForFunction(() => location.pathname === '/' && document.documentElement.dataset.page === 'home', null, { polling: 100, timeout: 10000 });
+    const booted = await page.waitForFunction(() => window.__stage.glState === 'ready', null, { polling: 100, timeout: 12000 }).then(() => true, () => false);
+    const s = await page.evaluate(() => ({ glState: window.__stage.glState, tier: window.__stage.tier, marks: window.__stage.marks().filter((m) => m.name === 'stage:gl-start').map((m) => m.detail) }));
+    const v = gate.verdict();
+    await ctx.close();
+    rows.push({ profile, swupFrom404: true, before, ...s, consolePass: v.pass, pass: before === 'off' && booted && s.glState === 'ready' && v.pass });
   }
   return { rows, pass: rows.every((r) => r.pass) };
 }
@@ -439,26 +486,68 @@ async function zero(base) {
 }
 
 // ---------------------------------------------------------------- hooks (#54 item 2)
+/**
+ * #14 ruling 2 (5990469145): W-S2 registers 'develop' through window.__stage.registerEffect from a chunk it loads after
+ * stage:gl-start, and gives other ids the no-op without importing src/stage. On / at D2 (GL ready):
+ * - a module loaded from a blob URL after the stage:gl-start mark registers develop for project-01 and hands every
+ *   other id to `next` (the no-op: project-02 is taken, then given, focus stays, the result is the final state);
+ * - a second registration (W-C2 may re-register) serves project-04, returns undefined for the rest and falls through to
+ *   the first; a later develop of project-01 still reaches the first impl;
+ * - __stage.markDirty re-measures on the next frame.
+ */
 async function hooks(base) {
   const ctx = await newContext('D2');
   const page = await ctx.newPage();
-  await page.goto(`${base}/bench/`, { waitUntil: 'load' });
+  await page.goto(`${base}/`, { waitUntil: 'load' });
   await page.waitForFunction(() => window.__stage?.glState === 'ready', null, { polling: 100, timeout: 20000 });
-  await waitSettled(page, 10000);
+  await waitSettled(page, 15000);
   const r = await page.evaluate(async () => {
     const s = window.__stage;
     const types = { registerEffect: typeof s.registerEffect, markDirty: typeof s.markDirty };
     if (types.registerEffect !== 'function' || types.markDirty !== 'function') return { types };
-    const calls = [];
-    s.registerEffect('develop', async (id, opts) => { calls.push({ id, trigger: opts?.trigger ?? null }); return { id, d: 1, developed: true }; });
-    const result = await s.effects.develop('fx-2', { trigger: 'm2-test' });
+    const glStart = performance.getEntriesByName('stage:gl-start').length > 0;
+    // The W-S2 stand-in: an ES module chunk loaded after stage:gl-start, touching only window.__stage.
+    const ws2 = `window.__devCalls = [];
+      window.__stage.registerEffect('develop', async (id, opts, next) => {
+        window.__devCalls.push({ by: 'w-s2', id, hasNext: typeof next === 'function' });
+        if (id !== 'project-01') return next(id, opts);
+        return { id, d: 1, developed: true, by: 'w-s2' };
+      });
+      export const at = performance.now();`;
+    const url = URL.createObjectURL(new Blob([ws2], { type: 'text/javascript' }));
+    const mod = await import(url);
+    const gs = performance.getEntriesByName('stage:gl-start')[0]?.startTime ?? Infinity;
+    const el2 = document.querySelector('[data-gl-id="project-02"]');
+    const classLog = [];
+    // Each class change, by whether is-gl was there before it: take is false (added), give is true (removed).
+    const mo = new MutationObserver((recs) => { for (const m of recs) classLog.push(/\bis-gl\b/.test(m.oldValue || '')); });
+    mo.observe(el2, { attributes: true, attributeFilter: ['class'], attributeOldValue: true });
+    el2.focus();
+    const focusBefore = document.activeElement;
+    const own = await s.effects.develop('project-01', { trigger: 'm2' });
+    const other = await s.effects.develop('project-02', { trigger: 'm2' });
+    await new Promise((res) => setTimeout(res, 0));
+    mo.disconnect();
+    // W-C2 re-registers: serves project-04, falls through (undefined) for everything else.
+    s.registerEffect('develop', (id) => (id === 'project-04' ? { id, d: 1, developed: true, by: 'w-c2' } : undefined));
+    const c2 = await s.effects.develop('project-04');
+    const through = await s.effects.develop('project-01');
     const before = s.stats.measuresInTick;
     s.markDirty();
-    await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
-    return { types, calls, result, measuresInTick: s.stats.measuresInTick - before };
+    await new Promise((res) => setTimeout(res, 120));
+    return {
+      types, glStart, loadedAfterGlStart: mod.at > gs, own, other, c2, through, calls: window.__devCalls,
+      handback: classLog, focusKept: document.activeElement === focusBefore, isGlAfter: el2.classList.contains('is-gl'),
+      measuresInTick: s.stats.measuresInTick - before,
+    };
   });
   await ctx.close();
-  return { ...r, pass: r.types.registerEffect === 'function' && r.types.markDirty === 'function' && r.calls?.length === 1 && r.calls[0].id === 'fx-2' && r.result?.developed === true && r.measuresInTick >= 1 };
+  const ok = r.types.registerEffect === 'function' && r.types.markDirty === 'function' && r.glStart && r.loadedAfterGlStart
+    && r.own?.by === 'w-s2' && r.other?.id === 'project-02' && r.other?.developed === true && !r.other?.by
+    && r.handback?.join(',') === 'false,true' && r.focusKept && r.isGlAfter === false
+    && r.c2?.by === 'w-c2' && r.through?.by === 'w-s2' && r.calls?.every((c) => c.hasNext)
+    && r.measuresInTick >= 1;
+  return { ...r, pass: Boolean(ok) };
 }
 
 const CHECKS = { door, noWebgl, withGl, present, grid, aspect, gutter, zero, hooks };

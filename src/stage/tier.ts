@@ -12,7 +12,8 @@ const listeners = new Set<(t: Tier, reason: string) => void>();
 
 const initial = html.dataset.tier;
 let current: Tier = initial === 'full' || initial === 'lite' || initial === 'static' ? initial : 'static';
-let reason = new URLSearchParams(location.search).has('tier') ? 'override' : html.dataset.tierReason || 'detect';
+// The head script's own reason wins: no-webgl2 holds under a ?tier= override too (an override cannot make WebGL2 exist).
+let reason = html.dataset.tierReason || (new URLSearchParams(location.search).has('tier') ? 'override' : 'detect');
 /** Every demotion, for GES-1 manifests ('a logged probe demotion'). */
 export const tierLog: { tier: Tier; reason: string; at: number }[] = [{ tier: current, reason, at: 0 }];
 
