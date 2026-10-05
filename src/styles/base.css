@@ -20,6 +20,11 @@
    size-adjust scales the overrides too. A new nav word needs its own face; tests/w-f/fonts.mjs fails until it has one. */
 @font-face { font-family: "BG Nav Work Fallback"; src: local("Arial"), local("ArialMT"), local("Helvetica Neue"), local("Helvetica"); size-adjust: 108.0085%; ascent-override: 86.1043%; descent-override: 24.9980%; line-gap-override: 0%; }
 @font-face { font-family: "BG Nav Contact Fallback"; src: local("Arial"), local("ArialMT"), local("Helvetica Neue"), local("Helvetica"); size-adjust: 108.9481%; ascent-override: 85.3618%; descent-override: 24.7824%; line-gap-override: 0%; }
+/* The header's mark the same way: "derprito64bit" at wght 540 is 0.935683 of Arial Bold's width, each bracket at wght
+   800 0.885865 (measured as above; W-S1's wordmark measured the same ratios). Without them the closing bracket moved
+   4.1 px when the face arrived on every page that shows the mark. */
+@font-face { font-family: "BG Site Mark Fallback"; src: local("Arial Bold"), local("Arial-BoldMT"), local("Helvetica Neue Bold"); size-adjust: 93.5683%; ascent-override: 99.3926%; descent-override: 28.8559%; line-gap-override: 0%; }
+@font-face { font-family: "BG Site Mark Bracket Fallback"; src: local("Arial Bold"), local("Arial-BoldMT"), local("Helvetica Neue Bold"); size-adjust: 88.5865%; ascent-override: 104.9821%; descent-override: 30.4787%; line-gap-override: 0%; }
 
 /* ---------- Reset ---------- */
 *, *::before, *::after { box-sizing: border-box; }
@@ -152,10 +157,11 @@ html[data-tier="static"] #rail, html:not(.js) #rail { display: none; }
   align-items: center;
   min-block-size: 44px;
   font: 540 1.25rem / 1 var(--font-mark);
+  font-family: "BG Mark", "BG Site Mark Fallback", system-ui, sans-serif;
   letter-spacing: -0.012em;
   text-decoration: none;
 }
-.site-mark .br { color: var(--accent); font-weight: 800; }
+.site-mark .br { color: var(--accent); font-weight: 800; font-family: "BG Mark", "BG Site Mark Bracket Fallback", system-ui, sans-serif; }
 html[data-page="home"] .site-mark { display: none; }
 .site-nav ul { display: flex; flex-wrap: wrap; gap: 0 var(--space-2); margin: 0; padding: 0; list-style: none; }
 .site-nav a {
