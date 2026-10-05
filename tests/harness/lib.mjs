@@ -2,7 +2,7 @@
 // Browsers: Chromium runs as the installed Chrome (channel 'chrome', new headless, real GPU) on the reference host and
 // as Playwright's Chromium in CI; WebKit is Playwright's. Audio is always muted. Pages come from scripts/serve-dist.mjs.
 import { createHash } from 'node:crypto';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -233,8 +233,84 @@ export function cliOpts(argv = process.argv.slice(2)) {
   return out;
 }
 
-/** Host facts for the GES-1 manifest (cores describe the host, never a tier input). */
-export async function hostInfo() {
+// ---------------------------------------------------------------- host load (budgets.md Measurement validity, #67)
+const median = (xs) => {
+  const s = xs.filter((x) => typeof x === 'number' && Number.isFinite(x)).sort((a, b) => a - b);
+  if (!s.length) return null;
+  return s.length % 2 ? s[(s.length - 1) / 2] : (s[s.length / 2 - 1] + s[s.length / 2]) / 2;
+};
+export { median };
+
+/** scripts/fleet/hostload.ps1 of this checkout (R1's precheck and R2's watch); null where it cannot run (not Windows). */
+export const HOSTLOAD = process.platform === 'win32' ? join(ROOT, 'scripts/fleet/hostload.ps1') : null;
+
+/**
+ * Run hostload.ps1 with `args` (['-Out', f] for a precheck, ['-Watch', pid, '-Out', f] for a watch) and resolve with
+ * { exitCode, json, file, stderr }. Exit 0 is clear, 75 is blocked (host: busy, flagged, incomplete, no-data or
+ * uncalibrated), anything else (2: usage or read error) is a broken tool, which also counts as blocked (host).
+ * Returns the child too, so a caller can start a watch and wait for it later.
+ */
+export function startHostload(args, { budgetsFile } = {}) {
+  if (!HOSTLOAD || !existsSync(HOSTLOAD)) {
+    return { child: null, done: Promise.resolve({ exitCode: null, json: null, file: null, stderr: `hostload.ps1 unavailable on ${process.platform}` }) };
+  }
+  const out = args[args.indexOf('-Out') + 1];
+  const argv = ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', HOSTLOAD, ...args.map(String), ...(budgetsFile ? ['-Budgets', budgetsFile] : [])];
+  const child = spawn('powershell.exe', argv, { cwd: ROOT, windowsHide: true });
+  let stderr = '';
+  let stdout = '';
+  child.stderr.on('data', (d) => (stderr += d));
+  child.stdout.on('data', (d) => (stdout += d));
+  const done = new Promise((res) => child.on('close', (code) => {
+    let json = null;
+    try {
+      json = out && existsSync(out) ? JSON.parse(readFileSync(out, 'utf8').replace(/^﻿/, '')) : null;
+    } catch {
+      json = null;
+    }
+    res({ exitCode: code, json, file: out ?? null, stderr: (stderr || (code !== 0 && code !== 75 ? stdout : '')).trim().slice(-600) });
+  }));
+  return { child, done };
+}
+
+/**
+ * R2: why a timed run is host-suspect, or [] when it is clean. `host` is the json budgets block's host key.
+ * - its benchmarkIndex is below host.benchmarkIndex.suspectBelowRatio x host.benchmarkIndex.baseline;
+ * - its -Watch file did not exit 0 (a flagged process, part of the run unwatched, missing samples), or is missing;
+ * - the host key cannot judge it (a null baseline or ratio: uncalibrated).
+ */
+export function hostSuspectReasons({ benchmarkIndex, watch }, host) {
+  const reasons = [];
+  const base = host?.benchmarkIndex?.baseline;
+  const ratio = host?.benchmarkIndex?.suspectBelowRatio;
+  if (typeof base !== 'number' || typeof ratio !== 'number') reasons.push('host-suspect (R2): the host key has no calibrated benchmarkIndex baseline');
+  else if (typeof benchmarkIndex !== 'number' || !Number.isFinite(benchmarkIndex)) reasons.push('host-suspect (R2): no lhr.environment.benchmarkIndex');
+  else if (benchmarkIndex < ratio * base) reasons.push(`host-suspect (R2): benchmarkIndex ${benchmarkIndex} < ${ratio} x baseline ${base} (${Math.round(ratio * base * 10) / 10})`);
+  if (!watch) reasons.push('host-suspect (R2): no hostload -Watch file for this run');
+  else if (watch.exitCode !== 0) {
+    const why = (watch.json?.reasons ?? []).slice(0, 3).join('; ') || watch.stderr || `exit ${watch.exitCode}`;
+    reasons.push(`host-suspect (R2): -Watch ${watch.json?.verdict ?? 'failed'} (exit ${watch.exitCode}): ${why}`);
+  }
+  return reasons;
+}
+
+/**
+ * R3 and R5 for one timed set, as a pure step function. `runs` are the runs so far, each { suspect: [reasons] };
+ * `need` the clean runs the set must reach; `extraMax` the host key's extraRunsPerSetMax. Returns what to do next:
+ * 'run' (take another run), 'done' (enough clean runs) or 'blocked' (the extra runs are spent, R3).
+ */
+export function setStep(runs, need, extraMax) {
+  const clean = runs.filter((r) => !r.suspect.length).length;
+  const replaced = runs.length - clean;
+  if (clean >= need) return { next: 'done', clean, replaced };
+  if (replaced > extraMax) return { next: 'blocked', clean, replaced, why: `only ${clean} of ${need} clean runs after ${replaced} host-suspect runs (extraRunsPerSetMax ${extraMax}): blocked (host), R3` };
+  return { next: 'run', clean, replaced };
+}
+
+/** Host facts for the GES-1 manifest (cores describe the host, never a tier input), with the set's host load (#67):
+ * benchmarkIndex (the median of the clean timed runs), cpuBusyPct and gpu3dPct (the precheck's medians); null when
+ * the command took no timed set. */
+export async function hostInfo(load = {}) {
   const b = await browser('chromium');
   const ctx = await b.newContext();
   const page = await ctx.newPage();
@@ -252,7 +328,11 @@ export async function hostInfo() {
     window.requestAnimationFrame(f);
   }));
   await ctx.close();
-  return { os: `${os.type()} ${os.release()}`, gpuRenderer: gpu.renderer, graphicsDeviceType: gpu.type, displayHz: hz, cores: os.cpus().length };
+  return {
+    os: `${os.type()} ${os.release()}`, gpuRenderer: gpu.renderer, graphicsDeviceType: gpu.type, displayHz: hz, cores: os.cpus().length,
+    benchmarkIndex: load.benchmarkIndex ?? null, cpuBusyPct: load.cpuBusyPct ?? null, gpu3dPct: load.gpu3dPct ?? null,
+    ...(load.source ? { hostLoadSource: load.source } : {}),
+  };
 }
 
 export async function toolVersions() {
@@ -270,7 +350,7 @@ export async function toolVersions() {
       return 'missing';
     }
   };
-  return { chrome, webkit: wk, playwright: ver('@playwright/test'), lighthouse: '13.5.0', axe: ver('axe-core'), node: process.version };
+  return { chrome, webkit: wk, playwright: ver('@playwright/test'), lighthouse: readBudgets().site.protocol.lighthouseVersion, axe: ver('axe-core'), node: process.version };
 }
 
 export const AGENT = { model: 'claude-opus-5-5', effort: 'xhigh' };
@@ -283,7 +363,7 @@ export async function writeManifest(dir, items, extra = {}) {
     crew: extra.crew ?? 'W-F',
     sha: gitSha(),
     createdAt: new Date().toISOString(),
-    host: await hostInfo(),
+    host: await hostInfo(extra.hostLoad),
     tools: await toolVersions(),
     agent: AGENT,
     ...extra.fields,

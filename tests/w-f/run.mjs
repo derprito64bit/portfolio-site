@@ -20,9 +20,11 @@ const STEPS = [
   ['check', ...node('scripts/check/run.mjs', '--log', out('check.log'), '--json', out('check.json'))],
   ['tokens-determinism', ...node('scripts/check/tokens-determinism.mjs', '--json', out('tokens-determinism.json'))],
   ['size-limit', ...node('node_modules/size-limit/bin.js', '--json'), { stdout: 'size-limit.json' }],
+  ['unit', ...node('--test', 'tests/w-f/**/*.test.mjs'), { stdout: 'unit.log' }],
   ['build', ...node('tests/w-f/build.mjs', '--out', out('build.json'))],
   ['pregl', ...node('tests/w-f/pregl.mjs', '--out', out('pregl.json'))],
   ['stage', ...node('tests/w-f/stage.mjs', '--out', out('stage.json'))],
+  ['m2', ...node('tests/w-f/m2.mjs', '--out', out('m2.json'))],
   ['fonts', ...node('tests/w-f/fonts.mjs', '--out', out('fonts.json'))],
   ['negatives', ...node('tests/w-f/negatives.mjs', '--out', out('negatives.json'))],
   ['h-console', ...node('tests/harness/console/run.mjs', '--out', out('console.json'))],
@@ -40,7 +42,9 @@ const STEPS = [
   ['h-overflow', ...node('tests/harness/overflow/run.mjs', '--profiles', 'all', '--out', out('overflow.json'))],
   ['shoot', ...node('scripts/crew.mjs', 'shoot', '--crew', 'W-F', '--role', role)],
   ['a11y', ...node('scripts/crew.mjs', 'a11y', '--crew', 'W-F', '--role', role)],
-  ['lighthouse', ...node('scripts/crew.mjs', 'lighthouse', '--crew', 'W-F', '--role', role, '--runs', '5')],
+  // Timed: run it only in the final evidence step, holding the perf and blender lanes (budgets.md R1-R5). Exit 75 is
+  // blocked (host), which is neither pass nor fail.
+  ['lighthouse', ...node('scripts/crew.mjs', 'lighthouse', '--crew', 'W-F', '--role', role)],
 ];
 
 function run(cmd, argv) {
@@ -61,22 +65,23 @@ for (const [name, cmd, argv, extra] of STEPS) {
   const r = await run(cmd, argv);
   if (extra?.stdout) writeFileSync(out(extra.stdout), r.stdout);
   const tail = `${r.stdout}\n${r.stderr}`.trim().split('\n').slice(-6).join('\n');
-  const entry = { step: name, pass: r.code === 0, seconds: Math.round((Date.now() - t0) / 1000), tail };
+  // Exit 75 is blocked (host): a timed step that could not be measured on a quiet host, neither pass nor fail.
+  const entry = { step: name, pass: r.code === 0, ...(r.code === 75 ? { blocked: 'host' } : {}), seconds: Math.round((Date.now() - t0) / 1000), tail };
   log.push(entry);
-  console.log(`${entry.pass ? 'PASS' : 'FAIL'}  ${name.padEnd(20)} ${String(entry.seconds).padStart(5)} s  ${tail.split('\n').pop()}`);
+  console.log(`${entry.blocked ? 'BLOCKED (host)' : entry.pass ? 'PASS' : 'FAIL'}  ${name.padEnd(20)} ${String(entry.seconds).padStart(5)} s  ${tail.split('\n').pop()}`);
   writeFileSync(out('runlog.json'), `${JSON.stringify(log, null, 2)}\n`);
 }
 
 // Aggregate manifest: every evidence file at the top level, plus the GES-1 sub-manifests by reference.
 const FILES = {
   'check.log': 'check-log', 'check.json': 'check', 'tokens-determinism.json': 'tokens-determinism', 'size-limit.json': 'size-limit',
-  'build.json': 'build', 'pregl.json': 'pre-gl-js', 'stage.json': 'stage', 'fonts.json': 'fonts', 'negatives.json': 'negatives',
+  'unit.log': 'unit', 'build.json': 'build', 'pregl.json': 'pre-gl-js', 'stage.json': 'stage', 'm2.json': 'm2', 'fonts.json': 'fonts', 'negatives.json': 'negatives',
   'console.json': 'console', 'counters.json': 'counters', 'idle.json': 'idle', 'swap.json': 'swap', 'keyboard.json': 'keyboard',
   'drift.json': 'drift', 'gpu.json': 'gpu', 'spring-conformance.json': 'spring', 'contrast.json': 'contrast', 'content.json': 'content',
   'flash.json': 'flash', 'overflow.json': 'overflow', 'shoot/manifest.json': 'ges1-shoot', 'a11y/manifest.json': 'ges1-a11y',
   'lighthouse/manifest.json': 'ges1-lighthouse', 'runlog.json': 'runlog',
 };
-const stepOf = { 'check-log': 'check', 'size-limit': 'size-limit', 'pre-gl-js': 'pregl', 'ges1-shoot': 'shoot', 'ges1-a11y': 'a11y', 'ges1-lighthouse': 'lighthouse' };
+const stepOf = { 'check-log': 'check', 'size-limit': 'size-limit', 'pre-gl-js': 'pregl', 'ges1-shoot': 'shoot', 'ges1-a11y': 'a11y', 'ges1-lighthouse': 'lighthouse', unit: 'unit' };
 const items = Object.entries(FILES)
   .filter(([f]) => existsSync(out(f)))
   .map(([f, kind]) => {
@@ -91,9 +96,19 @@ const items = Object.entries(FILES)
       const step = log.find((s) => s.step === (stepOf[kind] ?? kind));
       pass = step ? step.pass : true;
     }
-    return item(dir, f, { kind, route: null, profile: null, mode: null, tier: null, pass, metrics: {} });
+    const blocked = log.find((s) => s.step === (stepOf[kind] ?? kind))?.blocked;
+    return item(dir, f, { kind, route: null, profile: null, mode: null, tier: null, pass: blocked ? null : pass, ...(blocked ? { blocked } : {}), metrics: {} });
   });
-await writeManifest(dir, items, { crew: 'W-F', fields: { command: 'tests/w-f/run.mjs', role, steps: log.map((s) => ({ step: s.step, pass: s.pass, seconds: s.seconds })) } });
-const failed = log.filter((s) => !s.pass);
-console.log(`\nw-f: ${log.length - failed.length}/${log.length} steps passed; evidence ${dir}`);
-process.exit(failed.length ? 1 : 0);
+// The host load of the timed set (#67): from the Lighthouse manifest when this run took one.
+let hostLoad = {};
+try {
+  const lh = JSON.parse(readFileSync(out('lighthouse/manifest.json'), 'utf8'));
+  hostLoad = { benchmarkIndex: lh.host?.benchmarkIndex ?? null, cpuBusyPct: lh.host?.cpuBusyPct ?? null, gpu3dPct: lh.host?.gpu3dPct ?? null, source: 'lighthouse/manifest.json' };
+} catch {
+  hostLoad = {};
+}
+await writeManifest(dir, items, { crew: 'W-F', hostLoad, fields: { command: 'tests/w-f/run.mjs', role, steps: log.map((s) => ({ step: s.step, pass: s.pass, ...(s.blocked ? { blocked: s.blocked } : {}), seconds: s.seconds })) } });
+const failed = log.filter((s) => !s.pass && !s.blocked);
+const blocked = log.filter((s) => s.blocked);
+console.log(`\nw-f: ${log.length - failed.length - blocked.length}/${log.length} steps passed${blocked.length ? `, ${blocked.length} blocked (host)` : ''}; evidence ${dir}`);
+process.exit(failed.length ? 1 : blocked.length ? 75 : 0);
