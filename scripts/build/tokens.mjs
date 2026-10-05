@@ -195,7 +195,7 @@ export function buildTokens(t) {
   const overlay = [
     `/* ${HEADER} */`,
     '/* Manor overlays (loader, wall label, plan, arcade bezel). :where() keeps specificity 0 so page styles win.',
-    '   Fonts are the Front Door files at the same origin, so they are already cached at the handoff. */',
+    '   Fonts are the portfolio site\'s own files at the same origin, so a visit from the site has them cached already. */',
     `@font-face{font-family:"BG Display";src:url(/fonts/${fam.bricolage.files.display.file}) format("woff2");font-weight:300 800;font-display:swap}`,
     `@font-face{font-family:"BG Text";src:url(/fonts/${fam.bricolage.files.text.file}) format("woff2");font-weight:400 700;font-display:swap}`,
     block(':where(:root)', [

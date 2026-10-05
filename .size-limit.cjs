@@ -3,7 +3,8 @@
 // size-groups.cjs; every limit comes from the json budgets block (scripts/check/budgets.cjs), never a literal.
 // Run `npm run build` first; `npm run size` fails loudly when a group is over.
 //   pre-GL JS     per page: the static closure of the page's module scripts            site.preGlJsKbGz
-//   GL chunk      three, anime, stage GL, src/gl (camera, effects), minus pre-GL/bench   site.glChunkKbGz
+//   GL chunk      what GL boot loads: the closure of the GL entries (stage GL, camera,  site.glChunkKbGz
+//                 develop) minus pre-GL and bench-only, cross-checked by module path
 //   effects       chunks holding src/gl/effects/**                                      site.effectsKbGz
 //   Lenis         the full-tier feel layer: reported, no budget in budgets.md
 const { existsSync, readFileSync } = require('node:fs');

@@ -23,8 +23,9 @@
 // Usage: node tests/w-f/m2.mjs [--out m2.json] [--dist <dir>] [--only door,noWebgl,...]
 //   --dist runs the browser checks against another build (the negative controls run them on main's dist).
 import sharp from 'sharp';
-import { readFileSync, readdirSync, statSync } from 'node:fs';
-import { join, relative, resolve } from 'node:path';
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join, relative, resolve } from 'node:path';
 import { PROFILES, ROOT, browser, budget, cliMain, consoleGate, expectedTier, newContext, readBudgets, serve, sleep, waitSettled } from '../harness/lib.mjs';
 import { INIT as COUNTERS_INIT, motionWindow } from '../harness/counters/run.mjs';
 const { containRect } = await import('../../scripts/build/posters/stage.js');
@@ -39,20 +40,26 @@ export function doorStrings() {
   if (list.length < 6) throw new Error(`m2: expected 6 strings in the plan's grep sentence, found ${list.length}`);
   return list;
 }
+/**
+ * A fixed-string grep of every file under `dirs` (node_modules skipped), whatever its type: the bytes are searched, so
+ * a .py, .ps1, .sh, .svg or .glsl file counts as much as a .ts (round-1 review, Breaker 1.3 #2: a file-type allowlist
+ * let 7 tracked files go unread). Returns { files, hits }.
+ */
 export function grepTree(dirs, needles, root = ROOT) {
   const hits = [];
+  let files = 0;
   const walk = (d) => readdirSync(d).flatMap((f) => {
     const p = join(d, f);
     return statSync(p).isDirectory() ? (f === 'node_modules' ? [] : walk(p)) : [p];
   });
   for (const dir of dirs) {
     for (const file of walk(join(root, dir))) {
-      if (!/\.(astro|ts|tsx|js|mjs|cjs|json|css|md|html|ya?ml)$/.test(file)) continue;
-      const text = readFileSync(file, 'utf8');
-      for (const n of needles) if (text.includes(n)) hits.push({ file: relative(root, file).replaceAll('\\', '/'), needle: n });
+      const buf = readFileSync(file);
+      files++;
+      for (const n of needles) if (buf.includes(n)) hits.push({ file: relative(root, file).replaceAll('\\', '/'), needle: n });
     }
   }
-  return hits;
+  return Object.assign(hits, { files });
 }
 
 async function door(base) {
@@ -97,7 +104,17 @@ async function door(base) {
       });
     }
   }
-  return { needles, grep, rows, pass: grep.length === 0 && rows.every((r) => r.pass) };
+  // The grep's own control: the same needles planted in a .py, a .ps1 and a .sh file of a scratch tree must be found.
+  const scratch = mkdtempSync(join(tmpdir(), 'door-grep-'));
+  const planted = { 'scripts/x/build.py': needles[0], 'scripts/x/lane.ps1': needles[1], 'tests/x/make.sh': needles.join('\n') };
+  for (const [f, text] of Object.entries(planted)) {
+    mkdirSync(dirname(join(scratch, f)), { recursive: true });
+    writeFileSync(join(scratch, f), `# planted\n${text}\n`);
+  }
+  const control = grepTree(['scripts', 'tests'], needles, scratch);
+  rmSync(scratch, { recursive: true, force: true });
+  const controlCaught = needles.every((n) => control.some((h) => h.needle === n)) && control.some((h) => h.file.endsWith('.py')) && control.some((h) => h.file.endsWith('.ps1'));
+  return { needles, filesRead: grep.files, grep: [...grep], control: { hits: [...control], caught: controlCaught }, rows, pass: grep.length === 0 && grep.files > 0 && controlCaught && rows.every((r) => r.pass) };
 }
 
 // ---------------------------------------------------------------- noWebgl (#61 item 3)

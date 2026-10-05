@@ -8,7 +8,8 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
-const { sizeGroups } = require('../../scripts/check/size-groups.cjs');
+// Negative control: SIZEGROUPS_LIB=<a copy of the pre-fix size-groups.cjs in scripts/check/> runs these tests against it.
+const { sizeGroups } = require(`../../scripts/check/${process.env.SIZEGROUPS_LIB || 'size-groups.cjs'}`);
 
 const chunk = (file, modules, imports = [], extra = {}) => ({ file, modules, imports, dynamicImports: [], isEntry: false, isDynamicEntry: false, ...extra });
 
@@ -70,6 +71,34 @@ test('GL group: three, anime, stage GL, the camera and develop; never pre-GL, be
 test('planted: a bench module bundled into a real GL chunk still counts (only bench-only chunks are left out)', () => {
   const merged = shared.map((c) => (c.file === '_astro/gl.js' ? { ...c, modules: [...c.modules, 'src/stage/gl/bench.ts'] } : c));
   assert.ok(sizeGroups(merged, pages).gl.includes('_astro/gl.js'));
+});
+
+// ---- the GL group by closure (round-1 review, Breaker 1.1 #6): what GL boot loads, whatever its module path
+const withChunk = (graph, c, importer = '_astro/gl.js') => [...graph.map((x) => (x.file === importer ? { ...x, imports: [...x.imports, c.file] } : x)), c];
+
+test('planted: a GL-only helper outside the GL paths (src/lib/gl-math.ts) split into its own chunk counts toward GL', () => {
+  const g = sizeGroups(withChunk(shared, chunk('_astro/gl-math.js', ['src/lib/gl-math.ts'])), pages);
+  assert.ok(g.gl.includes('_astro/gl-math.js'));
+  assert.deepEqual(g.glByClosureOnly, ['_astro/gl-math.js']);
+});
+test('planted: containRect (scripts/build/posters/stage.js) split out of the three chunk counts toward GL', () => {
+  const g = sizeGroups(withChunk(shared, chunk('_astro/contain.js', ['scripts/build/posters/stage.js']), '_astro/camera.js'), pages);
+  assert.ok(g.gl.includes('_astro/contain.js'));
+});
+test('the closure follows dynamic imports from a GL entry (camera to develop) but never enters bench-only chunks', () => {
+  const dyn = shared.map((c) => (c.file === '_astro/camera.js' ? { ...c, dynamicImports: ['_astro/develop.js', '_astro/bench-camera.js'] } : c));
+  const g = sizeGroups(dyn, pages);
+  assert.ok(g.gl.includes('_astro/develop.js'));
+  assert.ok(!g.gl.includes('_astro/bench-camera.js') && !g.gl.includes('_astro/fixtures.js') && !g.gl.includes('_astro/bench-stage.js'));
+  assert.deepEqual(g.glRoots, ['_astro/camera.js', '_astro/develop.js', '_astro/gl.js']);
+});
+test('planted: a chunk holding GL modules that no GL entry reaches fails the cross-check loudly', () => {
+  const orphan = [...shared, chunk('_astro/orphan.js', ['node_modules/three/examples/jsm/controls/OrbitControls.js'])];
+  assert.throws(() => sizeGroups(orphan, pages), /GL chunks not reached from a GL entry: _astro\/orphan\.js/);
+});
+test('a chunk the pre-GL pages load never counts toward GL, even when GL imports it', () => {
+  const g = sizeGroups(shared, pages);
+  assert.ok(!g.gl.includes('_astro/stage.js') && !g.gl.includes('_astro/tier.js'));
 });
 
 test('planted: no entry reaches the stage at all, which fails loudly', () => {

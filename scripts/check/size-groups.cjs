@@ -5,9 +5,14 @@
 //            GL: the stage's, and any component's, such as the hero's). Pages that load the same closure share one
 //            group. At least one entry must reach src/stage/index.ts by static imports, wherever Rolldown put the
 //            stage modules (#54 item 1: a shared chunk holds them once a component script imports src/stage).
-//   GL       every chunk holding three, anime.js, src/stage/gl/ or src/gl/ (the camera, its effects), minus the
-//            pre-GL chunks and the /bench/-only chunks (all of whose GL modules are a bench.ts or fixtures.ts)
-//            (#54 item 5, budgets.md: "three, addons, anime, stage GL, effects").
+//   GL       what GL boot loads, by closure (round-1 review, Breaker 1.1 #6): from the GL entries (the dynamic entries
+//            whose own module is under src/stage/gl/ or src/gl/: the stage's GL, the camera, develop), every chunk
+//            they import, statically or dynamically, minus the pre-GL chunks and the /bench/-only chunks (all of
+//            whose GL modules are a bench.ts or fixtures.ts), which the closure never enters. So a GL-only helper
+//            split into a chunk of its own (src/lib/gl-math.ts, scripts/build/posters/stage.js) still counts.
+//            Cross-check: every chunk holding three, anime.js, src/stage/gl/ or src/gl/ (#54 item 5's rule, budgets.md:
+//            "three, addons, anime, stage GL, effects"), minus pre-GL and bench-only, must be in the closure, or the
+//            groups throw.
 //   effects  every chunk holding src/gl/effects/.
 //   lenis    every chunk holding node_modules/lenis/ (reported; budgets.md sets no Lenis budget).
 const { existsSync, readFileSync, readdirSync, statSync } = require('node:fs');
@@ -71,14 +76,30 @@ function sizeGroups(chunks, pages) {
   const preGLAll = new Set(preGL.flatMap((g) => g.files));
 
   const glModule = (m) => GL_PREFIXES.some((p) => m.startsWith(p));
-  const gl = chunks
-    .filter((c) => !preGLAll.has(c.file) && c.modules.some(glModule))
-    .filter((c) => !c.modules.filter(glModule).every((m) => BENCH_ONLY.test(m)))
-    .map((c) => c.file)
-    .sort();
+  const benchOnly = (c) => c.modules.some(glModule) && c.modules.filter(glModule).every((m) => BENCH_ONLY.test(m));
+  // The GL entries: dynamic entries whose own module (src; else every GL module in them) is stage GL or src/gl.
+  const glSrc = /^src\/(stage\/gl|gl)\//;
+  const glEntry = (c) => c.isDynamicEntry && !benchOnly(c) && (c.src ? glSrc.test(c.src) && !BENCH_ONLY.test(c.src) : c.modules.some((m) => glSrc.test(m)));
+  const roots = chunks.filter(glEntry).map((c) => c.file).sort();
+  if (!roots.length) throw new Error('size-limit: no GL entry (a dynamic entry under src/stage/gl/ or src/gl/)');
+  const skip = new Set([...preGLAll, ...chunks.filter(benchOnly).map((c) => c.file)]);
+  const reach = new Set();
+  const visit = (f) => {
+    if (reach.has(f) || skip.has(f) || !byFile.has(f)) return;
+    reach.add(f);
+    const c = byFile.get(f);
+    for (const i of [...(c.imports ?? []), ...(c.dynamicImports ?? [])]) visit(i);
+  };
+  roots.forEach(visit);
+  const gl = [...reach].sort();
+  // Cross-check by module path (the rule #54 item 5 proposed): a GL chunk the closure misses fails loudly.
+  const byPath = chunks.filter((c) => !preGLAll.has(c.file) && c.modules.some(glModule) && !benchOnly(c)).map((c) => c.file);
+  const missed = byPath.filter((f) => !reach.has(f));
+  if (missed.length) throw new Error(`size-limit: GL chunks not reached from a GL entry: ${missed.join(', ')}`);
+  const glByClosureOnly = gl.filter((f) => !byPath.includes(f));
   const effects = chunks.filter((c) => holds(c, 'src/gl/effects/')).map((c) => c.file).sort();
   const lenis = chunks.filter((c) => holds(c, 'node_modules/lenis/')).map((c) => c.file).sort();
-  return { preGL, gl, effects, lenis, stageEntries: stageEntries.map((e) => e.file) };
+  return { preGL, gl, glRoots: roots, glByClosureOnly, effects, lenis, stageEntries: stageEntries.map((e) => e.file) };
 }
 
 module.exports = { sizeGroups, pageScripts, GL_PREFIXES, BENCH_ONLY };

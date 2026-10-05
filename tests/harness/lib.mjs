@@ -52,9 +52,10 @@ export function routeUrl(base, route, mode, extra = '') {
 const ARGS = ['--mute-audio', '--autoplay-policy=user-gesture-required', '--ignore-gpu-blocklist'];
 const launched = new Map();
 /**
- * The shared browsers. Two Chromium variants for single checks: 'chromium-no3d' (--disable-3d-apis: WebGL2's
- * constructor exists, no context can be made, #61) and 'chromium-scrollbars' (classic scrollbars that take room,
- * without Playwright's --hide-scrollbars, #59).
+ * The shared browsers. Three Chromium variants for single checks: 'chromium-no3d' (--disable-3d-apis: WebGL2's
+ * constructor exists, no context can be made, #61), 'chromium-scrollbars' (classic scrollbars that take room,
+ * without Playwright's --hide-scrollbars, #59) and 'chromium-bfcache' (the back/forward cache on: Playwright launches
+ * Chromium with --disable-back-forward-cache, so Back is otherwise always a fresh load).
  */
 export async function browser(name = 'chromium') {
   if (launched.has(name)) return launched.get(name);
@@ -65,7 +66,9 @@ export async function browser(name = 'chromium') {
       ? await chrome({ args: ['--disable-3d-apis'] })
       : name === 'chromium-scrollbars'
         ? await chrome({ ignoreDefaultArgs: ['--hide-scrollbars'] })
-        : await chrome();
+        : name === 'chromium-bfcache'
+          ? await chrome({ ignoreDefaultArgs: ['--disable-back-forward-cache'] })
+          : await chrome();
   launched.set(name, b);
   return b;
 }
