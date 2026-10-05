@@ -78,7 +78,13 @@ export const durations = /*#__PURE__*/ Object.freeze({
   "handoffCancel": 200,
   "reduced": 200,
   "idleDetach": 1000,
-  "bootProbeMax": 500
+  "bootProbeMax": 500,
+  "rollerTail": 120
+});
+
+export const flash = /*#__PURE__*/ Object.freeze({
+  "peakAtMs": 120,
+  "peakOpacity": 0.62
 });
 
 export const heroTimeline = /*#__PURE__*/ Object.freeze({

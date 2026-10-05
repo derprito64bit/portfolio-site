@@ -128,6 +128,8 @@ export function buildTokens(t) {
     ['--focus-ring-width', '3px'], ['--focus-halo-width', '2px'], ['--focus-offset', t.focus.offset],
     ['--ease-out', t.motion.ease.out], ['--ease-in-out-cubic', t.motion.ease.inOutCubic],
     ...Object.entries(t.motion.durationsMs).map(([k, v]) => [`--dur-${kebab(k)}`, `${v}ms`]),
+    // W-D011's flash shape: it peaks at peakOpacity, peakAtMs into its durationsMs.flash.
+    ['--flash-peak-at', `${t.motion.flash.peakAtMs}ms`], ['--flash-peak-opacity', String(t.motion.flash.peakOpacity)],
     ...springs.flatMap(([name, s]) => [[`--spring-${name}`, cssLinear(s.hz, s.zeta, s.cssLinearMs)], [`--spring-${name}-ms`, `${s.cssLinearMs}ms`]]),
     ...Object.entries(t.z).map(([k, v]) => [`--z-${kebab(k)}`, String(v)]),
   ];
@@ -169,6 +171,7 @@ export function buildTokens(t) {
     '// Named exports so a bundle keeps only what it reads.',
     exp('springs', springTable),
     exp('durations', t.motion.durationsMs),
+    exp('flash', { peakAtMs: t.motion.flash.peakAtMs, peakOpacity: t.motion.flash.peakOpacity }),
     exp('heroTimeline', t.motion.heroTimelineMs),
     exp('develop', t.motion.develop),
     exp('ease', t.motion.ease),
