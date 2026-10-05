@@ -26,7 +26,7 @@ built `dist/` served by `scripts/serve-dist.mjs` (gzip, Pages rules), and prints
 | `h:content` | `content/` | Content v2 rules, JsonUtility safety, identity.json flatness, content hashes | no |
 | `h:flash` | `flash/` | WCAG 2.3.1 general and red flash analysis (self-test, seeked capture or frames on disk) | capture: yes |
 | `h:keyboard` | `keyboard/` | ring coverage at every Tab stop; sheet -> project -> Back focus; hash focus; one-way anchor scroll | yes |
-| `h:counters` | `counters/` | gate-owned counters: 0 rAF and 0 draws from 1 to 4 s after input, matching `__stage.stats` | yes |
+| `h:counters` | `counters/` | gate-owned counters: 0 rAF and 0 draws from 1 s + 2 frames to 4 s after the motion end (the later of the last input event and the last presented frame, tail and clear-only frames included; #11 ruling 5992928262), the motion ending within 4 s of the last input; matching `__stage.stats` | yes |
 
 ## Stage hooks the instruments read (`window.__stage`)
 
@@ -34,12 +34,14 @@ built `dist/` served by `scripts/serve-dist.mjs` (gzip, Pages rules), and prints
   Shots are taken only after it is true; a 10 s timeout is a FAIL.
 - `seek(ms)`: exists only behind `?t=`. It runs one frame on the manual clock and seeks CSS animations.
 - `bounds(id)` returns `{ id, kind, slot: {x, y, w, h}, gl: {x, y, w, h, angleDeg} | null }` in viewport CSS px.
-- `stats` holds the counters `ticks, draws, layoutRenders, reanchors, renderSkips, drawCalls, measures,
-  measuresInTick, reallocs, wakes, sleeps, swaps, losses, restores, governorSteps, motionLogInvalid`, and the gauges
-  `dpr, canvasPx`. `layoutRenders` are renders run from the slots ResizeObserver callback when layout moved a slot
+- `stats` holds the counters `ticks, draws, layoutRenders, reanchors, tailFrames, renderSkips, drawCalls, measures,
+  measuresInTick, reallocs, wakes, sleeps, swaps, losses, restores, governorSteps, motionLogInvalid, hookErrors`, and
+  the gauges `dpr, canvasPx, canvasW, canvasH`. `layoutRenders` are renders run from the slots ResizeObserver callback when layout moved a slot
   (outside rAF, also counted in `draws` and `drawCalls`); `reanchors` counts the rail moving the canvas.
 - The remaining hooks are `tier`, `tierReason`, `tierLog`, `motion`, `glState`, `gl` (the GL API once ready, with
-  `info()`, `forceContextLoss()` and `forceContextRestore()`), `slots()` and `marks()`.
+  `info()`, `forceContextLoss()` and `forceContextRestore()`), `slots()`, `marks()`, `effects`, `registerEffect(name,
+  impl)` (an impl gets the call's arguments and then `next`, the effect it replaced; an `undefined` result falls
+  through to `next`) and `markDirty()`.
 - The marks are `stage:renderer`, `stage:tier`, `stage:gl-start`, `stage:gl-ready`, `stage:settled` and
   `stage:idle`. Each mark that carries a value also gets a `name=value` twin that Lighthouse's user-timings audit lists.
 - `window.__motionLog` is a list of `{id, kind, spring, trigger, t0, t1, from, to, peak, settle2Ms, tier, reduced}`.
@@ -85,11 +87,13 @@ flash     self-test: { rows: [{case, expectPass, analyserPass, generalPerSecond,
 keyboard  { rows: [{profile, walks: [{route, stops, failing[], minCoverage, detail[]}], roundtrip{started,
             afterBack{id,tag}, nextTab, pass}, hash{focus, pass}, anchor{samples, first, last, monotonic, focus,
             pass}, pass}] }
-counters  schema 2: { motionEndWindow, rows: [{profile, route, tier, gl{entities, views, ...}, empty,
-            idle{gate{raf, rafFromDependencies, draws, clears, rectReadsInRaf}, stage{ticks, drawCalls, renders,
-            renderSkips}, ms}, idlePass, afterScroll{input, motionEndsMs, motionEndsBy, frameMs, lastRafAfterMotionMs,
-            afterMotion{fromMs, toMs, raf, draws}, afterInput{fromMs, toMs, raf, draws}, scrolledTo, counts{...}}, afterScrollPass, active{...}, matchPass,
-            emptyPass, scroll{...}, scrollPass, pass}] }
+counters  schema 3: { motionEndWindow, rows: [{profile, route, tier, gl{entities, views, ...}, empty,
+            idle{motionWindow}, idlePass, afterScroll{input, motionWindow, scrolledTo, counts{...}}, afterScrollPass,
+            active{...}, matchPass, emptyPass, scroll{...}, scrollPass, pass}] }
+            motionWindow = {motionEndsMs, motionEndsBy: draw|presented clear|scroll|input, frameMs, lastRafAfterMotionMs,
+            bound{maxMs, motionEndsMs, movedDuringWindow, pass}, windowRestarts, afterMotion{fromMs, toMs, raf, draws,
+            clears}, stageInWindow{ticks, drawCalls, renders, tailFrames}, ifClearsIgnored{raf}, afterInput{fromMs, toMs,
+            raf, draws}, pass}
 ```
 
 ## GES-1 manifest (`scripts/crew.mjs shoot | a11y | lighthouse`)

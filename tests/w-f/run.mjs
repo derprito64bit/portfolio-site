@@ -26,6 +26,8 @@ const STEPS = [
   ['stage', ...node('tests/w-f/stage.mjs', '--out', out('stage.json'))],
   ['m2', ...node('tests/w-f/m2.mjs', '--out', out('m2.json'))],
   ['selfbreak', ...node('tests/w-f/selfbreak.mjs', '--out', out('selfbreak.json'))],
+  // The self-break cases' own negative controls: each must fail on the plant that breaks what it claims.
+  ['selfbreak-plants', ...node('tests/w-f/selfbreak-plants.mjs', '--out', out('selfbreak-plants.json'))],
   ['fonts', ...node('tests/w-f/fonts.mjs', '--out', out('fonts.json'))],
   ['negatives', ...node('tests/w-f/negatives.mjs', '--out', out('negatives.json'))],
   ['h-console', ...node('tests/harness/console/run.mjs', '--out', out('console.json'))],
@@ -76,7 +78,7 @@ for (const [name, cmd, argv, extra] of STEPS) {
 // Aggregate manifest: every evidence file at the top level, plus the GES-1 sub-manifests by reference.
 const FILES = {
   'check.log': 'check-log', 'check.json': 'check', 'tokens-determinism.json': 'tokens-determinism', 'size-limit.json': 'size-limit',
-  'unit.log': 'unit', 'build.json': 'build', 'pregl.json': 'pre-gl-js', 'stage.json': 'stage', 'm2.json': 'm2', 'selfbreak.json': 'selfbreak', 'fonts.json': 'fonts', 'negatives.json': 'negatives',
+  'unit.log': 'unit', 'build.json': 'build', 'pregl.json': 'pre-gl-js', 'stage.json': 'stage', 'm2.json': 'm2', 'selfbreak.json': 'selfbreak', 'selfbreak-plants.json': 'selfbreak-plants', 'fonts.json': 'fonts', 'negatives.json': 'negatives',
   'console.json': 'console', 'counters.json': 'counters', 'idle.json': 'idle', 'swap.json': 'swap', 'keyboard.json': 'keyboard',
   'drift.json': 'drift', 'gpu.json': 'gpu', 'spring-conformance.json': 'spring', 'contrast.json': 'contrast', 'content.json': 'content',
   'flash.json': 'flash', 'overflow.json': 'overflow', 'shoot/manifest.json': 'ges1-shoot', 'a11y/manifest.json': 'ges1-a11y',
