@@ -10,6 +10,8 @@ export const stats = {
   layoutRenders: 0,
   /** Canvas re-anchors (the rail moved the canvas to keep it over the viewport). */
   reanchors: 0,
+  /** Frames presented again after a frame that drew something new (WebKit shows a canvas one frame late; #61). */
+  tailFrames: 0,
   /** Active frames that skipped the render: nothing to draw and the canvas already clear. */
   renderSkips: 0,
   /** WebGL draw calls issued by those frames (renderer.info.render.calls, summed). */
@@ -29,6 +31,9 @@ export const stats = {
   /** Gauges. */
   dpr: 0,
   canvasPx: 0,
+  /** The drawing buffer in pixels (floor(W x dpr) by floor(Hc x dpr)). */
+  canvasW: 0,
+  canvasH: 0,
 };
 
 const query = new URLSearchParams(location.search);
@@ -40,6 +45,8 @@ export const flags = {
   busyMs: Math.max(0, Number(query.get('busy')) || 0),
   /** ?debug=drift draws flat debug colours in the fixtures (drift harness). */
   debug: query.get('debug') || '',
+  /** ?notail turns the present tail off (the negative control of the WebKit present check, #61). */
+  noTail: query.has('notail'),
 };
 
 let manualNow = flags.startMs;

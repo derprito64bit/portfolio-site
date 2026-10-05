@@ -1,7 +1,8 @@
 // Render tiers (W-D017): full, lite, static. The head script in src/layouts/Base.astro picks the starting tier
-// before first paint from WebGL2, (pointer: fine) and (hover: hover), Save-Data and ?tier=. The GL boot probe can
-// demote full to lite; the governor steps down one tier at a time and never back up; two context losses in 60 s
-// end at static. Core counts and touch-point counts are never read.
+// before first paint from WebGL2 (a context it can create, #61: else static, reason 'no-webgl2'), (pointer: fine)
+// and (hover: hover), Save-Data and ?tier=. The GL boot probe can demote full to lite; the governor steps down one
+// tier at a time and never back up; two context losses in 60 s end at static. Core counts and touch-point counts are
+// never read.
 import { mark, stats } from './state.ts';
 
 export type Tier = 'full' | 'lite' | 'static';
@@ -11,7 +12,7 @@ const listeners = new Set<(t: Tier, reason: string) => void>();
 
 const initial = html.dataset.tier;
 let current: Tier = initial === 'full' || initial === 'lite' || initial === 'static' ? initial : 'static';
-let reason = new URLSearchParams(location.search).has('tier') ? 'override' : 'detect';
+let reason = new URLSearchParams(location.search).has('tier') ? 'override' : html.dataset.tierReason || 'detect';
 /** Every demotion, for GES-1 manifests ('a logged probe demotion'). */
 export const tierLog: { tier: Tier; reason: string; at: number }[] = [{ tier: current, reason, at: 0 }];
 

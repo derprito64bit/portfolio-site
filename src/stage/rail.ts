@@ -1,7 +1,9 @@
 // The riding canvas (W-D013): one <canvas> in #rail (z 1, outside #swup), translated to the scroll position on
 // each render with 0.25 viewport of overscan: three quarters of it toward the scroll direction, a quarter behind.
-// Width is documentElement.clientWidth;
-// height is 100lvh x 1.25. On a coarse pointer the buffer changes only with width or DPR, never height alone.
+// Width is the canvas's own box (#rail's width, #59): html.clientWidth ignores a scrollbar gutter on a page that does
+// not scroll (measured in Chrome with classic scrollbars: 1440 against a 1425 px canvas), and the slots are laid out
+// in the canvas's width either way. Height is 100lvh x 1.25. On a coarse pointer the buffer changes only with width
+// or DPR, never height alone.
 import { effectiveDpr, getTier } from './tier.ts';
 import { stats } from './state.ts';
 
@@ -16,6 +18,25 @@ const coarse = matchMedia('(pointer: coarse)');
 
 /** Current geometry in CSS px. W x Hc is the canvas; H is the viewport height used by the page camera. */
 export const view = { W: 0, H: 0, lvh: 0, Hc: 0, O: 0, dpr: 1, anchor: 0, side: 1 as 1 | -1 };
+
+/**
+ * The canvas grid (#59 item 3, #61 item 2). three sizes the buffer as floor(css px x pixel ratio), and the compositor
+ * stretches it over the CSS box, so at a fractional DPR the buffer grid and a dpr grid drift apart (T1, lite: 948 px
+ * for 1024 CSS px is 1.0802 CSS px per pixel, not 1 / 0.92609). The stage therefore renders at gridDpr, the DPR at which
+ * W is a whole number of buffer pixels, and gives the canvas a CSS height of a whole number of them: one buffer pixel
+ * is then exactly 1 / view.dpr CSS px both ways, and every snap to the view.dpr grid lands on buffer pixels. Both only
+ * ever go down (by under a pixel), so the tier's pixel cap still holds. The 1e-6 keeps three's floor() on the intended
+ * whole number when the product rounds a hair under it.
+ */
+const EPS = 1e-6;
+export function gridDpr(W: number, dpr: number): number {
+  return (Math.max(1, Math.floor(W * dpr + EPS)) + EPS) / W;
+}
+function gridHeight(cssH: number, dpr: number): number {
+  return (Math.max(1, Math.floor(cssH * dpr + EPS)) + EPS) / dpr;
+}
+/** The canvas height before the grid (round(lvh x 1.25)): the pixel cap is computed on it, so it never moves the DPR. */
+let rawHc = 0;
 
 let probe: HTMLDivElement | null = null;
 function measureLvh(): number {
@@ -33,17 +54,18 @@ function measureLvh(): number {
  * change (the page camera re-centres, the buffer stays), or 'none'.
  */
 export function measureViewport(): 'realloc' | 'height' | 'none' {
-  const W = html.clientWidth;
+  const W = canvas.parentElement?.clientWidth || html.clientWidth;
   const H = window.innerHeight;
-  const widthOrDprChanged = W !== view.W || effectiveDpr(W, view.Hc || H * 1.25) !== view.dpr;
+  const widthOrDprChanged = W !== view.W || gridDpr(W, effectiveDpr(W, rawHc || H * 1.25)) !== view.dpr;
   if (!widthOrDprChanged && coarse.matches && view.W) {
     if (H === view.H) return 'none';
     view.H = H;
     return 'height';
   }
   const lvh = measureLvh();
-  const Hc = Math.round(lvh * 1.25);
-  const dpr = effectiveDpr(W, Hc, getTier());
+  rawHc = Math.round(lvh * 1.25);
+  const dpr = gridDpr(W, effectiveDpr(W, rawHc, getTier()));
+  const Hc = gridHeight(rawHc, dpr);
   const changed = W !== view.W || Hc !== view.Hc || dpr !== view.dpr;
   const prevH = view.H;
   Object.assign(view, { W, H, lvh, Hc, O: Math.round(H * OVERSCAN), dpr });
@@ -56,6 +78,8 @@ export function measureViewport(): 'realloc' | 'height' | 'none' {
   stats.dpr = dpr;
   // three.js sizes the buffer with Math.floor(css px x pixel ratio); the stat matches what the GPU allocates.
   stats.canvasPx = Math.floor(W * dpr) * Math.floor(Hc * dpr);
+  stats.canvasW = Math.floor(W * dpr);
+  stats.canvasH = Math.floor(Hc * dpr);
   return 'realloc';
 }
 

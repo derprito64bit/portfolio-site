@@ -9,8 +9,11 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium, webkit } from '@playwright/test';
 import { startServer } from '../../scripts/serve-dist.mjs';
+import budgetsCjs from '../../scripts/check/budgets.cjs';
 
 export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
+/** The json budgets block of docs/agents/budgets.md (readBudgets) and one number from it by path (budget). */
+export const { readBudgets, budget } = budgetsCjs;
 export const CI = Boolean(process.env.CI);
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -48,11 +51,21 @@ export function routeUrl(base, route, mode, extra = '') {
 // ---------------------------------------------------------------- browsers
 const ARGS = ['--mute-audio', '--autoplay-policy=user-gesture-required', '--ignore-gpu-blocklist'];
 const launched = new Map();
+/**
+ * The shared browsers. Two Chromium variants for single checks: 'chromium-no3d' (--disable-3d-apis: WebGL2's
+ * constructor exists, no context can be made, #61) and 'chromium-scrollbars' (classic scrollbars that take room,
+ * without Playwright's --hide-scrollbars, #59).
+ */
 export async function browser(name = 'chromium') {
   if (launched.has(name)) return launched.get(name);
+  const chrome = (extra = {}) => chromium.launch({ headless: true, args: [...ARGS, ...(extra.args ?? [])], ...(extra.ignoreDefaultArgs ? { ignoreDefaultArgs: extra.ignoreDefaultArgs } : {}), ...(CI || process.env.PW_BUNDLED ? {} : { channel: 'chrome' }) });
   const b = name === 'webkit'
     ? await webkit.launch({ headless: true })
-    : await chromium.launch({ headless: true, args: ARGS, ...(CI || process.env.PW_BUNDLED ? {} : { channel: 'chrome' }) });
+    : name === 'chromium-no3d'
+      ? await chrome({ args: ['--disable-3d-apis'] })
+      : name === 'chromium-scrollbars'
+        ? await chrome({ ignoreDefaultArgs: ['--hide-scrollbars'] })
+        : await chrome();
   launched.set(name, b);
   return b;
 }
@@ -63,7 +76,7 @@ export async function closeBrowsers() {
 
 export async function newContext(profileName, mode = 'auto', extra = {}) {
   const p = PROFILES[profileName];
-  const b = await browser(p.browser);
+  const b = await browser(extra.browser ?? p.browser);
   return b.newContext({
     viewport: p.viewport,
     deviceScaleFactor: p.deviceScaleFactor,

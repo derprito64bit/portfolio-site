@@ -44,14 +44,26 @@ const docTitle = `${title} · derprito64bit`;
     <link rel="preload" href="/fonts/bricolage-mark.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="preload" href="/fonts/bricolage-text.woff2" as="font" type="font/woff2" crossorigin />
     <script is:inline>
-      // Render tier and motion before first paint (W-D017). Never reads core or touch-point counts.
+      // Render tier, motion and the scrollbar gutter before first paint (W-D017). Never reads core or touch-point counts.
+      // - The gutter (#59): only where a scrollbar takes room (a 100 px overflow:scroll probe). The page keeps its first
+      //   width when the bar appears mid-parse; a gutter without a bar (hidden scrollbars) would narrow the canvas.
+      // - WebGL2 means a context, not only its constructor (#61): where none can be made (a blocklisted GPU, Chromium
+      //   --disable-3d-apis) the tier is static from first paint. The probe context is released at once.
       (function (d, w) {
-        var h = d.documentElement, q = new URLSearchParams(location.search), t = q.get('tier'), m, c = navigator.connection;
+        var h = d.documentElement, q = new URLSearchParams(location.search), t = q.get('tier'), m, c = navigator.connection, p = d.createElement('div'), g, x;
         try { m = localStorage.getItem('ion.motion'); } catch (e) {}
         h.dataset.motion = m === 'reduced' || (m !== 'full' && matchMedia('(prefers-reduced-motion: reduce)').matches) ? 'reduced' : 'full';
+        p.style.cssText = 'position:absolute;top:-200px;width:100px;height:100px;overflow:scroll;visibility:hidden';
+        h.appendChild(p);
+        if (p.offsetWidth - p.clientWidth > 0) h.setAttribute('data-gutter', '');
+        p.remove();
         if (!/^(full|lite|static)$/.test(t || '')) {
           t = !w.WebGL2RenderingContext ? 'static' : matchMedia('(pointer: fine) and (hover: hover)').matches && !(c && c.saveData) ? 'full' : 'lite';
           try { if (sessionStorage.getItem('ion.gl-off')) t = 'static'; } catch (e) {}
+          if (t !== 'static' && h.getAttribute('data-gl-page') !== 'off') {
+            try { g = d.createElement('canvas').getContext('webgl2'); x = g && g.getExtension('WEBGL_lose_context'); x && x.loseContext(); } catch (e) { g = null; }
+            if (!g) { t = 'static'; h.dataset.tierReason = 'no-webgl2'; }
+          }
         }
         h.dataset.tier = t;
         h.classList.add('js');
@@ -66,8 +78,8 @@ const docTitle = `${title} · derprito64bit`;
       <a class="site-mark" href="/"><span class="br" aria-hidden="true">[</span>derprito64bit<span class="br" aria-hidden="true">]</span></a>
       <nav class="site-nav" aria-label="Site">
         <ul>
-          <li><a href="/#work">Work</a></li>
-          <li><a href="#contact">Contact</a></li>
+          <li><a href="/#work" data-nav="work">Work</a></li>
+          <li><a href="#contact" data-nav="contact">Contact</a></li>
         </ul>
       </nav>
       <div data-mount="header-tools"></div>

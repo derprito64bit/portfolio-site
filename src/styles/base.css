@@ -12,10 +12,22 @@
 @font-face { font-family: "BG Display Fallback"; src: local("Arial Bold"), local("Arial-BoldMT"), local("Helvetica Neue Bold"); font-weight: 550 800; size-adjust: 77.5%; ascent-override: 120%; descent-override: 34.8%; line-gap-override: 0%; }
 @font-face { font-family: "BG Text Fallback"; src: local("Arial"), local("ArialMT"), local("Helvetica Neue"), local("Helvetica"); size-adjust: 102.9%; ascent-override: 90.4%; descent-override: 26.2%; line-gap-override: 0%; }
 @font-face { font-family: "Edge Mono Fallback"; src: local("Consolas"), local("Menlo-Regular"), local("Menlo"); size-adjust: 109.1%; line-gap-override: 0%; }
+/* The nav's words, matched one by one (#59): with the text face late or blocked, each nav link is exactly as wide as in
+   BG Text, so no nav item moves when the face arrives (CLS 0). A shared fallback matches widths only on average, and
+   the nav sits flush left on / and flush right elsewhere, so every word's own width decides where the next one sits.
+   Measured in Chromium and WebKit on Windows (canvas at 1000 px, BG Text wght 500 against Arial 400): "Work" 1.080085,
+   "Contact" 1.089481. The vertical metrics are BG Text's (ascent 0.930, descent 0.270 em) divided by size-adjust, as
+   size-adjust scales the overrides too. A new nav word needs its own face; tests/w-f/fonts.mjs fails until it has one. */
+@font-face { font-family: "BG Nav Work Fallback"; src: local("Arial"), local("ArialMT"), local("Helvetica Neue"), local("Helvetica"); size-adjust: 108.0085%; ascent-override: 86.1043%; descent-override: 24.9980%; line-gap-override: 0%; }
+@font-face { font-family: "BG Nav Contact Fallback"; src: local("Arial"), local("ArialMT"), local("Helvetica Neue"), local("Helvetica"); size-adjust: 108.9481%; ascent-override: 85.3618%; descent-override: 24.7824%; line-gap-override: 0%; }
 
 /* ---------- Reset ---------- */
 *, *::before, *::after { box-sizing: border-box; }
 html { background: var(--table); color: var(--ink); -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+/* A classic scrollbar appears once the page outgrows the viewport, mid-parse; its gutter is kept from the first layout,
+   so nothing placed from the content width moves (#59). The head script sets data-gutter only where a scrollbar takes
+   room: a gutter without a bar would narrow the riding canvas below html.clientWidth. */
+html[data-gutter] { scrollbar-gutter: stable; }
 body {
   position: relative; /* the rail's containing block; z-index stays auto, so body is not a stacking context */
   margin: 0;
@@ -156,4 +168,6 @@ html[data-page="home"] .site-mark { display: none; }
   text-decoration: none;
 }
 .site-nav a:hover { text-decoration: underline; }
+.site-nav [data-nav="work"] { font-family: "BG Text", "BG Nav Work Fallback", system-ui, sans-serif; }
+.site-nav [data-nav="contact"] { font-family: "BG Text", "BG Nav Contact Fallback", system-ui, sans-serif; }
 [data-mount] { display: contents; }

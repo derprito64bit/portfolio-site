@@ -17,8 +17,12 @@ const steps: Step[] = [];
 const activeChecks: (() => boolean)[] = [];
 const afterFrame: (() => void)[] = [];
 const idleListeners = new Set<() => void>();
-let render: ((sy: number) => void) | null = null;
+/** The render: `tail` is true on a frame that only presents again what the last frame drew (presentTail). */
+type Render = (sy: number, tail: boolean) => void;
+let render: Render | null = null;
 let measure: (() => void) | null = null;
+/** Frames still to present after the last frame that drew something new. */
+let tail = 0;
 
 let running = false;
 let need = true;
@@ -45,8 +49,18 @@ export function onActive(fn: () => boolean): () => void {
   activeChecks.push(fn);
   return () => activeChecks.splice(activeChecks.indexOf(fn), 1);
 }
-export function setRender(fn: ((sy: number) => void) | null): void {
+export function setRender(fn: Render | null): void {
   render = fn;
+  if (!fn) tail = 0;
+}
+/**
+ * Present the next `frames` frames again, even when nothing moves (#61): WebKit shows a canvas one frame late, so a
+ * change that renders once and then sleeps would stay on its old frame there. A tail frame renders the same scene
+ * through the one render path, counts as a rendered frame (stats.draws, the governor) and never starts a new tail.
+ */
+export function presentTail(frames: number): void {
+  if (frames > tail) tail = frames;
+  wake();
 }
 export function setMeasure(fn: () => void): void {
   measure = fn;
@@ -100,7 +114,7 @@ export function renderNow(): void {
     return;
   }
   const draws = stats.draws;
-  render(readScroll());
+  render(readScroll(), false);
   if (stats.draws > draws) stats.layoutRenders++;
 }
 bindWake(invalidate);
@@ -142,15 +156,19 @@ export function frame(time: number): void {
     if (anyActive()) active = true;
     for (const fn of activeChecks) if (fn()) active = true;
 
-    if (active) {
+    // A frame with nothing new still renders while a present tail is owed (presentTail).
+    const tailFrame = !active && tail > 0 && render !== null;
+    if (tailFrame) tail--;
+    if (active || tailFrame) {
       lastActive = time;
       if (flags.busyMs) spin(flags.busyMs);
-      render?.(sy);
+      render?.(sy, tailFrame);
+      if (tailFrame) stats.tailFrames++;
       if (prevActive) governorSample(interval);
     } else {
       governorReset();
     }
-    prevActive = active;
+    prevActive = active || tailFrame;
     while (afterFrame.length) afterFrame.shift()?.();
 
     // Detach on the frame that would otherwise run past 1 s of idle.

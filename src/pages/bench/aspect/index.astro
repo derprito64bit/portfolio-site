@@ -1,0 +1,30 @@
+---
+// /bench/aspect/ (W-D003: noindex, unlinked, out of the sitemap): fixed-aspect stage views (#31). Each slot holds a
+// flat quad that fills its camera's frustum, so the GL it shows is the contain-fit rectangle of the slot's aspect:
+// one slot wider than the aspect (contained by height) and one narrower (contained by width). The third has no aspect,
+// so it fills its slot as every StageView did before (the control: the contain check must fail on it).
+import Base from '../../../layouts/Base.astro';
+import Slot from '../../../components/slot/Slot.astro';
+import BenchStyles from '../_BenchStyles.astro';
+---
+<Base title="Bench aspect fixture" path="/bench/aspect/" page="bench" noindex={true}>
+  <BenchStyles />
+  <section class="bench wrap" data-ground data-gl-boot="eager" aria-labelledby="aspect-title">
+    <div class="bench-head">
+      <h1 id="aspect-title">Aspect fixture</h1>
+      <p>Two stage views with a fixed aspect of 1.35, drawn into the contain-fit rectangle of their slots, and one without.</p>
+    </div>
+    <div class="fx-aspects">
+      <Slot kind="object" id="fx-aspect-wide" fixture="aspect" class="fx-aspect fx-aspect-wide" data-gl-aspect="1.35" />
+      <Slot kind="object" id="fx-aspect-tall" fixture="aspect" class="fx-aspect fx-aspect-tall" data-gl-aspect="1.35" />
+      <Slot kind="object" id="fx-aspect-none" fixture="aspect" class="fx-aspect fx-aspect-tall" />
+    </div>
+  </section>
+</Base>
+
+<style>
+  .fx-aspects { display: flex; flex-wrap: wrap; gap: var(--space-6); align-items: flex-start; }
+  .fx-aspect { outline: 1px dashed currentColor; }
+  .fx-aspect-wide { inline-size: min(100%, 301px); block-size: 120px; }
+  .fx-aspect-tall { inline-size: min(100%, 121px); block-size: 237px; }
+</style>

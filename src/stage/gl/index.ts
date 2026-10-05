@@ -8,10 +8,11 @@
 import { PerspectiveCamera, Scene, WebGLRenderer, MathUtils } from 'three';
 import { engine } from 'animejs/engine';
 import { stage as stageTokens } from '../../lib/tokens.js';
+import { containRect } from '../../../scripts/build/posters/stage.js';
 import { canvas, measureViewport, place, view } from '../rail.ts';
 import { demote, getTier, onTier, tierReason } from '../tier.ts';
 import { flags, mark, stats } from '../state.ts';
-import { invalidate, isInFrame, markDirty, onActive, onBefore, onStep, setRender, wake } from '../ticker.ts';
+import { invalidate, isInFrame, markDirty, onActive, onBefore, onStep, presentTail, setRender, wake } from '../ticker.ts';
 import { allSlots, getSlot, giveAll, onScan, onUnscan, type Slot } from '../slots.ts';
 import { scrollState } from '../scroll.ts';
 import { onMotion } from '../motion.ts';
@@ -56,9 +57,18 @@ export interface StageView {
   readonly slotId: string;
   readonly scene: any;
   readonly camera: any;
+  /**
+   * A fixed framing aspect (#31), or null. With an aspect the view draws into the contain-fit rectangle of that
+   * aspect, centred in the slot in whole buffer pixels (like <img style="object-fit: contain">, W-C13's containRect),
+   * and the stage leaves camera.aspect to the owner (applyFraming). Without one the view fills the slot and the stage
+   * sets camera.aspect to the slot's every frame.
+   */
+  readonly aspect: number | null;
   visible: boolean;
   /** The slot's rect in viewport CSS px at the last render. */
   readonly rect: { x: number; y: number; w: number; h: number } | null;
+  /** The viewport (and scissor) of the last render, in buffer pixels from the canvas's bottom-left. */
+  readonly viewport: { x: number; y: number; w: number; h: number } | null;
   dispose(): void;
 }
 
@@ -68,7 +78,7 @@ export interface GLApi {
   pageCamera: any;
   rendererName: string;
   probe: ProbeResult | null;
-  createStageView(slotId: string, opts?: { fov?: number }): StageView;
+  createStageView(slotId: string, opts?: { fov?: number; aspect?: number }): StageView;
   registerEntityFactory(f: EntityFactory): void;
   entity(id: string): Entity | undefined;
   info(): { geometries: number; textures: number; programs: number; entities: number; views: number };
@@ -84,6 +94,12 @@ const factories: EntityFactory[] = [];
 const views = new Set<StageViewImpl>();
 let lost = false;
 let dead = false;
+/**
+ * Frames presented again after a change: WebKit (measured on its Windows build) can present the canvas one frame late,
+ * so a re-anchor keeps presenting for this many frames (represent), and so does any frame that drew something new
+ * (presentTail, #61). W-S1's camera used the same count for its own tail.
+ */
+const PRESENT_TAIL = 3;
 let represent = 0;
 /** The last presented frame drew nothing, so the canvas shows only the clear colour. */
 let presentedClear = false;
@@ -94,8 +110,9 @@ class StageViewImpl implements StageView {
   readonly camera: any;
   visible = true;
   rect: { x: number; y: number; w: number; h: number } | null = null;
-  constructor(readonly slotId: string, fov: number) {
-    this.camera = new PerspectiveCamera(fov, 1, 0.01, 1000);
+  viewport: { x: number; y: number; w: number; h: number } | null = null;
+  constructor(readonly slotId: string, fov: number, readonly aspect: number | null) {
+    this.camera = new PerspectiveCamera(fov, aspect ?? 1, 0.01, 1000);
   }
   dispose(): void {
     views.delete(this);
@@ -150,20 +167,21 @@ function hasContent(): boolean {
 }
 
 // ---------------------------------------------------------------- the frame
-function render(sy: number): void {
+function render(sy: number, tailFrame = false): void {
   if (!renderer || lost || dead) return;
   // Nothing to draw and the canvas already clear (a page without GL content scrolling under Lenis): skip the clear,
-  // the placement and the present. The first frame with content re-anchors and draws as usual.
-  if (presentedClear && represent === 0 && !hasContent() && !pageScene.children.some((c: any) => c.visible)) {
+  // the placement and the present. The first frame with content re-anchors and draws as usual. A tail frame never
+  // skips: it presents the clear the frame before it drew.
+  if (!tailFrame && presentedClear && represent === 0 && !hasContent() && !pageScene.children.some((c: any) => c.visible)) {
     stats.renderSkips++;
     return;
   }
   const before = view.anchor;
   const anchor = place(sy, scrollState.dir);
   // A re-anchor moves the canvas and redraws it in one frame. WebKit (measured on its Windows build) can present the
-  // moved canvas with an older buffer for a frame or two, so a re-anchor keeps presenting for 3 more frames (counted
-  // in ticker frames: a layout render in the same frame does not use one up).
-  if (anchor !== before) represent = 3;
+  // moved canvas with an older buffer for a frame or two, so a re-anchor keeps presenting for PRESENT_TAIL more frames
+  // (counted in ticker frames: a layout render in the same frame does not use one up).
+  if (anchor !== before) represent = PRESENT_TAIL;
   else if (represent > 0 && isInFrame()) represent--;
   if (represent > 0) invalidate();
   const f: FrameInfo = { sy, anchor, W: view.W, H: view.H, Hc: view.Hc };
@@ -177,9 +195,10 @@ function render(sy: number): void {
   for (const v of views) {
     const s = getSlot(v.slotId);
     v.rect = null;
+    v.viewport = null;
     if (!v.visible || !s || !s.near || !s.w || !s.h) continue;
-    // Snap the slot to device pixels in document space (as the browser paints its box), so the scissored view
-    // lands on the same pixels at every scroll position: the anchor is device-aligned, so this never jitters.
+    // Snap the slot to buffer pixels in document space (view.dpr is on the canvas grid, rail.ts gridDpr), so the
+    // scissored view lands on the same pixels at every scroll position: the anchor is on the grid, so this never jitters.
     const snap = (n: number) => Math.round(n * view.dpr) / view.dpr;
     const x = snap(s.cx - s.w / 2 - window.scrollX);
     const top = snap(s.cy - s.h / 2);
@@ -189,10 +208,22 @@ function render(sy: number): void {
     v.rect = { x, y: top - sy, w, h };
     if (yCanvas + h <= 0 || yCanvas >= view.Hc) continue;
     const yGl = view.Hc - yCanvas - h;
-    v.camera.aspect = w / h;
-    v.camera.updateProjectionMatrix();
-    renderer.setViewport(x, yGl, w, h);
-    renderer.setScissor(x, yGl, w, h);
+    // The viewport in buffer pixels (bottom-left origin). With a fixed aspect (#31): the contain-fit rectangle of that
+    // aspect, centred in the slot's buffer box, the way W-C13's posters frame it (containRect, whole pixels).
+    const B = { x: Math.round(x * view.dpr), y: Math.round(yGl * view.dpr), w: Math.round(w * view.dpr), h: Math.round(h * view.dpr) };
+    let vp = B;
+    if (v.aspect) {
+      const c = containRect(B.w, B.h, v.aspect);
+      vp = { x: B.x + c.x, y: B.y + (B.h - c.y - c.height), w: c.width, h: c.height };
+    } else {
+      v.camera.aspect = w / h;
+      v.camera.updateProjectionMatrix();
+    }
+    v.viewport = vp;
+    // three takes CSS px and multiplies by its pixel ratio (view.dpr) before rounding: these land on vp exactly.
+    const k = 1 / view.dpr;
+    renderer.setViewport(vp.x * k, vp.y * k, vp.w * k, vp.h * k);
+    renderer.setScissor(vp.x * k, vp.y * k, vp.w * k, vp.h * k);
     renderer.setScissorTest(true);
     renderer.render(v.scene, v.camera);
   }
@@ -200,6 +231,8 @@ function render(sy: number): void {
   presentedClear = renderer.info.render.calls === 0;
   stats.draws++;
   stats.drawCalls += renderer.info.render.calls;
+  // This frame drew something new (or cleared what was there): present it again for a few frames (#61).
+  if (!tailFrame && !flags.noTail) presentTail(PRESENT_TAIL);
 }
 
 // ---------------------------------------------------------------- entities
@@ -298,7 +331,8 @@ const api: GLApi = {
     return probeResult;
   },
   createStageView(slotId, opts = {}) {
-    const v = new StageViewImpl(slotId, opts.fov ?? stageTokens.fovDeg);
+    const aspect = opts.aspect !== undefined && Number.isFinite(opts.aspect) && opts.aspect > 0 ? opts.aspect : null;
+    const v = new StageViewImpl(slotId, opts.fov ?? stageTokens.fovDeg, aspect);
     views.add(v);
     invalidate();
     return v;
@@ -321,8 +355,23 @@ const api: GLApi = {
 
 export async function boot(): Promise<GLApi | null> {
   const tier = getTier();
+  // The context first, with the attributes three would ask for: where WebGL2 exists but no context can be made
+  // (Chromium --disable-3d-apis, a blocklisted GPU), three's constructor logs console errors before it throws, so it
+  // only ever gets a context that exists. The head script (Base.astro) has usually found this before first paint
+  // (#61); this covers ?tier= overrides and a context that fails later than the head's probe.
+  const attrs: WebGLContextAttributes = { alpha: true, depth: true, stencil: false, antialias: tier === 'full', premultipliedAlpha: true, preserveDrawingBuffer: false, powerPreference: 'high-performance', failIfMajorPerformanceCaveat: false };
+  let context: WebGL2RenderingContext | null = null;
   try {
-    renderer = new WebGLRenderer({ canvas, alpha: true, antialias: tier === 'full', powerPreference: 'high-performance', stencil: false });
+    context = canvas.getContext('webgl2', attrs);
+  } catch {
+    context = null;
+  }
+  if (!context) {
+    demote('static', 'no-webgl2');
+    return null;
+  }
+  try {
+    renderer = new WebGLRenderer({ canvas, context, alpha: true, antialias: tier === 'full', powerPreference: 'high-performance', stencil: false });
   } catch {
     demote('static', 'no-webgl2');
     return null;
