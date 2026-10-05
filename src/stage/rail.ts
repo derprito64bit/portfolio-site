@@ -29,11 +29,21 @@ export const view = { W: 0, H: 0, lvh: 0, Hc: 0, O: 0, dpr: 1, anchor: 0, side: 
  * whole number when the product rounds a hair under it.
  */
 const EPS = 1e-6;
+/**
+ * A collapsed box (an iframe or an embed laid out at 0 px wide, or a page laid out before it has a width) has no grid:
+ * the DPR stays the tier's and the canvas height its own, so the geometry stays finite and the stage still sleeps.
+ */
 export function gridDpr(W: number, dpr: number): number {
+  if (!(W > 0) || !(dpr > 0)) return dpr > 0 ? dpr : 1;
   return (Math.max(1, Math.floor(W * dpr + EPS)) + EPS) / W;
 }
-function gridHeight(cssH: number, dpr: number): number {
+export function gridHeight(cssH: number, dpr: number): number {
+  if (!(cssH > 0) || !(dpr > 0)) return Math.max(0, cssH || 0);
   return (Math.max(1, Math.floor(cssH * dpr + EPS)) + EPS) / dpr;
+}
+/** True while the canvas has no area to draw into (W or Hc is 0): the stage then renders nothing. */
+export function collapsed(): boolean {
+  return !(view.W > 0) || !(view.Hc > 0);
 }
 /** The canvas height before the grid (round(lvh x 1.25)): the pixel cap is computed on it, so it never moves the DPR. */
 let rawHc = 0;

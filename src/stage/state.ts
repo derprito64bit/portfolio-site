@@ -47,8 +47,12 @@ export const flags = {
   busyMs: Math.max(0, Number(query.get('busy')) || 0),
   /** ?debug=drift draws flat debug colours in the fixtures (drift harness). */
   debug: query.get('debug') || '',
-  /** ?notail turns the present tail off (the negative control of the WebKit present check, #61). */
-  noTail: query.has('notail'),
+  /**
+   * ?notail turns every present tail off, ?notail=erase only the one after a frame that erased what the canvas showed
+   * (the negative controls of the WebKit present check, #61).
+   */
+  noTail: query.has('notail') && query.get('notail') !== 'erase',
+  noEraseTail: query.has('notail'),
 };
 
 let manualNow = flags.startMs;

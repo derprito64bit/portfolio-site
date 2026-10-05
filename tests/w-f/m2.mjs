@@ -5,19 +5,25 @@
 //   noWebgl    #61 item 3: Chromium --disable-3d-apis (WebGL2's constructor exists, no context): data-tier is static,
 //              data-cam camera and data-hero still before first paint, and never anything else; 0 console failures
 //   withGl     the same probe leaves real GL alone: mouse profiles full (or a logged probe demotion), touch lite
-//   present    #61 item 1: a recoloured fixture, then the stage sleeps; the presented canvas shows the new colour
-//              (Chromium and WebKit); ?notail turns the tail off for the control
+//   present    #61 item 1: a recoloured fixture, then the stage sleeps; the presented canvas shows the new colour, and
+//              after an erase (every fixture hidden) the bare page (Chromium and WebKit); ?notail and ?notail=erase
+//              turn the tails off for the controls
 //   grid       #59 item 3 / #61 item 2: the canvas is a whole number of buffer pixels per 1 / dpr CSS px both ways
 //   aspect     #31: a StageView with an aspect draws into the contain-fit rectangle of its slot; one without fills it
-//   gutter     #59 item 1: with classic scrollbars every route keeps its gutter from the first frame and the canvas is
-//              as wide as html.clientWidth; with hidden scrollbars there is no gutter and the same holds
+//   gutter     #59 item 1: with classic scrollbars every route keeps its gutter from the first frame, and the stage's
+//              width is its canvas's own box, as wide as the body (on a page that does not scroll Chrome's
+//              html.clientWidth leaves the gutter out: W-D013 departure, RULING NEEDED on #11 5992946428); with hidden
+//              scrollbars there is no gutter and the same holds
+//   zero       round-1 must-fix: an iframe collapsed to 0 px wide or tall keeps the geometry finite and the stage idle
+//              (counters' motion-end window), and it settles again when restored (Chromium and WebKit)
 //   hooks      #54 item 2: __stage.registerEffect plugs an effect in behind __stage.effects; __stage.markDirty re-measures
 // Usage: node tests/w-f/m2.mjs [--out m2.json] [--dist <dir>] [--only door,noWebgl,...]
 //   --dist runs the browser checks against another build (the negative controls run them on main's dist).
 import sharp from 'sharp';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
-import { PROFILES, ROOT, budget, cliMain, consoleGate, expectedTier, newContext, readBudgets, serve, sleep, waitSettled } from '../harness/lib.mjs';
+import { PROFILES, ROOT, browser, budget, cliMain, consoleGate, expectedTier, newContext, readBudgets, serve, sleep, waitSettled } from '../harness/lib.mjs';
+import { INIT as COUNTERS_INIT, motionWindow } from '../harness/counters/run.mjs';
 const { containRect } = await import('../../scripts/build/posters/stage.js');
 
 // ---------------------------------------------------------------- door (D-023)
@@ -174,26 +180,42 @@ async function sampleSlot(page, id) {
   return { rgb: [med(0), med(1), med(2)], clip, size: [info.width, info.height] };
 }
 
-async function present(base, profiles = ['D2', 'P2', 'WK-P2', 'WK-T2'], noTail = false) {
+/**
+ * Three recolours and then an erase (every fixture hidden, so the frame only clears what the canvas showed). After each,
+ * the stage sleeps and the screenshot must show the new state: the new colour, then what the page shows with no canvas
+ * at all (sampled last, with #gl hidden by CSS). `noTail`: '' (every tail on), 'all' (?notail) or 'erase' (?notail=erase).
+ */
+async function present(base, profiles = ['D2', 'P2', 'WK-P2', 'WK-T2'], noTail = '') {
   const rows = [];
   for (const profile of profiles) {
     const ctx = await newContext(profile);
     const page = await ctx.newPage();
-    await page.goto(`${base}/bench/?tier=lite${noTail ? '&notail' : ''}`, { waitUntil: 'load' });
+    await page.goto(`${base}/bench/?tier=lite${noTail === 'all' ? '&notail' : noTail === 'erase' ? '&notail=erase' : ''}`, { waitUntil: 'load' });
     await page.waitForFunction(() => window.__stage?.glState === 'ready' && window.__stage.fixtures, null, { polling: 100, timeout: 20000 });
     await page.evaluate(() => document.querySelector('[data-gl-id="fx-1"]').scrollIntoView({ block: 'center' }));
     await waitSettled(page, 10000);
     const steps = [];
-    for (const rgb of [[250, 30, 30], [30, 30, 250], [30, 200, 30]]) {
+    const settle = async (act, arg) => {
       const t0 = await page.evaluate(() => ({ sleeps: window.__stage.stats.sleeps, tail: window.__stage.stats.tailFrames }));
-      await page.evaluate((c) => window.__stage.fixtures.tint('fx-1', ...c), rgb);
+      await page.evaluate(act, arg);
       // The stage renders once, presents its tail, then sleeps after its idle detach: read what the canvas shows then.
       await page.waitForFunction((n) => window.__stage.stats.sleeps > n, t0.sleeps, { polling: 50, timeout: 10000 });
       await sleep(100);
       const shot = await sampleSlot(page, 'fx-1');
       const t1 = await page.evaluate(() => ({ tail: window.__stage.stats.tailFrames }));
-      steps.push({ want: rgb, got: shot.rgb, tailFrames: t1.tail - t0.tail, ok: near(shot.rgb, rgb) });
+      return { got: shot.rgb, tailFrames: t1.tail - t0.tail };
+    };
+    for (const rgb of [[250, 30, 30], [30, 30, 250], [30, 200, 30]]) {
+      const s = await settle((c) => window.__stage.fixtures.tint('fx-1', ...c), rgb);
+      steps.push({ step: 'tint', want: rgb, ...s, ok: near(s.got, rgb) });
     }
+    if (await page.evaluate(() => typeof window.__stage.fixtures.hideAll === 'function')) {
+      const s = await settle(() => window.__stage.fixtures.hideAll(true));
+      await page.addStyleTag({ content: '#gl{visibility:hidden!important}' });
+      await sleep(100);
+      const ground = (await sampleSlot(page, 'fx-1')).rgb;
+      steps.push({ step: 'erase', want: ground, ...s, ok: near(s.got, ground) && !near(s.got, [30, 200, 30]) });
+    } else steps.push({ step: 'erase', ok: false, why: 'fixtures.hideAll is missing (pre-fix build)' });
     await ctx.close();
     rows.push({ profile, browser: PROFILES[profile].browser, noTail, steps, pass: steps.every((s) => s.ok) });
   }
@@ -289,8 +311,9 @@ const FIRST_FRAME = `(() => {
 /**
  * Classic scrollbars (Chrome without Playwright's --hide-scrollbars) and hidden ones, every route: the gutter is set
  * exactly where a scrollbar takes room, from the first frame, so the content width at the first frame is the final
- * one and nothing shifts; and the stage's width is its canvas's own box (on a page that does not scroll, Chrome's
- * html.clientWidth ignores the gutter: 1440 against a 1425 px canvas).
+ * one and nothing shifts; and the stage's width is its canvas's own box, equal to the body's width (on a page that does
+ * not scroll, Chrome's html.clientWidth leaves the gutter out: 1440 against a 1425 px canvas). That is a departure from
+ * W-D013's "Canvas width comes from documentElement.clientWidth", raised for a ruling on #11 (5992946428).
  */
 async function gutter(base) {
   const rows = [];
@@ -332,6 +355,64 @@ async function gutter(base) {
   return { rows, pass: rows.every((r) => r.pass) };
 }
 
+// ---------------------------------------------------------------- zero (round-1 must-fix zero-width-grid)
+/**
+ * /bench/?tier=lite in a 1200 x 800 iframe that collapses to 0 px wide, then to 0 px tall, then comes back, in
+ * Chromium and WebKit. While collapsed, the stage's geometry stays finite (no Infinity dpr, no NaN Hc or anchor) and
+ * the idle window holds (counters' motionWindow: the collapse is the last change, nothing presented within its bound,
+ * 0 rAF and 0 draws in the window). Restored, the geometry is finite and the stage settles again.
+ */
+async function zero(base) {
+  const rows = [];
+  for (const profile of ['D2', 'WK-P2']) {
+    for (const axis of ['width', 'height']) {
+      const b = await browser(PROFILES[profile].browser);
+      const ctx = await b.newContext({ viewport: { width: 1300, height: 900 }, deviceScaleFactor: 1 });
+      await ctx.addInitScript({ content: COUNTERS_INIT });
+      const page = await ctx.newPage();
+      const gate = consoleGate(page);
+      await page.goto(`${base}/404.html`, { waitUntil: 'load' });
+      await page.evaluate((src) => new Promise((res) => {
+        const f = document.createElement('iframe');
+        f.id = 'probe';
+        f.style.cssText = 'position:fixed;left:0;top:0;width:1200px;height:800px;border:0;z-index:99;background:#fff';
+        f.src = src;
+        f.onload = res;
+        document.body.prepend(f);
+      }), `${base}/bench/?tier=lite`);
+      const frame = await (await page.$('#probe')).contentFrame();
+      await frame.waitForFunction(() => window.__stage?.glState === 'ready' && window.__stage.fixtures && window.__stage.settled, null, { polling: 100, timeout: 20000 });
+      await frame.evaluate(() => { document.querySelector('[data-gl-id="fx-1"]').scrollIntoView({ block: 'center' }); window.__stage.invalidate(); });
+      await frame.waitForFunction(() => window.__stage.settled, null, { polling: 100, timeout: 10000 }).catch(() => {});
+      await sleep(300);
+      const geo = () => frame.evaluate(() => {
+        const v = { ...window.__stage.view };
+        const s = window.__stage.stats;
+        const nums = { ...Object.fromEntries(Object.entries(v).filter(([, x]) => typeof x === 'number')), canvasPx: s.canvasPx, canvasW: s.canvasW, canvasH: s.canvasH, statDpr: s.dpr };
+        return { nums: Object.fromEntries(Object.entries(nums).map(([k, x]) => [k, Number.isFinite(x) ? Math.round(x * 1000) / 1000 : String(x)])), finite: Object.values(nums).every((x) => Number.isFinite(x)), draws: s.draws, settled: window.__stage.settled };
+      });
+      const since = await frame.evaluate(() => performance.now());
+      await page.evaluate((axis) => { document.getElementById('probe').style[axis] = '0px'; }, axis);
+      const win = await motionWindow(frame, since);
+      const atZero = await geo();
+      await page.evaluate((axis) => { document.getElementById('probe').style[axis] = axis === 'width' ? '1200px' : '800px'; }, axis);
+      const settledAfter = await frame.waitForFunction(() => window.__stage.settled, null, { polling: 100, timeout: 8000 }).then(() => true, () => false);
+      await sleep(200);
+      const restored = await geo();
+      const v = gate.verdict();
+      await ctx.close();
+      rows.push({
+        profile, axis, browser: PROFILES[profile].browser, atZero, window: { pass: win.pass, bound: win.bound, afterMotion: win.afterMotion, stageInWindow: win.stageInWindow }, settledAfter, restored,
+        drewAfterRestore: restored.draws > atZero.draws, consoleFailures: v.failures.map((f) => `${f.channel}/${f.level}: ${f.text.slice(0, 160)}`),
+        // In WebKit, GL drawing nothing after a collapse and restore is pre-existing (main 5955491 too, Breaker 1.3):
+        // recorded, not asserted.
+        pass: atZero.finite && win.pass && atZero.settled && settledAfter && restored.finite && v.pass && (PROFILES[profile].browser !== 'chromium' || restored.draws > atZero.draws),
+      });
+    }
+  }
+  return { rows, pass: rows.length > 0 && rows.every((r) => r.pass) };
+}
+
 // ---------------------------------------------------------------- hooks (#54 item 2)
 async function hooks(base) {
   const ctx = await newContext('D2');
@@ -355,7 +436,7 @@ async function hooks(base) {
   return { ...r, pass: r.types.registerEffect === 'function' && r.types.markDirty === 'function' && r.calls?.length === 1 && r.calls[0].id === 'fx-2' && r.result?.developed === true && r.measuresInTick >= 1 };
 }
 
-const CHECKS = { door, noWebgl, withGl, present, grid, aspect, gutter, hooks };
+const CHECKS = { door, noWebgl, withGl, present, grid, aspect, gutter, zero, hooks };
 
 export async function run(opts = {}) {
   const only = opts.only ? new Set(String(opts.only).split(',')) : null;
@@ -370,15 +451,20 @@ export async function run(opts = {}) {
         out[name] = { pass: false, error: String(e?.stack || e).slice(0, 600) };
       }
     }
-    // The present control: the same check with the tail turned off (WebKit is where a canvas shows one frame late).
-    if ((!only || only.has('present')) && !opts['no-controls']) out.presentControl = await present(srv.base, ['WK-P2', 'WK-T2'], true).catch((e) => ({ error: String(e), rows: [] }));
+    // The present controls: the same check with the tails turned off (WebKit is where a canvas shows one frame late),
+    // all of them (?notail) or only the one after an erase (?notail=erase).
+    if ((!only || only.has('present')) && !opts['no-controls']) {
+      out.presentControl = await present(srv.base, ['WK-P2', 'WK-T2'], 'all').catch((e) => ({ error: String(e), rows: [] }));
+      out.eraseControl = await present(srv.base, ['WK-P2', 'WK-T2'], 'erase').catch((e) => ({ error: String(e), rows: [] }));
+    }
   } finally {
     await srv.close();
   }
-  if (out.presentControl) {
-    // A control passes when the check fails without the tail on at least one WebKit row: the tail is what fixed it.
-    out.presentControl.caught = out.presentControl.rows?.some((r) => !r.pass) ?? false;
-    out.presentControl.pass = out.presentControl.caught;
+  for (const [k, step] of [['presentControl', 'tint'], ['eraseControl', 'erase']]) {
+    if (!out[k]) continue;
+    // A control passes when its step fails without that tail on at least one WebKit row: the tail is what fixed it.
+    out[k].caught = out[k].rows?.some((r) => r.steps.some((s) => s.step === step && !s.ok)) ?? false;
+    out[k].pass = out[k].caught;
   }
   const parts = Object.entries(out);
   return { schema: 1, suite: 'w-f/m2', dist: opts.dist ?? 'dist', pass: parts.every(([, v]) => v.pass), ...out, summary: parts.map(([k, v]) => `${k} ${v.pass ? 'pass' : 'FAIL'}`).join(', ') };

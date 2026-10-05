@@ -1,10 +1,18 @@
 // Gate-owned counters (W-D030), installed with page.addInitScript before any page script runs. They count what the
 // browser actually did, independent of the stage's own __stage.stats, so the two can be cross-checked.
+// The idle window counts from the motion end (Orchestrator ruling on #11, 5992928262): the later of the last input
+// event (scroll, wheel, pointer or key) and the last frame the stage presented. Every stage render clears the canvas
+// first (autoClear off, one explicit clear), so clearTimes holds every presented frame, tail and clear-only frames
+// included; drawTimes holds the frames that drew.
 (() => {
-  const C = (window.__gateCounters = { raf: 0, rafRequests: 0, rafByDependency: {}, draws: 0, clears: 0, rectReads: 0, rectReadsInRaf: 0, rafTimes: [], drawTimes: [], lastScrollAt: 0 });
+  const C = (window.__gateCounters = { raf: 0, rafRequests: 0, rafByDependency: {}, draws: 0, clears: 0, rectReads: 0, rectReadsInRaf: 0, rafTimes: [], drawTimes: [], clearTimes: [], lastScrollAt: 0, lastUserInputAt: 0, lastInputAt: 0 });
   // Timestamps (capped) let the harness measure a window that starts when motion ends, not only when input ends.
   const stamp = (list) => { if (list.length < 20000) list.push(performance.now()); };
-  addEventListener('scroll', () => { C.lastScrollAt = performance.now(); }, { capture: true, passive: true });
+  addEventListener('scroll', () => { C.lastScrollAt = C.lastInputAt = performance.now(); }, { capture: true, passive: true });
+  // The user's own input (the bound: the motion must end within 4 s of it).
+  for (const type of ['wheel', 'pointerdown', 'pointermove', 'pointerup', 'keydown', 'keyup', 'touchstart', 'touchmove', 'touchend', 'mousedown', 'mousemove', 'mouseup']) {
+    addEventListener(type, () => { C.lastUserInputAt = C.lastInputAt = performance.now(); }, { capture: true, passive: true });
+  }
   let inRaf = 0;
   const raf = window.requestAnimationFrame;
   // Attribute each callback to the bundle that asked for it: src/ has one call site (the ticker); dependencies such
@@ -44,6 +52,7 @@
     if (typeof clear === 'function') {
       Ctx.prototype.clear = function (...a) {
         C.clears++;
+        stamp(C.clearTimes);
         return clear.apply(this, a);
       };
     }

@@ -114,7 +114,9 @@ export function renderNow(): void {
     return;
   }
   const draws = stats.draws;
-  render(readScroll(), false);
+  const r = render;
+  // Guarded like a frame's render: a throw is reported, counted in stats.hookErrors, and the next frame still runs.
+  guard(() => r(readScroll(), false), undefined);
   if (stats.draws > draws) stats.layoutRenders++;
 }
 bindWake(invalidate);

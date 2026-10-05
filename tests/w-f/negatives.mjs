@@ -84,25 +84,48 @@ function lintControl() {
   return { rafCallSites: raf, forbiddenReads: forbidden, sameRulesAsLint: sameRules, pass: raf === 2 && forbidden === 1 && sameRules };
 }
 
+/**
+ * Presented clear-only frames on the stage's own context, in rAF, from the first wheel until `ms` after it: what a stage
+ * that keeps presenting clear-only frames looks like to the gate's counters (Orchestrator ruling on #11, 5992928262).
+ */
+const CLEARS_PLANT = (ms) => `addEventListener('wheel', () => {
+  const t0 = performance.now();
+  const gl = document.getElementById('gl').getContext('webgl2');
+  const f = () => { if (performance.now() - t0 > ${ms}) return; gl.clear(gl.COLOR_BUFFER_BIT); requestAnimationFrame(f); };
+  requestAnimationFrame(f);
+}, { once: true, capture: true });`;
+
+/**
+ * The counters' idle window under the motion-end rule:
+ * - clean: the real stage passes;
+ * - invalidate: a ticker kept awake (__stage.invalidate every 250 ms) never ends its motion: the bound fails it;
+ * - clears 5 s: clear-only frames presented 5 s after the last input: the bound fails it (the ruling's control);
+ * - clears 2 s: clear-only frames that end 2 s after the input are motion, so the window counts from the last one and
+ *   passes; with clears left out of the motion end, the same run fails (ifClearsIgnored), which is what counting them
+ *   changes.
+ */
 async function detachControl() {
   const srv = await serve();
   try {
     const rows = [];
-    for (const plant of [false, true]) {
+    for (const plant of [null, 'invalidate', 'clears-5s', 'clears-2s']) {
       const ctx = await newContext('D2');
       await ctx.addInitScript({ content: COUNTERS_INIT });
+      if (plant === 'clears-5s') await ctx.addInitScript({ content: CLEARS_PLANT(5000) });
+      if (plant === 'clears-2s') await ctx.addInitScript({ content: CLEARS_PLANT(2000) });
       const page = await ctx.newPage();
       await page.goto(`${srv.base}/`, { waitUntil: 'load' });
       await waitSettled(page, 15000);
       await sleep(300);
-      if (plant) await page.evaluate(() => { window.__plant = setInterval(() => window.__stage.invalidate(), 250); });
+      if (plant === 'invalidate') await page.evaluate(() => { window.__plant = setInterval(() => window.__stage.invalidate(), 250); });
       const r = await idleAfterScroll(page, null).catch((e) => ({ error: String(e).slice(0, 200) }));
       await ctx.close();
-      const caught = Boolean(r.error) || r.afterMotion.raf > 0 || r.afterMotion.draws > 0;
+      const caught = Boolean(r.error) || !r.pass;
       rows.push({ plant, ...r, caught });
     }
-    const [clean, planted] = rows;
-    return { rows, pass: !clean.caught && planted.caught };
+    const by = Object.fromEntries(rows.map((r) => [r.plant ?? 'clean', r]));
+    const pass = !by.clean.caught && by.invalidate.caught && by['clears-5s'].caught && !by['clears-2s'].caught && by['clears-2s'].ifClearsIgnored?.raf > 0;
+    return { rows, pass };
   } finally {
     await srv.close();
   }

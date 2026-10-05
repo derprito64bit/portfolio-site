@@ -31,6 +31,8 @@ class QuadFixture implements Entity {
   readonly persistent = false;
   private slot: Slot | null = null;
   readonly mesh: any;
+  /** fixtures.hideAll: draw nothing (the present check's erase step). */
+  hidden = false;
   constructor(readonly id: string, idx: number, private readonly gl: GLApi) {
     const colour = flags.debug === 'drift' ? [255, 0, 20 * idx] : flags.debug === 'ring' ? [197, 40, 40] : [60 + ((idx * 37) % 120), 90, 110];
     this.mesh = new Mesh(new PlaneGeometry(1, 1), flat(colour[0], colour[1], colour[2]));
@@ -53,10 +55,10 @@ class QuadFixture implements Entity {
     const grow = flags.debug === 'ring' ? 12 : 0;
     this.mesh.position.set(s.cx - window.scrollX - f.W / 2, f.H / 2 - (s.cy - f.sy), 0);
     this.mesh.scale.set(s.w + grow * 2, s.h + grow * 2, 1);
-    this.mesh.visible = s.near;
+    this.mesh.visible = s.near && !this.hidden;
   }
   visible(): boolean {
-    return Boolean(this.slot?.near);
+    return Boolean(this.slot?.near) && !this.hidden;
   }
   restore(): void {
     if (this.slot) take(this.slot.id);
@@ -101,6 +103,10 @@ class CubeFixture implements Entity {
   unbind(): void {
     this.slot = null;
     this.view.visible = false;
+  }
+  /** fixtures.hideAll */
+  setShown(shown: boolean): void {
+    this.view.visible = shown && Boolean(this.slot);
   }
   place(): void {
     const pose = bandPose();
@@ -181,6 +187,10 @@ class AspectFixture implements Entity {
     this.slot = null;
     this.view.visible = false;
   }
+  /** fixtures.hideAll */
+  setShown(shown: boolean): void {
+    this.view.visible = shown && Boolean(this.slot);
+  }
   place(): void {}
   visible(): boolean {
     return Boolean(this.slot?.near) && this.view.visible;
@@ -213,6 +223,19 @@ export function install(gl: GLApi): void {
       const e = gl.entity(id) as QuadFixture | undefined;
       if (!e) return false;
       e.mesh.material.uniforms.uColor.value.set(r / 255, g / 255, b / 255);
+      invalidate();
+      return true;
+    },
+    /**
+     * Hide (or show again) every quad fixture and stage view and ask for one render. Hidden, the next frame draws
+     * nothing and only clears what the canvas showed: the present check reads that the erase reaches the screen.
+     */
+    hideAll(hidden = true) {
+      for (const s of document.querySelectorAll<HTMLElement>('[data-gl-fixture]')) {
+        const e = gl.entity(s.dataset.glId ?? '') as (QuadFixture | CubeFixture | AspectFixture) | undefined;
+        if (e instanceof QuadFixture) e.hidden = hidden;
+        else if (e) e.setShown(!hidden);
+      }
       invalidate();
       return true;
     },

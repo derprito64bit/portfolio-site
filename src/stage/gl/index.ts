@@ -9,7 +9,7 @@ import { PerspectiveCamera, Scene, WebGLRenderer, MathUtils } from 'three';
 import { engine } from 'animejs/engine';
 import { stage as stageTokens } from '../../lib/tokens.js';
 import { containRect } from '../../../scripts/build/posters/stage.js';
-import { canvas, measureViewport, place, view } from '../rail.ts';
+import { canvas, collapsed, measureViewport, place, view } from '../rail.ts';
 import { demote, getTier, onTier, tierReason } from '../tier.ts';
 import { flags, mark, stats } from '../state.ts';
 import { guard, invalidate, isInFrame, markDirty, onActive, onBefore, onStep, presentTail, setRender, wake } from '../ticker.ts';
@@ -95,11 +95,18 @@ const views = new Set<StageViewImpl>();
 let lost = false;
 let dead = false;
 /**
- * Frames presented again after a change: WebKit (measured on its Windows build) can present the canvas one frame late,
- * so a re-anchor keeps presenting for this many frames (represent), and so does any frame that drew something new
- * (presentTail, #61). W-S1's camera used the same count for its own tail.
+ * Frames presented again after a change. WebKit (measured on its Windows build) can present the canvas a frame late:
+ * - a re-anchor moves the canvas and keeps presenting for REANCHOR_TAIL frames (represent);
+ * - a frame that drew new content presents it again for PRESENT_TAIL frames (presentTail, #61). The perf gate measured
+ *   that WebKit needs 1 (round-1 row 13: 0 of 12 wrong colours with 1, 12 of 12 with none); 2 keeps one spare;
+ * - a frame that only erased what the canvas showed (its content left) presents the clear for ERASE_TAIL frames, so
+ *   WebKit does not keep the old content on screen while the stage sleeps; a clear after a clear starts nothing.
+ * Every tail frame is a presented frame: the idle window counts from the last one (Orchestrator ruling on #11,
+ * 5992928262).
  */
-const PRESENT_TAIL = 3;
+const REANCHOR_TAIL = 3;
+const PRESENT_TAIL = 2;
+const ERASE_TAIL = 1;
 let represent = 0;
 /** The last presented frame drew nothing, so the canvas shows only the clear colour. */
 let presentedClear = false;
@@ -169,6 +176,12 @@ function hasContent(): boolean {
 // ---------------------------------------------------------------- the frame
 function render(sy: number, tailFrame = false): void {
   if (!renderer || lost || dead) return;
+  // A collapsed canvas (0 px wide or tall) has nothing to show: no clear, no placement, no present and no tail, so the
+  // ticker detaches as usual; the resize that gives it an area back reallocates and re-measures (markDirty).
+  if (collapsed()) {
+    stats.renderSkips++;
+    return;
+  }
   // Nothing to draw and the canvas already clear (a page without GL content scrolling under Lenis): skip the clear,
   // the placement and the present. The first frame with content re-anchors and draws as usual. A tail frame never
   // skips: it presents the clear the frame before it drew.
@@ -181,7 +194,7 @@ function render(sy: number, tailFrame = false): void {
   // A re-anchor moves the canvas and redraws it in one frame. WebKit (measured on its Windows build) can present the
   // moved canvas with an older buffer for a frame or two, so a re-anchor keeps presenting for PRESENT_TAIL more frames
   // (counted in ticker frames: a layout render in the same frame does not use one up).
-  if (anchor !== before) represent = PRESENT_TAIL;
+  if (anchor !== before && Number.isFinite(anchor)) represent = REANCHOR_TAIL;
   else if (represent > 0 && isInFrame()) represent--;
   if (represent > 0) invalidate();
   const f: FrameInfo = { sy, anchor, W: view.W, H: view.H, Hc: view.Hc };
@@ -189,10 +202,12 @@ function render(sy: number, tailFrame = false): void {
   renderer.setScissorTest(false);
   renderer.setViewport(0, 0, view.W, view.Hc);
   renderer.clear();
-  // One entity that throws is reported and skipped; the others still draw this frame.
+  // One entity that throws is reported and skipped; the others still draw this frame. Each draw runs guarded too: a
+  // throw from a three hook inside one render (onBeforeRender, onBeforeCompile) loses that scene or view for this
+  // frame only, and the page scene, the other views, the stats and the tail still run.
   for (const e of entities.values()) guard(() => e.place(f), undefined);
   updatePageCamera(sy, anchor);
-  if (pageScene.children.some((c: any) => c.visible)) renderer.render(pageScene, pageCamera);
+  if (pageScene.children.some((c: any) => c.visible)) guard(() => renderer.render(pageScene, pageCamera), undefined);
   for (const v of views) {
     const s = getSlot(v.slotId);
     v.rect = null;
@@ -226,14 +241,17 @@ function render(sy: number, tailFrame = false): void {
     renderer.setViewport(vp.x * k, vp.y * k, vp.w * k, vp.h * k);
     renderer.setScissor(vp.x * k, vp.y * k, vp.w * k, vp.h * k);
     renderer.setScissorTest(true);
-    renderer.render(v.scene, v.camera);
+    guard(() => renderer.render(v.scene, v.camera), undefined);
   }
   renderer.setScissorTest(false);
-  presentedClear = renderer.info.render.calls === 0;
+  const drew = renderer.info.render.calls > 0;
+  const erased = !drew && !presentedClear;
+  presentedClear = !drew;
   stats.draws++;
   stats.drawCalls += renderer.info.render.calls;
-  // This frame drew something new (or cleared what was there): present it again for a few frames (#61).
-  if (!tailFrame && !flags.noTail) presentTail(PRESENT_TAIL);
+  // Present a frame that drew something new again for a few frames, and the clear of one that erased content once (#61).
+  if (!tailFrame && drew && !flags.noTail) presentTail(PRESENT_TAIL);
+  else if (!tailFrame && erased && !flags.noEraseTail) presentTail(ERASE_TAIL);
 }
 
 // ---------------------------------------------------------------- entities
