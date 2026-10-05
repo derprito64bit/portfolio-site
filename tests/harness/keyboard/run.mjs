@@ -3,8 +3,10 @@
 //             outside the border box) differs from the unfocused frame by >= 3:1 (WCAG contrast of the two colours).
 //             On /bench/?debug=ring the fixture quads draw GL 12 px past their slots, so the band sits over GL.
 //  roundtrip  sheet -> project -> Back leaves focus on the same print link, and the next Tab reaches the next print.
-//  hash       a cross-page hash visit (/work/project-01/ -> 'The Manor', /#door) focuses the target.
-//  anchor     an anchor scroll moves one way only (no double scroll).
+//  hash       a cross-page hash visit (/work/project-01/ -> /#contact, the footer's contact heading) focuses the target.
+//             The nav's Contact is a same-page link on every page (the footer is in the layout), so the check clicks a
+//             link to /#contact placed in the project page's main: a Swup visit with a hash, as any cross-page link is.
+//  anchor     an anchor scroll (the nav's Contact on /) moves one way only (no double scroll) and focuses #contact.
 // Usage: npm run h:keyboard -- [--profiles D2,P2] [--routes /,/bench/?debug=ring] [--out keyboard.json]
 import sharp from 'sharp';
 import { cliMain, newContext, serve, sleep, waitSettled } from '../lib.mjs';
@@ -121,11 +123,18 @@ async function roundtrip(page, base) {
 async function hashVisit(page, base) {
   await page.goto(`${base}/work/project-01/`, { waitUntil: 'load' });
   await waitSettled(page, 12000);
-  await page.click('nav[aria-label="Site"] a[href="/#door"]');
+  await page.evaluate(() => {
+    const a = document.createElement('a');
+    a.href = '/#contact';
+    a.id = 'kb-hash-visit';
+    a.textContent = 'Contact (cross-page)';
+    document.getElementById('main')?.prepend(a);
+  });
+  await page.click('#kb-hash-visit');
   await visitEnd(page, '/');
   await sleep(300);
-  const focus = await page.evaluate(() => ({ id: document.activeElement?.id ?? null, tag: document.activeElement?.tagName }));
-  return { focus, pass: focus.id === 'door' };
+  const focus = await page.evaluate(() => ({ id: document.activeElement?.id ?? null, tag: document.activeElement?.tagName, hash: location.hash }));
+  return { focus, pass: focus.id === 'contact' && focus.hash === '#contact' };
 }
 
 async function anchorMonotonic(page, base) {
@@ -135,13 +144,13 @@ async function anchorMonotonic(page, base) {
     window.__ys = [];
     window.__yt = setInterval(() => window.__ys.push(window.scrollY), 8);
   });
-  await page.click('nav[aria-label="Site"] a[href="/#door"]');
+  await page.click('nav[aria-label="Site"] a[href="#contact"]');
   await sleep(1600);
   const ys = await page.evaluate(() => { clearInterval(window.__yt); return window.__ys; });
   let monotonic = true;
   for (let i = 1; i < ys.length; i++) if (ys[i] < ys[i - 1]) monotonic = false;
   const focus = await page.evaluate(() => document.activeElement?.id ?? null);
-  return { samples: ys.length, first: ys[0], last: ys[ys.length - 1], monotonic, focus, pass: monotonic && ys[ys.length - 1] > ys[0] && focus === 'door' };
+  return { samples: ys.length, first: ys[0], last: ys[ys.length - 1], monotonic, focus, pass: monotonic && ys[ys.length - 1] > ys[0] && focus === 'contact' };
 }
 
 export async function run(opts = {}) {

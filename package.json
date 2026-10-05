@@ -2,7 +2,7 @@
   "name": "portfolio-site",
   "private": true,
   "type": "module",
-  "description": "The Front Door of derprito64bit.github.io: a static Astro site with one riding WebGL canvas (Darkroom direction).",
+  "description": "derprito64bit's portfolio at derprito64bit.github.io: a static Astro site with one riding WebGL canvas (Darkroom direction).",
   "license": "MIT",
   "engines": {
     "node": ">=24 <25"

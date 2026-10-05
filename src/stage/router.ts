@@ -15,8 +15,8 @@ import { invalidate, markDirty } from './ticker.ts';
 import { stats } from './state.ts';
 
 const html = document.documentElement;
-/** Fork-owned doors are always full loads (publish.ps1 reserved paths). */
-const FORK_DOOR = /^\/(manor|arcade|play)(\/|$)/;
+/** Fork-owned paths (/manor/, /arcade/, /play/: publish.ps1 reserved) are always full loads, never Swup visits. */
+const FORK_PATH = /^\/(manor|arcade|play)(\/|$)/;
 
 type Listener = (visit: Visit) => void;
 const startListeners = new Set<Listener>();
@@ -58,7 +58,7 @@ export function bootRouter(): Swup {
     containers: ['#swup'],
     animationSelector: '[data-swup-fade]',
     linkSelector: 'a[href]',
-    ignoreVisit: (url, { el } = {}) => Boolean(el?.closest('[data-no-swup]')) || FORK_DOOR.test(new URL(url, location.origin).pathname),
+    ignoreVisit: (url, { el } = {}) => Boolean(el?.closest('[data-no-swup]')) || FORK_PATH.test(new URL(url, location.origin).pathname),
     plugins: [new SwupA11yPlugin({ headingSelector: ['main h1', 'h1'], respectReducedMotion: false })],
   });
 

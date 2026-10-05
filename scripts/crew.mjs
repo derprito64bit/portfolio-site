@@ -78,7 +78,7 @@ function outDir(lib, name) {
 }
 const slug = (route) => (route === '/' ? 'home' : route.replace(/^\/|\/$/g, '').replace(/[^a-z0-9]+/gi, '-'));
 
-/** Named scroll stops (W-D030) that exist on the page: top, #work, each enlargement, #sheet, #honours, #door, footer. */
+/** Named scroll stops (W-D030) that exist on the page: top, #work, each enlargement, #sheet, #honours, footer. */
 async function stops(page) {
   return page.evaluate(() => {
     const out = [{ name: 'top', y: 0 }];
@@ -88,7 +88,6 @@ async function stops(page) {
     document.querySelectorAll('#work ~ * [data-gl-id], #work ~ ol [data-gl-id]').forEach((el, i) => out.push({ name: `enlargement-${i + 1}`, y: at(el) }));
     add('sheet', '#sheet');
     add('honours', '#honours');
-    add('door', '#door');
     out.push({ name: 'footer', y: Math.max(0, document.documentElement.scrollHeight - innerHeight) });
     const seen = new Set();
     return out.filter((s) => (seen.has(s.name) ? false : seen.add(s.name)));

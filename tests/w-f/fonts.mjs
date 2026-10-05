@@ -4,7 +4,7 @@
 // Usage: node tests/w-f/fonts.mjs [--out fonts.json]
 import { cliMain, newContext, serve, waitSettled } from '../harness/lib.mjs';
 
-const MARKERS = ['h1', '#work', '#sheet', '#honours', '#door', '#contact', '.site-footer'];
+const MARKERS = ['h1', '#work', '#sheet', '#honours', '#contact', '.site-footer'];
 
 async function layout(base, profile, route, block) {
   const ctx = await newContext(profile);
