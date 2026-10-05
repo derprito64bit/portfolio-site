@@ -155,20 +155,30 @@ Tests read this block instead of parsing the sentences above (requested in the W
     }
   },
   "host": {
-    "calibrated": null,
-    "calibration": "Not calibrated yet: the thresholds are null, so scripts/fleet/hostload.ps1 exits 75 'uncalibrated', which counts as blocked (host). The orchestrator calibrates under the operating baseline: the orchestrator session with its needs:orchestrator Monitor and the watchdog alive, no other agents, no Blender or Unity, starting 10 minutes after an npm ci. Take hostload.ps1 -Samples 60 three times, and 5 Lighthouse runs each watched by hostload.ps1 -Watch. precheck.cpuBusyPctMax and gpu3dPctMax = the p95 of the 10-second window medians (precheck.stat) plus a margin; benchmarkIndex.baseline = the median benchmarkIndex of the 5 runs; watch.allowlist = the process names those -Watch files show outside each run's own tree, never the antivirus (MsMpEng: wait for its scan to settle instead); watch.foreignCpuPctMax is set with them. Record the date, the conditions and the margins in calibrated.",
+    "calibrated": {
+      "date": "2026-10-04",
+      "host": "DESKTOP-7OOHGDS: 12 logical CPUs, RX 6700 XT (Lighthouse renderer: ANGLE D3D11 on it)",
+      "conditions": "The orchestrator session alive; no other agents (every lane free before the calibrator took perf and blender for the whole job); no Blender or Unity process; no node or chrome outside the session's own MCP servers. Sampling started at 20:22:57 -04:00, 11 minutes after an npm ci that ended at 20:11:51 (npm run build ended at 20:12:18); the idle runs the key uses ran from 20:28:22 to 20:31:39 and the Lighthouse runs from 20:32:46 to 20:40:50 (00:32 to 00:40 UTC on 2026-10-05, hence the evidence folder's date). The owner's desktop apps stayed open: Opera, Discord, Task Manager, Roblox and the Claude desktop app.",
+      "margins": {
+        "cpuBusyPct": "8.3 points (one logical CPU of 12) over the p95, 12.6",
+        "gpu3dPct": "5.0 points over the p95, 1.8",
+        "foreignCpuPct": "2.5 points over MsMpEng's maximum, 7.6"
+      },
+      "evidence": "portfolio-evidence/calibration/2026-10-05/"
+    },
+    "calibration": "Calibrated on 2026-10-04 under the operating baseline: the orchestrator session alive, no other agents, no Blender or Unity, starting 10 minutes after an npm ci. The host, the conditions and the margins are in calibrated, and the raw files in portfolio-evidence/calibration/2026-10-05/. Idle: hostload.ps1 -Samples 60 three times. The first three (idle-1 to idle-3) caught two Opera renderers born inside idle-1, with CPU samples up to 99.1% and GPU 3D up to 22.7%. As with an antivirus scan, the calibrator waited for that to settle and took three more (idle-4 to idle-6). Both sets are kept, and the key uses idle-4 to idle-6. Every 10-sample window (153 sliding windows) gives a median (precheck.stat), and the p95 of those medians is 12.6% CPU busy and 1.8% GPU 3D (idle-1 to idle-3 would give 35.0% and 9.5%). cpuBusyPctMax = 12.6 + 8.3 (one logical CPU of 12) = 20.9. gpu3dPctMax = 1.8 + 5.0 = 6.8, which is above every disjoint 10-second median of idle-4 to idle-6 (at most 6.2). Then Lighthouse 13.5.0 on / with the built dist over gzip (serve-dist.mjs inside the run's own node process, as crew.mjs does): 5 mobile and 5 desktop runs, each watched by hostload.ps1 -Watch. benchmarkIndex.baseline = the median of the 5 mobile runs, 2918.5 (mobile 2799.5 to 3445; desktop 2466 to 2926.5). watch.allowlist = every process name the 10 -Watch files show outside each run's own tree, except MsMpEng; those names had at most 4.7%. MsMpEng shows in all 10 files, at 3.3% to 7.6% in each run's first chunk. That is real-time scanning of each run's launch, not a scan that settles, so MsMpEng stays off the list and foreignCpuPctMax = its maximum 7.6 + 2.5 = 10.1. hostload.ps1 then ran once against this key on the idle machine and exited 0 (hostload-postcal.json). Recalibrate the same way after a change of hardware, OS image or antivirus, or when sets keep coming out host-suspect, and edit calibrated and this text together.",
     "precheck": {
       "samples": 10,
       "stat": "median",
-      "cpuBusyPctMax": null,
-      "gpu3dPctMax": null
+      "cpuBusyPctMax": 20.9,
+      "gpu3dPctMax": 6.8
     },
     "watch": {
-      "foreignCpuPctMax": null,
-      "allowlist": null
+      "foreignCpuPctMax": 10.1,
+      "allowlist": ["audiodg", "cam_helper", "claude", "discord", "dwm", "gwctlsrv", "musehub", "opera", "robloxplayerbeta", "svchost", "system", "taskmgr"]
     },
     "benchmarkIndex": {
-      "baseline": null,
+      "baseline": 2918.5,
       "suspectBelowRatio": 0.9
     },
     "rules": {
