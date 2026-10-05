@@ -1,9 +1,10 @@
 // The riding canvas (W-D013): one <canvas> in #rail (z 1, outside #swup), translated to the scroll position on
 // each render with 0.25 viewport of overscan: three quarters of it toward the scroll direction, a quarter behind.
-// Width is the canvas's own box (#rail's width, #59): html.clientWidth ignores a scrollbar gutter on a page that does
-// not scroll (measured in Chrome with classic scrollbars: 1440 against a 1425 px canvas), and the slots are laid out
-// in the canvas's width either way. Height is 100lvh x 1.25. On a coarse pointer the buffer changes only with width
-// or DPR, never height alone.
+// Width (W-D013 as amended, Orchestrator ruling on #11, 5992943706): the laid-out width of the canvas's containing
+// block, #rail's clientWidth, which equals body.clientWidth. html.clientWidth ignores a reserved scrollbar gutter on a
+// page that does not scroll (Chrome, classic scrollbars: 1440 against a 1425 px layout), so it is only the fallback
+// when #rail has no box (display: none). A 0 px box is kept finite by gridDpr and gridHeight. Height is 100lvh x 1.25.
+// On a coarse pointer the buffer changes only with width or DPR, never height alone.
 import { effectiveDpr, getTier } from './tier.ts';
 import { stats } from './state.ts';
 
@@ -64,7 +65,9 @@ function measureLvh(): number {
  * change (the page camera re-centres, the buffer stays), or 'none'.
  */
 export function measureViewport(): 'realloc' | 'height' | 'none' {
-  const W = canvas.parentElement?.clientWidth || html.clientWidth;
+  // #rail's laid-out width; html.clientWidth only when #rail has no box. A 0 px box stays 0 (the collapsed case).
+  const rail = canvas.parentElement;
+  const W = rail && rail.getClientRects().length ? rail.clientWidth : html.clientWidth;
   const H = window.innerHeight;
   const widthOrDprChanged = W !== view.W || gridDpr(W, effectiveDpr(W, rawHc || H * 1.25)) !== view.dpr;
   if (!widthOrDprChanged && coarse.matches && view.W) {

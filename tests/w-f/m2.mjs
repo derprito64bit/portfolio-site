@@ -10,10 +10,11 @@
 //              turn the tails off for the controls
 //   grid       #59 item 3 / #61 item 2: the canvas is a whole number of buffer pixels per 1 / dpr CSS px both ways
 //   aspect     #31: a StageView with an aspect draws into the contain-fit rectangle of its slot; one without fills it
-//   gutter     #59 item 1: with classic scrollbars every route keeps its gutter from the first frame, and the stage's
-//              width is its canvas's own box, as wide as the body (on a page that does not scroll Chrome's
-//              html.clientWidth leaves the gutter out: W-D013 departure, RULING NEEDED on #11 5992946428); with hidden
-//              scrollbars there is no gutter and the same holds
+//   gutter     #59 item 1: with classic scrollbars every route keeps its gutter from the first frame; W-D013 as amended
+//              (Orchestrator ruling on #11, 5992943706): the canvas width is #rail's laid-out width, equal to
+//              body.clientWidth, not html.clientWidth (which leaves the gutter out on a page that does not scroll:
+//              1440 against 1425 px); asserted with and without the gutter, with hidden scrollbars too, and the
+//              control sized from html.clientWidth fails
 //   zero       round-1 must-fix: an iframe collapsed to 0 px wide or tall keeps the geometry finite and the stage idle
 //              (counters' motion-end window), and it settles again when restored (Chromium and WebKit)
 //   hooks      #54 item 2: __stage.registerEffect plugs an effect in behind __stage.effects; __stage.markDirty re-measures
@@ -308,19 +309,35 @@ const FIRST_FRAME = `(() => {
   window.__ls = 0;
   try { new PerformanceObserver((l) => { for (const e of l.getEntries()) if (!e.hadRecentInput) window.__ls += e.value; }).observe({ type: 'layout-shift', buffered: true }); } catch (e) {}
 })();`;
+/** The head script cannot set data-gutter (the 'no gutter' variant of the classic-scrollbar rows). */
+const NO_GUTTER = `(() => {
+  const set = Element.prototype.setAttribute;
+  Element.prototype.setAttribute = function (n, v) { if (n === 'data-gutter' && this === document.documentElement) return; return set.call(this, n, v); };
+})();`;
+/** Negative control: the stage sized from html.clientWidth (W-D013 as it read before the ruling). */
+const RAIL_AS_HTML = `(() => {
+  const d = Object.getOwnPropertyDescriptor(Element.prototype, 'clientWidth');
+  Object.defineProperty(Element.prototype, 'clientWidth', { configurable: true, get() { return this.id === 'rail' ? document.documentElement.clientWidth : d.get.call(this); } });
+})();`;
 /**
- * Classic scrollbars (Chrome without Playwright's --hide-scrollbars) and hidden ones, every route: the gutter is set
- * exactly where a scrollbar takes room, from the first frame, so the content width at the first frame is the final
- * one and nothing shifts; and the stage's width is its canvas's own box, equal to the body's width (on a page that does
- * not scroll, Chrome's html.clientWidth leaves the gutter out: 1440 against a 1425 px canvas). That is a departure from
- * W-D013's "Canvas width comes from documentElement.clientWidth", raised for a ruling on #11 (5992946428).
+ * Classic scrollbars (Chrome without Playwright's --hide-scrollbars), with the head script's gutter and without it, and
+ * hidden ones, every route: the gutter is set exactly where a scrollbar takes room, from the first frame, so the
+ * content width at the first frame is the final one and nothing shifts. W-D013 as amended (Orchestrator ruling on #11,
+ * 5992943706): the canvas width is the laid-out width of #rail, equal to body.clientWidth; html.clientWidth is only the
+ * fallback when #rail has no box. Every GL row asserts stage W = #rail's box = body.clientWidth = the canvas's CSS
+ * width, on pages that scroll and pages that do not (on a page that does not scroll, with the gutter, html.clientWidth
+ * is 1440 against a 1425 px layout). The control (`plant`) sizes the stage from html.clientWidth and must fail there.
  */
-async function gutter(base) {
+async function gutter(base, plant = null) {
   const rows = [];
-  for (const variant of ['chromium-scrollbars', 'chromium']) {
-    for (const route of ['/', '/work/project-01/', '/404.html', '/bench/', '/bench/aspect/']) {
+  const variants = plant ? [['chromium-scrollbars', true]] : [['chromium-scrollbars', true], ['chromium-scrollbars', false], ['chromium', true]];
+  const routes = plant ? ['/work/project-01/', '/bench/aspect/'] : ['/', '/work/project-01/', '/404.html', '/bench/', '/bench/aspect/'];
+  for (const [variant, headGutter] of variants) {
+    for (const route of routes) {
       const ctx = await newContext('D2', 'auto', { browser: variant });
       await ctx.addInitScript({ content: FIRST_FRAME });
+      if (!headGutter) await ctx.addInitScript({ content: NO_GUTTER });
+      if (plant === 'rail-as-html') await ctx.addInitScript({ content: RAIL_AS_HTML });
       const page = await ctx.newPage();
       await page.goto(base + route, { waitUntil: 'load' });
       await waitSettled(page, 15000);
@@ -335,24 +352,32 @@ async function gutter(base) {
         const c = document.getElementById('gl');
         return {
           barPx, gutter: h.hasAttribute('data-gutter'), sg: getComputedStyle(h).scrollbarGutter, scrolls: h.scrollHeight > innerHeight,
-          clientWidth: h.clientWidth, bodyWidth: document.body.clientWidth, canvasCssW: c.getBoundingClientRect().width,
+          clientWidth: h.clientWidth, bodyWidth: document.body.clientWidth, railBoxW: document.getElementById('rail').getBoundingClientRect().width, canvasCssW: c.getBoundingClientRect().width,
           glState: window.__stage?.glState ?? null, stageW: window.__stage?.view?.W ?? null, firstFrame: window.__ff, layoutShift: Math.round(window.__ls * 1e5) / 1e5,
         };
       });
       await ctx.close();
       const classic = s.barPx > 0;
       const glUp = s.glState === 'ready';
+      const widthOk = !glUp || (s.stageW === s.railBoxW && s.railBoxW === s.bodyWidth && s.canvasCssW === s.bodyWidth);
       rows.push({
-        variant, route, ...s,
-        pass: (classic ? variant === 'chromium-scrollbars' : variant === 'chromium')
-          && s.gutter === classic && (classic ? s.sg === 'stable' : s.sg === 'auto')
-          && s.firstFrame !== null && s.firstFrame.gutter === classic && s.firstFrame.bodyWidth === s.bodyWidth
-          && (!glUp || (s.stageW === s.canvasCssW && s.canvasCssW === s.bodyWidth))
-          && s.layoutShift === 0,
+        variant, headGutter, route, ...s, widthOk, htmlDiffers: s.clientWidth !== s.bodyWidth,
+        pass: (classic ? variant === 'chromium-scrollbars' : variant === 'chromium') && widthOk
+          // Without the head script's gutter only the width rule is asserted (the page may shift when its bar appears).
+          && (!headGutter || (s.gutter === classic && (classic ? s.sg === 'stable' : s.sg === 'auto')
+            && s.firstFrame !== null && s.firstFrame.gutter === classic && s.firstFrame.bodyWidth === s.bodyWidth && s.layoutShift === 0)),
       });
     }
   }
-  return { rows, pass: rows.every((r) => r.pass) };
+  // The ruling's coverage: GL rows with classic scrollbars on a page that scrolls and one that does not, with and
+  // without the gutter, and at least one where html.clientWidth differs from the layout (the case the rule decides).
+  const gl = rows.filter((r) => r.glState === 'ready' && r.variant === 'chromium-scrollbars');
+  const coverage = {
+    scrollingWithGutter: gl.some((r) => r.headGutter && r.scrolls), stillWithGutter: gl.some((r) => r.headGutter && !r.scrolls),
+    scrollingNoGutter: gl.some((r) => !r.headGutter && r.scrolls), stillNoGutter: gl.some((r) => !r.headGutter && !r.scrolls),
+    htmlDiffers: gl.some((r) => r.htmlDiffers),
+  };
+  return { rows, coverage, pass: rows.every((r) => r.pass) && (plant ? true : Object.values(coverage).every(Boolean)) };
 }
 
 // ---------------------------------------------------------------- zero (round-1 must-fix zero-width-grid)
@@ -456,6 +481,13 @@ export async function run(opts = {}) {
     if ((!only || only.has('present')) && !opts['no-controls']) {
       out.presentControl = await present(srv.base, ['WK-P2', 'WK-T2'], 'all').catch((e) => ({ error: String(e), rows: [] }));
       out.eraseControl = await present(srv.base, ['WK-P2', 'WK-T2'], 'erase').catch((e) => ({ error: String(e), rows: [] }));
+    }
+    // The W-D013 control (ruling 5992943706): a stage sized from html.clientWidth fails on a page that does not scroll
+    // under a classic-scrollbar gutter.
+    if ((!only || only.has('gutter')) && !opts['no-controls']) {
+      out.gutterControl = await gutter(srv.base, 'rail-as-html').catch((e) => ({ error: String(e), rows: [] }));
+      out.gutterControl.caught = out.gutterControl.rows?.some((r) => !r.widthOk && !r.scrolls && r.gutter) ?? false;
+      out.gutterControl.pass = out.gutterControl.caught;
     }
   } finally {
     await srv.close();
