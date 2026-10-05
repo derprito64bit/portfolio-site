@@ -13,7 +13,7 @@ A change that exceeds a budget fails its gate. Evidence standard: GES-1 (W-D030)
 - 3D: camera LOD0 <= 30k tris and <= 250 kB gz; LOD1 <= 5k and <= 60 kB gz; Manor LOD <= 1.5k tris; cartridge <= 1.5k and 20 kB gz; loupe <= 3k and 40 kB gz; gear <= 4k and 40 kB gz; an owner work model <= 50k and 1 MB gz, on its own project only. 3D per page <= 1.5 MB gz.
 - Canvas: <= 4.5 Mpx on full and <= 1.5 Mpx on lite (effective DPR lowered to fit); DPR caps 2 and 1.5.
 - Print stills: sheet 512 px long edge, enlargements and hero 1024 px, AVIF with WebP fallback; home images <= 600 kB on the first scroll-through (estimate until real images).
-- GPU worst moment (8 wet sheet prints): <= 4 ms per frame on the reference integrated GPU at the tier the rules give it. Until it is measured: a reference-host median x 30 <= 4 ms passes; passing only at x 10 is 'at risk' and goes to the owner. A real number comes from /bench/. Crews stay <= 1.5x the prototype median, with no regression over 20% against gpu-baseline.json.
+- GPU worst moment (8 wet sheet prints): <= 4 ms per frame on the reference integrated GPU at the tier the rules give it. Until it is measured: a reference-host median x 30 <= 4 ms passes; passing only at x 10 is 'at risk' and goes to the owner. For W-S2's GPU worst moment (#14), GPU ms is GPU-only time from EXT_disjoint_timer_query_webgl2, by #14's measurement ruling (comment 5996745925): W-S2's real frame at its worst moment (the canvas window with the most wet-print slot area, worst of 5 develop times played forward at 1000/60 ms), captured and replayed back to back after a fixed stand-in ramp, median of 60 frames, median of 10 loads, with a three-plant control each round; its ratio against the stand-in subtracts the frame's shared work. 'The lite cap' in #14 L8 is the reference laptop (1366x768, DPR 1) at ?tier=lite; this names the configuration L8 judges and does not define 'the tier the rules give it'. There, and in W-S2's ratio and regression check, a readPixels-fenced or rAF-paced figure is continuity only. Another crew's GPU rows follow this only when its brief cites the comment. A real number comes from /bench/. Crews stay <= 1.5x the prototype median, with no regression over 20% against gpu-baseline.json.
 - Idle: 0 rAF callbacks and 0 draws from 1 s to 4 s after the last input, from gate-owned counters; idle main thread <= 1 ms/s, reported with the display Hz. (amended 2026-10-05, orchestrator ruling on #11, comment 5992928262, W-F-m2 round 1) The idle window counts from the motion end, not from the last input. The motion end is the later of the last input event (scroll, wheel, pointer or key) and the last frame the stage presents; every presented frame counts, including present-tail frames and clear-only frames, and gate-owned counters count them toward the motion end. From motion end + 1 s + 2 frame intervals to motion end + 4 s there are 0 rAF callbacks and 0 draws. The motion end must fall within 4 s of the last input: a motion still presenting frames 4 s after the last input fails, so a loop that never goes idle cannot pass by never ending. A layout-only render with no input (a late font swap or a lazy image) is a motion: its frames, tail included, set a new motion end, and the window restarts from it. W-D002's 1 s detach is unchanged, and the machine-readable keys keep their values (see site.idle.note below).
 - Hero (D-024): on the full tier's first visit of the session, the X-T5 drawing develops into the camera before the eject, so hero:readable minus stage:gl-ready <= 3300 ms (median of 3 cold loads; the drawing holds the slot from FCP). The 3300 ms includes loading and decoding the camera's LOD0 and compiling its patched programs (8 on m1; one per `cam_*` material on m2), which may finish after stage:gl-ready: T0 waits for them (T0 is the later of the two, defined in the plan's W-D012), and W-C14 re-measures on the m2 GLB (D-021). With GL delayed 3 s, a developed print 1 is visible by FCP + 2.6 s: it appears when the FCP + 2.5 s guard fires, not at the end of the drawing's crossfade. No automatic motion over 5 s: the whole hero sequence, drawing included, is under 5000 ms with every phase in `__motionLog`.
 - Input blocking: 0 ms, except the Swup out phase (<= 160 ms). (D-023: the 720 ms handoff is cut; Play is a plain link.)
@@ -40,7 +40,7 @@ Tests read this block instead of parsing the sentences above (requested in the W
 ```json budgets
 {
   "schema": 1,
-  "note": "Mirrors the Site sentences and the Measurement validity rules above, plus W-D012's head-script size and the W-S1 brief's poster parity in docs/direction/front-door-plan.md; those prose sources stay the human source, and a change edits both in the same PR. Units are in the key names. Minimums (>=): site.lighthouse.*, site.focusRing.*, site.layout.targetMinPx, site.layout.sharedTargetFloorPx and site.layout.textMinPx. *StrictMax is <. Every other number is a <= limit, except these parameters: site.protocol.*, site.stillsPx.*, site.idle.windowStartS and windowEndS, site.gpu.hostMedianFactor and atRiskFactor, site.hero.delayGlMs and guardAfterFcpMs, and host.* other than its *Max keys. Strings are labels. Each budget has one key: zero overflow is site.layout.overflowPx.",
+  "note": "Mirrors the Site sentences and the Measurement validity rules above, plus W-D012's head-script size and the W-S1 brief's poster parity in docs/direction/front-door-plan.md; those prose sources stay the human source, and a change edits both in the same PR. Units are in the key names. Minimums (>=): site.lighthouse.*, site.focusRing.*, site.layout.targetMinPx, site.layout.sharedTargetFloorPx, site.layout.textMinPx, host.gpuTimer.control.standinMinMs, host.gpuTimer.control.heavyRatioMin and host.gpuTimer.method.areaMinFrac. *StrictMax is <. Every other number is a <= limit, except these parameters: site.protocol.*, site.stillsPx.*, site.idle.windowStartS and windowEndS, site.gpu.hostMedianFactor and atRiskFactor, site.hero.delayGlMs and guardAfterFcpMs, and host.* except its *Max keys, the three host.gpuTimer minimums above and five host.gpuTimer <= limits (control.flatMaxMs, control.standinMaxMs, method.issueMaxFactor, method.anchorTolDevPx and method.badSamplesDroppedMax). Strings are labels, site.gpu.method among them. Each budget has one key: zero overflow is site.layout.overflowPx.",
   "site": {
     "lighthouse": {
       "perfMobileMin": 90,
@@ -104,7 +104,8 @@ Tests read this block instead of parsing the sentences above (requested in the W
       "hostMedianFactor": 30,
       "atRiskFactor": 10,
       "crewRatioMax": 1.5,
-      "regressionMaxPct": 20
+      "regressionMaxPct": 20,
+      "method": "timer replay, #14 ruling 5996745925"
     },
     "idle": {
       "windowStartS": 1,
@@ -186,6 +187,43 @@ Tests read this block instead of parsing the sentences above (requested in the W
       "extraRunsPerSetMax": 5,
       "nearBudgetPct": 85,
       "nearBudgetRuns": 10
+    },
+    "gpuTimer": {
+      "date": "2026-10-05",
+      "chrome": "154.0.8037.97",
+      "amdDriver": "32.0.21045.5002",
+      "renderer": "ANGLE D3D11 on RX 6700 XT",
+      "fixture": "1366x960 DPR 1 no MSAA, 8 quads 300x478 CSS px, 24 px gaps, 4 columns",
+      "flatMs": 0.0116,
+      "standinMs": 0.2192,
+      "heavy4Ms": 0.8618,
+      "control": {
+        "flatMaxMs": 0.025,
+        "standinMinMs": 0.208,
+        "standinMaxMs": 0.252,
+        "heavyRatioMin": 3.0,
+        "heavyRatioMax": 5.0
+      },
+      "method": {
+        "scout": "every device-px anchor of rail.ts place(), first argmax",
+        "anchorTolDevPx": 1,
+        "stepMs": 16.667,
+        "developFractions": "k/6, k=1..5",
+        "rampMs": 150,
+        "leadIn": 40,
+        "warmup": 30,
+        "frames": 60,
+        "loads": 10,
+        "pollCapMs": 2000,
+        "badSampleMs": 1000,
+        "badSamplesDroppedMax": 3,
+        "areaMinFrac": 0.99,
+        "issueMaxFactor": 4,
+        "issueGuard": "one-sided",
+        "ratio": "(T_prints - S) / (T_standin - S)"
+      },
+      "evidence": "portfolio-evidence/rulings/gpu-worst-moment/ (probe3 to probe7, refute3-replay)",
+      "note": "Calibration for #14's GPU measurement ruling (comment 5996745925), which binds; method summarises it. Recalibrate whenever the host key is recalibrated, and also after a Chrome major update or a GPU driver change. Round 1's first clean control set confirms it in the built page."
     }
   }
 }
