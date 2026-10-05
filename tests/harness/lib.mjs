@@ -369,6 +369,94 @@ export function setStep(runs, need, extraMax) {
   return { next: 'run', clean, replaced };
 }
 
+/**
+ * The Lighthouse budget a run is judged on, from the json budgets block: maximums (lcp, tbt, cls) and minimums
+ * (performance, accessibility, bestPractices; scores 0 to 1).
+ */
+export function lighthouseBudget(site, ff) {
+  return {
+    performance: (ff === 'mobile' ? site.lighthouse.perfMobileMin : site.lighthouse.perfDesktopMin) / 100,
+    accessibility: site.lighthouse.a11yMin / 100,
+    bestPractices: site.lighthouse.bestPracticesMin / 100,
+    lcp: site.lcpMs[ff], tbt: site.tbtMs, cls: site.clsMax,
+  };
+}
+const LH_MAX = ['lcp', 'tbt', 'cls'];
+const LH_MIN = ['performance', 'accessibility', 'bestPractices'];
+/** R5: the budgets one run is past: above a maximum or below a minimum. */
+export function pastBudget(run, budget) {
+  return [...LH_MAX.filter((k) => run[k] > budget[k]), ...LH_MIN.filter((k) => run[k] < budget[k])];
+}
+/**
+ * R5 for a set that reached its run count: grow it to host.rules.nearBudgetRuns when a clean median is at or above
+ * nearBudgetPct of a maximum, or any clean run is past a budget (above a maximum or below a minimum).
+ */
+export function r5Grow(clean, budget, rules, need) {
+  if (need >= rules.nearBudgetRuns) return { grow: false };
+  const near = rules.nearBudgetPct / 100;
+  const nearMax = LH_MAX.filter((k) => median(clean.map((r) => r[k])) >= near * budget[k]);
+  const past = clean.filter((r) => pastBudget(r, budget).length);
+  if (!nearMax.length && !past.length) return { grow: false };
+  const why = past.length
+    ? `${past.length} clean run(s) past a budget (${[...new Set(past.flatMap((r) => pastBudget(r, budget)))].join(', ')})`
+    : `a median at or above ${rules.nearBudgetPct}% of a maximum (${nearMax.join(', ')})`;
+  return { grow: true, from: need, to: rules.nearBudgetRuns, why };
+}
+/**
+ * The set's report over its clean runs (R3: replaced runs never count; R5: the median of all, the worst run and the
+ * count past budget). Every metric's median is the median of all clean runs (the mean of the two middle values for an
+ * even count). The median run (its renderer, tier and LCP element) is the lower-scoring of the two middle runs for an
+ * even count, never the better one. The worst run is the lowest performance score (ties: the slowest LCP); `worst`
+ * also gives each metric's worst value and its run.
+ */
+export function lighthouseSetSummary(clean, budget) {
+  if (!clean.length) return { medians: null, medianRun: null, worst: null, worstRun: null, pastBudget: { count: 0, runs: [] } };
+  const keys = [...LH_MIN, ...LH_MAX, 'fcp'];
+  const medians = Object.fromEntries(keys.map((k) => [k, median(clean.map((r) => r[k]))]));
+  const byScore = [...clean].sort((a, b) => a.performance - b.performance || b.lcp - a.lcp);
+  const medianRun = byScore[Math.ceil(byScore.length / 2) - 1];
+  const worstOf = (k, max) => clean.reduce((w, r) => ((max ? r[k] > w[k] : r[k] < w[k]) ? r : w), clean[0]);
+  const worst = Object.fromEntries([...LH_MAX.map((k) => [k, true]), ...LH_MIN.map((k) => [k, false])].map(([k, max]) => {
+    const r = worstOf(k, max);
+    return [k, { run: r.run, value: r[k] }];
+  }));
+  const past = clean.map((r) => ({ run: r.run, past: pastBudget(r, budget) })).filter((x) => x.past.length);
+  return { medians, medianRun, worst, worstRun: byScore[0].run, pastBudget: { count: past.length, runs: past } };
+}
+/**
+ * The manifest items of a set's prechecks (R1). A busy try that a later try of the same precheck cleared is a wait,
+ * not a blocked (host) item; only the last try of a precheck that never cleared blocks the set.
+ */
+export function precheckItems(prechecks) {
+  return prechecks.flatMap((p) => p.tries.map((t, i) => {
+    const last = i === p.tries.length - 1;
+    if (t.exitCode === 0) return { ...t, pass: true };
+    if (!last) return { ...t, pass: null, waited: true };
+    return { ...t, pass: null, blocked: 'host' };
+  }));
+}
+/**
+ * R1 after one precheck try: 'run' (exit 0), 'wait' (exit 75 and another try still fits in the wait) or 'blocked'.
+ * A broken tool (any other exit) and an uncalibrated host key block at once: waiting cannot change either (the
+ * brief's MISSING TOOLS rule).
+ */
+export function precheckNext({ exitCode, verdict }, elapsedMs, waitMs, retryMs = 60000) {
+  if (exitCode === 0) return 'run';
+  if (exitCode !== 75 || verdict === 'uncalibrated') return 'blocked';
+  return elapsedMs + retryMs <= waitMs ? 'wait' : 'blocked';
+}
+/**
+ * R1's wait: "Exit 75 ... means wait and check again for up to 30 minutes". The block's host.rules.precheckWaitMin when
+ * it has one, else the minutes R1's sentence in budgets.md names; --precheck-wait overrides both (0 = no wait).
+ */
+export function precheckWaitMin(option, host = readBudgets().host, md = readFileSync(join(ROOT, 'docs/agents/budgets.md'), 'utf8')) {
+  if (option !== undefined && option !== true && Number.isFinite(Number(option))) return Number(option);
+  if (typeof host?.rules?.precheckWaitMin === 'number') return host.rules.precheckWaitMin;
+  const m = md.match(/\*\*R1, precheck\.\*\*[^\n]*?check again for up to (\d+) minutes/);
+  if (!m) throw new Error("precheckWaitMin: budgets.md R1 names no wait ('check again for up to N minutes') and host.rules has no precheckWaitMin");
+  return Number(m[1]);
+}
+
 /** Host facts for the GES-1 manifest (cores describe the host, never a tier input), with the set's host load (#67):
  * benchmarkIndex (the median of the clean timed runs), cpuBusyPct and gpu3dPct (the precheck's medians); null when
  * the command took no timed set. */

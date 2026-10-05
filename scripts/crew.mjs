@@ -9,7 +9,7 @@
 //                                               ring coverage, text spacing, forced colours, dark scheme, an
 //                                               accessibility-tree snapshot per route and the text-over-GL check
 //   node scripts/crew.mjs lighthouse [opts]     Lighthouse (the budgets block's version and run count) per form
-//                                               factor, median by score over the clean runs, valid only on a real
+//                                               factor, medians over the clean runs, valid only on a real
 //                                               renderer at the expected tier and with the LCP element budgets.md names
 //                                               (the h1 on desktop; the h1 or print 1's still on mobile); every run
 //                                               must request GL after the observed FCP (D-005), and the medians must
@@ -17,7 +17,7 @@
 //                                               Measurement validity R1-R5 (hostload.ps1 precheck and -Watch, #67)
 // Options: --routes /,/work/project-01/,/404.html  --profiles D1,D2,...  --modes auto,static,reduced
 //          --crew W-F  --wave wave3a  --role crew|gate  --out <dir>
-//          lighthouse: --runs n  --budgets <budgets.md>  --precheck-wait <min>  --plant bench-low:<n|all>,watch-flagged:<n|all>
+//          lighthouse: --runs n  --budgets <budgets.md>  --precheck-wait <min>  --plant bench-low:<n|all>,watch-flagged:<n|all>,a11y-low:<n|all>
 // Evidence goes to ../portfolio-evidence/<wave>/<crew>/<sha7>/<role>/<command>/ with manifest.json. Any failed item
 // makes the command exit 1; otherwise a blocked (host) item makes it exit 75.
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
@@ -267,17 +267,21 @@ async function a11y() {
 // ---------------------------------------------------------------- lighthouse
 // Every number comes from the json budgets block (docs/agents/budgets.md, or --budgets <file>), never a literal, and
 // every set follows "Measurement validity" R1-R5 (#67), with the host key's thresholds:
-//   R1  hostload.ps1's precheck before each set (route x form factor) and again before an R5 extension; an exit other
-//       than 0 makes the set blocked (host), never pass or fail. --precheck-wait <min> re-checks every minute.
+//   R1  hostload.ps1's precheck before each set (route x form factor) and again before an R5 extension. Exit 75 is
+//       re-checked every minute for up to R1's wait (30 minutes, read from budgets.md; --precheck-wait <min>
+//       overrides it); a precheck that never clears makes the set blocked (host), never pass or fail. A busy try that
+//       a retry cleared is recorded as a wait, not as blocked.
 //   R2  each run runs in its own node worker (the server and Lighthouse, as the host key was calibrated), watched by
 //       hostload.ps1 -Watch; a run whose benchmarkIndex is under the ratio, or whose -Watch file does not exit 0, is
 //       host-suspect and invalid with the reason.
 //   R3  a host-suspect run is replaced, never averaged in, at most host.rules.extraRunsPerSetMax per set; a set that
 //       cannot reach its run count with clean runs is blocked (host).
-//   R5  a set whose median is at or above host.rules.nearBudgetPct of a maximum, or with a clean run past a budget,
-//       grows to host.rules.nearBudgetRuns after a fresh precheck.
+//   R5  a set whose median is at or above host.rules.nearBudgetPct of a maximum, or with a clean run past a budget
+//       (above a maximum or below a minimum), grows to host.rules.nearBudgetRuns after a fresh precheck; the summary
+//       reports the median of all clean runs, the worst run and the count past budget (lib.lighthouseSetSummary).
 // Test hooks (negative controls): --plant bench-low:<run|all> lowers a run's benchmarkIndex under the ratio;
-// --plant watch-flagged:<run|all> replaces its -Watch result with a flagged foreign process.
+// --plant watch-flagged:<run|all> replaces its -Watch result with a flagged foreign process; --plant a11y-low:<run|all>
+// puts its accessibility score under a11yMin (R5 must grow the set).
 function runAsync(cmd, args, input = null) {
   return new Promise((res) => {
     const p = spawn(cmd, args, { cwd: ROOT, stdio: [input === null ? 'ignore' : 'pipe', 'pipe', 'pipe'] });
@@ -345,6 +349,12 @@ async function lighthouseRun(lib, dir, b, route, ff, n) {
     watchResult = { exitCode: 75, stderr: '', json: { verdict: 'flagged', reasons: ['foreign process planted.exe (pid 4242) at 55% > foreignCpuPctMax (planted)'] } };
     plantedFields.push('watch');
   }
+  // R5's minimums, end to end: a planted accessibility score just under a11yMin must grow the set to nearBudgetRuns.
+  let accessibility = lhr.categories.accessibility.score;
+  if (planted('a11y-low', n)) {
+    accessibility = Math.round((b.site.lighthouse.a11yMin - 4)) / 100;
+    plantedFields.push('accessibility');
+  }
   const suspect = lib.hostSuspectReasons({ benchmarkIndex, watch: watchResult }, b.host);
   const timings = lhr.audits['user-timings']?.details?.items?.map((x) => x.name) ?? [];
   const renderer = timings.find((x) => x.startsWith('stage:renderer='))?.slice(15) ?? null;
@@ -369,23 +379,31 @@ async function lighthouseRun(lib, dir, b, route, ff, n) {
   return {
     run: n, file: `${base}.json`, watchFile: existsSync(watchFile) ? `hostload-${base}-watch.json` : null, watchVerdict: watchResult?.json?.verdict ?? null, watchExit: watchResult?.exitCode ?? null,
     benchmarkIndex, suspect, planted: plantedFields, valid: invalid.length === 0, invalid, renderer, tier, observedFcp, glMarkMs, glRequestMs, glAfterFcp,
-    performance: lhr.categories.performance.score, accessibility: lhr.categories.accessibility.score, bestPractices: lhr.categories['best-practices'].score, seo: lhr.categories.seo?.score ?? null,
+    performance: lhr.categories.performance.score, accessibility, bestPractices: lhr.categories['best-practices'].score, seo: lhr.categories.seo?.score ?? null,
     lcp: lhr.audits['largest-contentful-paint'].numericValue, cls: lhr.audits['cumulative-layout-shift'].numericValue, tbt: lhr.audits['total-blocking-time'].numericValue, fcp: lhr.audits['first-contentful-paint'].numericValue,
     lcpElement, lcpElementOk: lcpCheck.ok,
   };
 }
 
-/** R1: the precheck, re-taken every minute for up to --precheck-wait minutes while the host is busy. */
+/**
+ * R1: the precheck. While it exits 75 it is taken again every minute until R1's wait is spent (lib.precheckWaitMin:
+ * the block's host.rules.precheckWaitMin, else R1's own sentence, 30 minutes; --precheck-wait <min> overrides it and 0
+ * means no wait). An exit other than 0 or 75 is a broken tool: blocked at once.
+ */
+/** How often a busy precheck is taken again (a polling interval, not a budget). */
+const PRECHECK_RETRY_MS = 60000;
 async function precheck(lib, dir, name) {
-  const waitMin = Number(o['precheck-wait']) || 0;
+  const waitMs = lib.precheckWaitMin(o['precheck-wait'], lib.readBudgets(o.budgets ? resolve(String(o.budgets)) : undefined).host) * 60000;
+  const t0 = Date.now();
   const tries = [];
   for (let k = 0; ; k++) {
     const file = join(dir, `hostload-${name}${k ? `-retry${k}` : ''}.json`);
     const r = await lib.startHostload(['-Out', file], { budgetsFile: o.budgets ? resolve(String(o.budgets)) : undefined }).done;
-    tries.push({ file: r.file ? r.file.slice(dir.length + 1) : null, exitCode: r.exitCode, verdict: r.json?.verdict ?? null, reasons: r.json?.reasons ?? (r.stderr ? [r.stderr] : []), cpuBusyPct: r.json?.cpuBusyPct?.median ?? null, gpu3dPct: r.json?.gpu3dPct?.median ?? null });
-    // 0 clear; 75 busy, flagged, incomplete, no-data or uncalibrated; anything else is a broken tool: blocked at once.
-    if (r.exitCode === 0 || r.exitCode !== 75 || k >= waitMin) return { ok: r.exitCode === 0, last: tries[tries.length - 1], tries };
-    await lib.sleep(60000);
+    tries.push({ file: r.file ? r.file.slice(dir.length + 1) : null, at: new Date().toISOString(), exitCode: r.exitCode, verdict: r.json?.verdict ?? null, reasons: r.json?.reasons ?? (r.stderr ? [r.stderr] : []), cpuBusyPct: r.json?.cpuBusyPct?.median ?? null, gpu3dPct: r.json?.gpu3dPct?.median ?? null });
+    // 0 clear; 75 busy, flagged, incomplete or no-data: wait; uncalibrated, or any other exit (a broken tool): blocked.
+    const next = lib.precheckNext({ exitCode: r.exitCode, verdict: r.json?.verdict ?? null }, Date.now() - t0, waitMs, PRECHECK_RETRY_MS);
+    if (next !== 'wait') return { ok: next === 'run', last: tries[tries.length - 1], tries, waitedMin: Math.round((Date.now() - t0) / 6000) / 10 };
+    await lib.sleep(PRECHECK_RETRY_MS);
   }
 }
 
@@ -399,16 +417,10 @@ async function lighthouse() {
   const runs = Number(o.runs) || site.protocol.lighthouseRuns;
   const items = [];
   const loads = [];
-  const budgetFor = (ff) => ({
-    performance: ff === 'mobile' ? site.lighthouse.perfMobileMin / 100 : site.lighthouse.perfDesktopMin / 100,
-    accessibility: site.lighthouse.a11yMin / 100,
-    bestPractices: site.lighthouse.bestPracticesMin / 100,
-    lcp: site.lcpMs[ff], tbt: site.tbtMs, cls: site.clsMax,
-  });
   for (const route of routes) {
     for (const ff of ['mobile', 'desktop']) {
       const name = `${slug(route)}-${ff}`;
-      const budget = budgetFor(ff);
+      const budget = lib.lighthouseBudget(site, ff);
       const pre = [await precheck(lib, dir, `${name}-pre`)];
       const reports = [];
       let need = runs;
@@ -421,15 +433,12 @@ async function lighthouse() {
           break;
         }
         if (step.next === 'done') {
-          // R5: near a budget (or a clean run past one), the set grows to nearBudgetRuns after a fresh precheck.
-          const clean = reports.filter((r) => !r.suspect.length);
-          const med = (k) => lib.median(clean.map((r) => r[k]));
-          const near = rules.nearBudgetPct / 100;
-          const nearMax = med('lcp') >= near * budget.lcp || med('tbt') >= near * budget.tbt || med('cls') >= near * budget.cls;
-          const past = clean.some((r) => r.lcp > budget.lcp || r.tbt > budget.tbt || r.cls > budget.cls || r.performance < budget.performance);
-          if ((nearMax || past) && need < rules.nearBudgetRuns && !o['no-r5']) {
-            grew = { from: need, to: rules.nearBudgetRuns, why: past ? 'a clean run past a budget' : `a median at or above ${rules.nearBudgetPct}% of a maximum` };
-            need = rules.nearBudgetRuns;
+          // R5: near a budget, or a clean run past one (above a maximum or below a minimum), the set grows to
+          // nearBudgetRuns after a fresh precheck.
+          const r5 = lib.r5Grow(reports.filter((r) => !r.suspect.length), budget, rules, need);
+          if (r5.grow && !o['no-r5']) {
+            grew = { from: r5.from, to: r5.to, why: r5.why };
+            need = r5.to;
             const again = await precheck(lib, dir, `${name}-pre-r5`);
             pre.push(again);
             if (!again.ok) blocked = `R5 precheck ${again.last.verdict ?? `exit ${again.last.exitCode}`}: ${again.last.reasons.slice(0, 3).join('; ')}`;
@@ -441,18 +450,21 @@ async function lighthouse() {
       }
       const clean = reports.filter((r) => !r.suspect.length);
       const replaced = reports.filter((r) => r.suspect.length).map((r) => ({ run: r.run, reasons: r.suspect }));
-      // Medians over the clean runs only (R3: a host-suspect run is never averaged in).
-      const sorted = [...clean].sort((a, b2) => a.performance - b2.performance);
-      const median = sorted.length ? sorted[Math.floor(sorted.length / 2)] : null;
-      const medians = clean.length ? { lcp: lib.median(clean.map((r) => r.lcp)), tbt: lib.median(clean.map((r) => r.tbt)), cls: lib.median(clean.map((r) => r.cls)), fcp: lib.median(clean.map((r) => r.fcp)) } : null;
+      // Medians over the clean runs only (R3: a host-suspect run is never averaged in); R5's report: the median of
+      // all clean runs, the worst run and the count past budget.
+      const sum = lib.lighthouseSetSummary(clean, budget);
+      const { medians } = sum;
+      const median = sum.medianRun;
       const budgetPass = Boolean(medians) && medians.lcp <= budget.lcp && medians.tbt <= budget.tbt && medians.cls <= budget.cls;
       const glOrderPass = clean.every((r) => r.glAfterFcp);
-      const load = { benchmarkIndex: lib.median(clean.map((r) => r.benchmarkIndex)), cpuBusyPct: pre[0].last.cpuBusyPct, gpu3dPct: pre[0].last.gpu3dPct };
+      // The clear precheck the set ran after (a wait's busy tries describe the host before the set, not during it).
+      const ran = pre[0].tries.find((t) => t.exitCode === 0) ?? pre[0].last;
+      const load = { benchmarkIndex: lib.median(clean.map((r) => r.benchmarkIndex)), cpuBusyPct: ran.cpuBusyPct, gpu3dPct: ran.gpu3dPct };
       loads.push(load); // a blocked set still records the precheck that blocked it
       const summaryFile = `${name}-summary.json`;
-      // #11's stub-home line asks for CLS 0 (the median run), inside budgets.md's CLS limit.
-      const pass = blocked ? null : clean.every((r) => r.valid) && median.performance >= budget.performance && median.accessibility >= budget.accessibility && median.bestPractices >= budget.bestPractices && median.cls === 0 && budgetPass && glOrderPass;
-      lib.writeJson(join(dir, summaryFile), { route, formFactor: ff, budgetsFrom: o.budgets ?? 'docs/agents/budgets.md', budget, need, grew, prechecks: pre, blocked, runs: reports, clean: clean.map((r) => r.run), replaced, median, medians, budgetPass, glOrderPass, hostLoad: load, pass });
+      // #11's stub-home line asks for CLS 0 (the median), inside budgets.md's CLS limit.
+      const pass = blocked ? null : clean.every((r) => r.valid) && medians.performance >= budget.performance && medians.accessibility >= budget.accessibility && medians.bestPractices >= budget.bestPractices && medians.cls === 0 && budgetPass && glOrderPass;
+      lib.writeJson(join(dir, summaryFile), { route, formFactor: ff, budgetsFrom: o.budgets ?? 'docs/agents/budgets.md', budget, need, grew, prechecks: pre, blocked, runs: reports, clean: clean.map((r) => r.run), replaced, medians, medianRun: median?.run ?? null, worstRun: sum.worstRun, worst: sum.worst, pastBudget: sum.pastBudget, budgetPass, glOrderPass, hostLoad: load, pass });
       for (const r of reports) {
         const suspect = r.suspect.length > 0;
         items.push(lib.item(dir, r.file, {
@@ -462,10 +474,20 @@ async function lighthouse() {
           metrics: { performance: r.performance, accessibility: r.accessibility, cls: r.cls, lcp: Math.round(r.lcp), tbt: Math.round(r.tbt), benchmarkIndex: r.benchmarkIndex, watch: r.watchFile, watchVerdict: r.watchVerdict, hostSuspect: r.suspect, planted: r.planted, lcpElement: r.lcpElement?.selector ?? null, lcpElementOk: r.lcpElementOk, invalid: r.invalid, renderer: r.renderer, observedFcp: r.observedFcp, glMarkMs: r.glMarkMs === null ? null : Math.round(r.glMarkMs), glRequestMs: r.glRequestMs === null ? null : Math.round(r.glRequestMs), glAfterFcp: r.glAfterFcp },
         }));
       }
-      for (const p of pre) for (const t of p.tries) if (t.file) items.push(lib.item(dir, t.file, { kind: 'hostload-precheck', route, profile: ff, mode: 'auto', tier: null, pass: t.exitCode === 0 ? true : null, ...(t.exitCode === 0 ? {} : { blocked: 'host' }), metrics: { exitCode: t.exitCode, verdict: t.verdict, reasons: t.reasons, cpuBusyPct: t.cpuBusyPct, gpu3dPct: t.gpu3dPct } }));
+      // R1: a busy try that a retry cleared is a wait (pass null, no blocked); only a precheck that never cleared blocks.
+      for (const t of lib.precheckItems(pre)) {
+        if (!t.file) continue;
+        items.push(lib.item(dir, t.file, { kind: 'hostload-precheck', route, profile: ff, mode: 'auto', tier: null, pass: t.pass, ...(t.blocked ? { blocked: t.blocked } : {}), ...(t.waited ? { waited: true } : {}), metrics: { exitCode: t.exitCode, verdict: t.verdict, reasons: t.reasons, cpuBusyPct: t.cpuBusyPct, gpu3dPct: t.gpu3dPct, at: t.at } }));
+      }
       items.push(lib.item(dir, summaryFile, {
         kind: 'lighthouse', route, profile: ff, mode: 'auto', tier: median?.tier ?? null, pass, ...(blocked ? { blocked: 'host' } : {}),
-        metrics: { blocked, need, grew, cleanRuns: clean.length, replaced: replaced.length, medianPerformance: median?.performance ?? null, accessibility: median?.accessibility ?? null, bestPractices: median?.bestPractices ?? null, cls: median?.cls ?? null, medianLcp: medians ? Math.round(medians.lcp) : null, medianTbt: medians ? Math.round(medians.tbt) : null, medianFcp: medians ? Math.round(medians.fcp) : null, budget, budgetPass, glAfterFcpRuns: clean.filter((r) => r.glAfterFcp).length, renderer: median?.renderer ?? null, lcpElement: median?.lcpElement?.selector ?? null, lcpElementOkRuns: clean.filter((r) => r.lcpElementOk).length, ...load },
+        metrics: {
+          blocked, need, grew, cleanRuns: clean.length, replaced: replaced.length,
+          medianPerformance: medians?.performance ?? null, accessibility: medians?.accessibility ?? null, bestPractices: medians?.bestPractices ?? null, cls: medians?.cls ?? null,
+          medianLcp: medians ? Math.round(medians.lcp) : null, medianTbt: medians ? Math.round(medians.tbt) : null, medianFcp: medians ? Math.round(medians.fcp) : null,
+          worstRun: sum.worstRun, worst: sum.worst, pastBudgetCount: sum.pastBudget.count, pastBudget: sum.pastBudget.runs,
+          budget, budgetPass, glAfterFcpRuns: clean.filter((r) => r.glAfterFcp).length, medianRun: median?.run ?? null, renderer: median?.renderer ?? null, lcpElement: median?.lcpElement?.selector ?? null, lcpElementOkRuns: clean.filter((r) => r.lcpElementOk).length, ...load,
+        },
       }));
     }
   }
