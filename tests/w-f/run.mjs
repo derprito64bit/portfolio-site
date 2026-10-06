@@ -80,7 +80,7 @@ for (const [name, cmd, argv, extra] of STEPS) {
 // Aggregate manifest: every evidence file at the top level, plus the GES-1 sub-manifests by reference.
 const FILES = {
   'check.log': 'check-log', 'check.json': 'check', 'tokens-determinism.json': 'tokens-determinism', 'size-limit.json': 'size-limit',
-  'unit.log': 'unit', 'build.json': 'build', 'pregl.json': 'pre-gl-js', 'stage.json': 'stage', 'm2.json': 'm2', 'selfbreak.json': 'selfbreak', 'selfbreak-plants.json': 'selfbreak-plants', 'fonts.json': 'fonts', 'negatives.json': 'negatives',
+  'unit.log': 'unit', 'build.json': 'build', 'pregl.json': 'pre-gl-js', 'stage.json': 'stage', 'm2.json': 'm2', 'selfbreak.json': 'selfbreak', 'selfbreak-plants.json': 'selfbreak-plants', 'crew-lighthouse-mutants.json': 'crew-mutants', 'fonts.json': 'fonts', 'negatives.json': 'negatives',
   'console.json': 'console', 'counters.json': 'counters', 'idle.json': 'idle', 'swap.json': 'swap', 'keyboard.json': 'keyboard',
   'drift.json': 'drift', 'gpu.json': 'gpu', 'spring-conformance.json': 'spring', 'contrast.json': 'contrast', 'content.json': 'content',
   'flash.json': 'flash', 'overflow.json': 'overflow', 'shoot/manifest.json': 'ges1-shoot', 'a11y/manifest.json': 'ges1-a11y',
