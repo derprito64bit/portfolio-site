@@ -92,8 +92,13 @@ counters  schema 3: { motionEndWindow, rows: [{profile, route, tier, gl{entities
             active{...}, matchPass, emptyPass, scroll{...}, scrollPass, pass}] }
             motionWindow = {motionEndsMs, motionEndsBy: draw|presented clear|scroll|input, frameMs, lastRafAfterMotionMs,
             bound{maxMs, motionEndsMs, movedDuringWindow, pass}, windowRestarts, afterMotion{fromMs, toMs, raf, draws,
-            clears}, stageInWindow{ticks, drawCalls, renders, tailFrames}, ifClearsIgnored{raf}, afterInput{fromMs, toMs,
-            raf, draws}, pass}
+            clears, stampsCover{raf, draws, clears}}, uncappedInWindow{fromMs, toMs, raf, draws, clears},
+            stageInWindow{ticks, drawCalls, renders, tailFrames}, stampsDropped{rafTimes, drawTimes, clearTimes},
+            ifClearsIgnored{raf}, afterInput{fromMs, toMs, raf, draws}, pass}
+            The stamp lists (init.js) keep the newest 10,000 to 20,000 stamps of each kind and never stop stamping (the
+            old 20,000 cap filled during D2 /'s intro and hid every later draw); pass needs 0 rAF and 0 draws both in
+            the stamps and in the uncapped counts read at the window's start and end. negatives.mjs `draws` is its
+            control.
 ```
 
 ## GES-1 manifest (`scripts/crew.mjs shoot | a11y | lighthouse`)

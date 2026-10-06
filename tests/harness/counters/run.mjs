@@ -77,7 +77,11 @@ export async function motionWindow(page, since) {
     const gaps = r.slice(1).map((t, i) => t - r[i]).sort((a, b) => a - b);
     return gaps.length ? gaps[Math.floor(gaps.length / 2)] : 1000 / 60;
   }, since);
-  const stage = () => page.evaluate(() => ({ ticks: window.__stage.stats.ticks, drawCalls: window.__stage.stats.drawCalls, draws: window.__stage.stats.draws, tailFrames: window.__stage.stats.tailFrames ?? 0 }));
+  // The stage's own counts and the gate's uncapped counts, read together at the window's start and end.
+  const stage = () => page.evaluate(() => {
+    const g = window.__gateCounters;
+    return { ticks: window.__stage.stats.ticks, drawCalls: window.__stage.stats.drawCalls, draws: window.__stage.stats.draws, tailFrames: window.__stage.stats.tailFrames ?? 0, gateRaf: g.raf, gateDraws: g.draws, gateClears: g.clears, at: performance.now() };
+  });
   const hardStop = (s) => s.lastUser + WINDOW_END_MS * 2 + 1000; // the bound plus a whole window after it
   let s = await live();
   let frameMs = 1000 / 60;
@@ -116,19 +120,24 @@ export async function motionWindow(page, since) {
     const lastDraw = g.drawTimes.filter((t) => t > since).pop() ?? 0;
     const lastClear = g.clearTimes.filter((t) => t > since).pop() ?? 0;
     const win = { fromMs: Math.round(from), toMs: WINDOW_END_MS, raf: inWin(g.rafTimes, end + from, end + WINDOW_END_MS), draws: inWin(g.drawTimes, end + from, end + WINDOW_END_MS), clears: inWin(g.clearTimes, end + from, end + WINDOW_END_MS) };
+    // The stamp lists keep the newest stamps only: they cover the window when their oldest kept stamp is before it (or
+    // none was ever dropped). The uncapped counts, read at the window's start and end, cover it whatever the lists hold.
+    const covers = (name) => g.stampsDropped?.[name] === 0 || (g[name].length > 0 && g[name][0] <= end + from);
+    win.stampsCover = { raf: covers('rafTimes'), draws: covers('drawTimes'), clears: covers('clearTimes') };
+    const uncapped = { fromMs: Math.round(a.at - end), toMs: Math.round(b.at - end), raf: b.gateRaf - a.gateRaf, draws: b.gateDraws - a.gateDraws, clears: b.gateClears - a.gateClears };
     const stageWin = { ticks: b.ticks - a.ticks, drawCalls: b.drawCalls - a.drawCalls, renders: b.draws - a.draws, tailFrames: b.tailFrames - a.tailFrames };
     const boundOk = end - lastUser <= WINDOW_END_MS && endNow === end;
     return {
       motionEndsMs: Math.round(end - lastUser), motionEndsBy: end === lastDraw ? 'draw' : end === lastClear ? 'presented clear' : end === g.lastScrollAt ? 'scroll' : 'input',
       frameMs: Math.round(frameMs * 10) / 10, lastRafAfterMotionMs: lastRaf === null ? null : Math.round(lastRaf - end),
       bound: { maxMs: WINDOW_END_MS, motionEndsMs: Math.round(endNow - lastUser), movedDuringWindow: endNow !== end, pass: boundOk },
-      windowRestarts: restarts, afterMotion: win, stageInWindow: stageWin,
+      windowRestarts: restarts, afterMotion: win, uncappedInWindow: uncapped, stageInWindow: stageWin, stampsDropped: { ...g.stampsDropped },
       // For the negative control: the same window if presented clears were left out of the motion end (the rule before
       // the ruling counted only scrolls and draws).
       ifClearsIgnored: (() => { const e2 = Math.max(lastUser, g.lastScrollAt > since ? g.lastScrollAt : 0, lastDraw); return { raf: inWin(g.rafTimes, e2 + from, e2 + WINDOW_END_MS) }; })(),
       // For information: counted from the user's last input (the budget's old wording, gate F1).
       afterInput: { fromMs: WINDOW_START_MS, toMs: WINDOW_END_MS, raf: inWin(g.rafTimes, lastUser + WINDOW_START_MS, lastUser + WINDOW_END_MS), draws: inWin(g.drawTimes, lastUser + WINDOW_START_MS, lastUser + WINDOW_END_MS) },
-      pass: boundOk && win.raf === 0 && win.draws === 0 && stageWin.ticks === 0 && stageWin.drawCalls === 0,
+      pass: boundOk && win.raf === 0 && win.draws === 0 && uncapped.raf === 0 && uncapped.draws === 0 && stageWin.ticks === 0 && stageWin.drawCalls === 0,
     };
   }, { since, end: endAtStart, endNow: s.end, from: WINDOW_START_MS + 2 * frameMs, frameMs, a, b, WINDOW_START_MS, WINDOW_END_MS, lastUser: s.lastUser, restarts });
 }

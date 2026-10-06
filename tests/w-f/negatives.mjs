@@ -5,6 +5,10 @@
 //   stacking  a transform on #main in the live page makes every slot's ancestor a stacking context
 //   lint      a second rAF call site and a forbidden navigator read, in a scratch copy of the lint's rules
 //   detach    a ticker kept awake (__stage.invalidate every 250 ms) must fail the counters' after-scroll idle window
+//   draws     draws outside the ticker (a timer calling drawArrays on the stage's context: no rAF, no clear) at D2 /,
+//             where the intro passes the counters' old 20,000-stamp cap, must fail h-counters' step 1 (idle after a
+//             mouse move and a key) and step 2 (idle after a scroll); the clean page passes both (round-2 must-fix
+//             counters-draw-cap). NEG_COUNTERS_DIR=<dir> runs it with another counters instrument (the pre-fix one).
 //   resize    ResizeObserver callbacks deferred by a task (GL re-measures a frame after the layout moved, the round-2
 //             defect) must fail the drift harness's resize probe at a toolbar collapse and expand
 //   lcp       a wrong or missing Lighthouse LCP element (budgets.md: the h1 on desktop; the h1 or print 1's still on
@@ -14,11 +18,12 @@
 import { spawnSync } from 'node:child_process';
 import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { pathToFileURL } from 'node:url';
 import { join } from 'node:path';
 import { validateContent } from '../../src/lib/content/validate.js';
 import { scanInPage } from '../../scripts/check/stacking.mjs';
 import { ROOT, cliMain, lcpElementOf, lcpElementVerdict, newContext, serve, sleep, waitSettled } from '../harness/lib.mjs';
-import { INIT as COUNTERS_INIT, idleAfterScroll } from '../harness/counters/run.mjs';
+import { INIT as COUNTERS_INIT, idleAfterScroll, motionWindow } from '../harness/counters/run.mjs';
 import { resizeProbeOnly } from '../harness/drift/run.mjs';
 
 function contentControl() {
@@ -132,6 +137,57 @@ async function detachControl() {
 }
 
 /**
+ * Draws outside the ticker inside the idle window at D2 / (Breaker 2.2 #2): the window's draw count must see them in
+ * both h-counters steps. The row records how many stamps the intro had already pushed (g.draws at the plant), so the
+ * control shows it ran past the old cap.
+ */
+async function drawsControl() {
+  // NEG_COUNTERS_DIR=<another tests/harness/counters> runs the control with that instrument (init.js and run.mjs), so
+  // the pre-fix instrument can be shown to miss the plant.
+  const dir = process.env.NEG_COUNTERS_DIR;
+  const counters = dir ? await import(pathToFileURL(join(dir, 'run.mjs')).href) : { INIT: COUNTERS_INIT, motionWindow, idleAfterScroll };
+  const init = counters.INIT;
+  const srv = await serve();
+  try {
+    const rows = [];
+    for (const plant of [null, 'draws']) {
+      const ctx = await newContext('D2');
+      await ctx.addInitScript({ content: init });
+      const page = await ctx.newPage();
+      await page.goto(`${srv.base}/`, { waitUntil: 'load' });
+      await waitSettled(page, 15000);
+      await sleep(300);
+      const atPlant = await page.evaluate(() => {
+        const g = window.__gateCounters;
+        return { draws: g.draws, drawStamps: g.drawTimes.length, stampsDropped: g.stampsDropped ?? null, tier: window.__stage.tier, glState: window.__stage.glState };
+      });
+      if (plant === 'draws') {
+        await page.evaluate(() => {
+          const gl = window.__stage.gl.renderer.getContext();
+          window.__plant = setInterval(() => gl.drawArrays(gl.POINTS, 0, 0), 250);
+        });
+      }
+      const { width, height } = page.viewportSize();
+      const since = await page.evaluate(() => performance.now());
+      await page.mouse.move(width / 2, height / 2);
+      await page.mouse.move(width / 2 + 40, height / 2 + 10);
+      await page.keyboard.press('Shift');
+      const step1 = await counters.motionWindow(page, since).catch((e) => ({ error: String(e).slice(0, 200), pass: false }));
+      const step2 = await counters.idleAfterScroll(page, null).catch((e) => ({ error: String(e).slice(0, 200), pass: false }));
+      const g1 = await page.evaluate(() => window.__gateCounters.draws);
+      await ctx.close();
+      const brief = (r) => ({ pass: r.pass, error: r.error, window: r.afterMotion, uncapped: r.uncappedInWindow, bound: r.bound, restarts: r.windowRestarts, motionEndsBy: r.motionEndsBy });
+      rows.push({ plant, atPlant, drawsDuringSteps: g1 - atPlant.draws, step1: brief(step1), step2: brief(step2), caught1: !step1.pass, caught2: !step2.pass });
+    }
+    const [clean, planted] = rows;
+    const pastOldCap = planted.atPlant.draws > 20000;
+    return { instrument: dir ?? 'tests/harness/counters', rows, pastOldCap, pass: pastOldCap && !clean.caught1 && !clean.caught2 && planted.caught1 && planted.caught2 };
+  } finally {
+    await srv.close();
+  }
+}
+
+/**
  * The Lighthouse LCP element rule (crew.mjs lighthouse, budgets.md) on report fragments shaped like Lighthouse 13.5's
  * lcp-breakdown-insight and Lighthouse 12's largest-contentful-paint-element: a wrong or missing element must make the
  * run invalid.
@@ -174,8 +230,18 @@ async function resizeControl() {
   }
 }
 
-export async function run() {
-  const out = { content: contentControl(), phGate: phGateControl(), stacking: await stackingControl(), lint: lintControl(), detach: await detachControl(), resize: await resizeControl(), lcp: lcpControl() };
+export async function run(opts = {}) {
+  const only = opts.only ? new Set(String(opts.only).split(',')) : null;
+  const want = (k) => !only || only.has(k);
+  const out = {};
+  if (want('content')) out.content = contentControl();
+  if (want('phGate')) out.phGate = phGateControl();
+  if (want('stacking')) out.stacking = await stackingControl();
+  if (want('lint')) out.lint = lintControl();
+  if (want('detach')) out.detach = await detachControl();
+  if (want('draws')) out.draws = await drawsControl();
+  if (want('resize')) out.resize = await resizeControl();
+  if (want('lcp')) out.lcp = lcpControl();
   const parts = Object.entries(out);
   return { schema: 1, suite: 'w-f/negatives', pass: parts.every(([, v]) => v.pass), ...out, summary: parts.map(([k, v]) => `${k} ${v.pass ? 'caught' : 'MISSED'}`).join(', ') };
 }
