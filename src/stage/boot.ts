@@ -4,7 +4,8 @@
 // - lite: after FCP the near observer is armed. When the first print slot comes within 1.5 viewports, GL boots in an
 //   idle callback. GL also boots when the camera or its strip is touched ([data-gl=object], [data-gl-boot]; the boot
 //   runs after the next paint), or 5 s after load at idle.
-// - static, or a page that opts out (the 404): never.
+// - static, or a page that opts out (the 404): never. A Swup arrival carries the arriving page's opt-out (router.ts),
+//   and start() checks it again, so a trigger armed on another page never boots GL on the 404.
 // Every step after module evaluation runs in its own task.
 import { mark } from './state.ts';
 import { getTier } from './tier.ts';
@@ -59,6 +60,13 @@ function afterFirstPaint(fn: () => void): void {
 // ---------------------------------------------------------------- the boot
 async function start(why: string): Promise<void> {
   if (started || getTier() === 'static') return;
+  // W-D029: never on a page that opts out. A trigger armed on a page with GL (the lite timer, an idle callback) can
+  // fire after a Swup visit has landed on the 404: it stands down, and the next arrival on a page with GL schedules
+  // the boot again (rescanGLIntent).
+  if (document.documentElement.dataset.glPage === 'off') {
+    state = 'off';
+    return;
+  }
   started = true;
   state = 'booting';
   mark('stage:gl-start', why);

@@ -4,7 +4,9 @@
 //              the strings the plan lists (read from docs/direction/front-door-plan.md, so this file holds none of them)
 //   noWebgl    #61 item 3: Chromium --disable-3d-apis (WebGL2's constructor exists, no context): data-tier is static,
 //              data-cam camera and data-hero still before first paint, and never anything else; 0 console failures
-//   withGl     the same probe leaves real GL alone: mouse profiles full (or a logged probe demotion), touch lite
+//   withGl     the same probe leaves real GL alone: mouse profiles full (or a logged probe demotion), touch lite; a
+//              session that starts on the 404 boots GL after a Swup visit to /, and never after a Swup visit that lands
+//              on the 404 again (W-D029: GL off, no script fetched; Chromium and WebKit)
 //   present    #61 item 1: a recoloured fixture, then the stage sleeps; the presented canvas shows the new colour, and
 //              after an erase (every fixture hidden) the bare page (Chromium and WebKit); ?notail and ?notail=erase
 //              turn the tails off for the controls
@@ -225,6 +227,44 @@ async function withGl(base) {
     const v = gate.verdict();
     await ctx.close();
     rows.push({ profile, swupFrom404: true, before, ...s, consolePass: v.pass, pass: before === 'off' && booted && s.glState === 'ready' && v.pass });
+  }
+  // ...and never on a page that opts out (W-D029; round-2 must-fix s2-404-gl-boot): a Swup visit from the 404 to
+  // another missing URL lands on the 404 again, and GL stays off with no script fetched. Chromium and WebKit, mouse
+  // (full) and touch (lite: 7 s covers the 5 s timer and its idle second).
+  for (const [profile, engine] of [['D2', null], ['P2', null], ['D3', 'webkit'], ['WK-P2', null]]) {
+    const ctx = await newContext(profile, 'auto', engine ? { browser: engine } : {});
+    const page = await ctx.newPage();
+    const missing = '/work/no-such-print/';
+    const gate = consoleGate(page, { expectStatus: [{ status: 404, url: new RegExp(`${missing.replaceAll('/', '\\/')}$`) }] });
+    await page.goto(`${base}/404.html`, { waitUntil: 'load' });
+    await waitSettled(page, 15000);
+    const before = await page.evaluate(() => ({ glState: window.__stage.glState, glPage: document.documentElement.dataset.glPage }));
+    const scripts = [];
+    page.on('request', (r) => { if (r.resourceType() === 'script' || /\.m?js(\?|$)/.test(r.url())) scripts.push(r.url().replace(base, '')); });
+    await page.evaluate((href) => {
+      const a = document.createElement('a');
+      a.href = href;
+      a.id = 'm2-missing';
+      a.textContent = 'a print that is not there';
+      document.querySelector('main').append(a);
+    }, missing);
+    await page.click('#m2-missing');
+    const arrived = await page.waitForFunction((p) => location.pathname === p && !document.getElementById('m2-missing') && document.documentElement.dataset.page === 'notfound', missing, { polling: 50, timeout: 10000 }).then(() => true, () => false);
+    const atArrival = await page.evaluate(() => ({ glPage: document.documentElement.dataset.glPage, mainGlPage: document.getElementById('main')?.dataset.glPage ?? null, h1: document.querySelector('main h1')?.textContent.trim() ?? null }));
+    const states = [];
+    for (let t = 0; t < 7000; t += 250) {
+      states.push(await page.evaluate(() => window.__stage.glState));
+      await sleep(250);
+    }
+    const s = await page.evaluate(() => ({ glState: window.__stage.glState, glStarts: window.__stage.marks().filter((m) => m.name === 'stage:gl-start').length }));
+    const v = gate.verdict();
+    await ctx.close();
+    rows.push({
+      profile: engine ? `${profile}@${engine}` : profile, swup404to404: true, before, arrived, atArrival, statesSeen: [...new Set(states)], ...s, scriptsAfterLoad: scripts,
+      consolePass: v.pass, consoleFailures: v.failures.map((f) => `${f.channel}/${f.level}: ${f.text.slice(0, 160)}`),
+      pass: before.glState === 'off' && before.glPage === 'off' && arrived && atArrival.glPage === 'off' && states.every((x) => x === 'off')
+        && s.glState === 'off' && s.glStarts === 0 && scripts.length === 0 && v.pass,
+    });
   }
   return { rows, pass: rows.every((r) => r.pass) };
 }

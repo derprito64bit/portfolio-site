@@ -50,6 +50,16 @@ function focusEl(el: HTMLElement | null): boolean {
   return document.activeElement === el;
 }
 
+/**
+ * The arriving page's GL opt-out (W-D029: the 404 has no WebGL). Base puts data-gl-page on the page's <html> and its
+ * <main>; the fetched document's <html> is read first, then the new <main>. A page that says neither is 'off' (fail
+ * closed): a Swup arrival never turns GL intent on by default.
+ */
+function arrivingGlPage(visit: Visit, main: HTMLElement | null): 'on' | 'off' {
+  const said = visit.to.document?.documentElement.dataset.glPage ?? main?.dataset.glPage;
+  return said === 'on' ? 'on' : 'off';
+}
+
 export let swup: Swup | null = null;
 
 export function bootRouter(): Swup {
@@ -99,7 +109,7 @@ export function bootRouter(): Swup {
   swup.hooks.on('content:replace', (visit) => {
     const main = document.getElementById('main');
     if (main?.dataset.page) html.dataset.page = main.dataset.page;
-    html.dataset.glPage = main?.dataset.glPage === 'off' ? 'off' : 'on';
+    html.dataset.glPage = arrivingGlPage(visit, main);
     scan(document.getElementById('swup') ?? document);
     getLenis()?.resize();
     if (visit.history.popstate) scrollToY(Number(entry().ionScroll) || 0);

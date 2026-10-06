@@ -93,7 +93,7 @@ const docTitle = `${title} · derprito64bit`;
       <div data-mount="header-tools"></div>
     </header>
     <div id="swup">
-      <main id="main" tabindex="-1" data-page={page} data-title={docTitle}>
+      <main id="main" tabindex="-1" data-page={page} data-gl-page={gl ? 'on' : 'off'} data-title={docTitle}>
         <slot />
       </main>
     </div>
