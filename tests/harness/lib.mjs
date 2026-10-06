@@ -102,9 +102,10 @@ export async function serve(root = join(ROOT, 'dist')) {
 }
 
 // ---------------------------------------------------------------- console gate (W-D030)
-// W-D030's words. GL_INVALID and CONTEXT_LOST are read as prefixes: real messages carry them as GL_INVALID_OPERATION,
-// GL_INVALID_ENUM or CONTEXT_LOST_WEBGL, where the plan's literal \bGL_INVALID\b never matches ('_' is a word
-// character), so the literal form would let every one of them through below the error level.
+// W-D030's words, as amended (Orchestrator ruling on #11, 6020160705; decisions.md W-D030 (amended)): GL_INVALID and
+// CONTEXT_LOST are prefixes. Real messages carry them as GL_INVALID_OPERATION, GL_INVALID_ENUM or CONTEXT_LOST_WEBGL,
+// where the literal \bGL_INVALID\b never matches ('_' is a word character), so the literal form would let every one
+// of them through below the error level.
 export const CONSOLE_RE = /\b(error|exception|uncaught|failed|GL_INVALID\w*|CONTEXT_LOST\w*|VALIDATE_STATUS)\b/i;
 
 /** True for a zero-padded YYYY-MM-DD that names a real calendar day. */

@@ -111,6 +111,23 @@ test('negative: GL_INVALID_* and CONTEXT_LOST_* fail below the error level (W-D0
   assert.equal(verdict([['info', 'GL_INVALID_ENUM : glTexParameteri']]).pass, false);
 });
 
+// ---- W-D030 as amended (Orchestrator ruling on #11, 6020160705): GL_INVALID_OPERATION and CONTEXT_LOST_WEBGL fail the
+// gate, and an allowlist entry cannot pass them.
+const GL_INVALID_LINE = '[.WebGL-0x1]GL_INVALID_OPERATION: glDrawArrays: planted 9999';
+const CONTEXT_LOST_LINE = 'WebGL: CONTEXT_LOST_WEBGL: loseContext: context lost (planted 9999)';
+test('ruling 6020160705: GL_INVALID_OPERATION and CONTEXT_LOST_WEBGL fail the gate at the warning level', () => {
+  assert.equal(verdict([['warning', GL_INVALID_LINE]]).pass, false);
+  assert.equal(verdict([['warning', CONTEXT_LOST_LINE]]).pass, false);
+});
+test('ruling 6020160705: no allowlist entry can pass them (one that names them throws; one forced in does not help)', () => {
+  assert.throws(() => planted([entry({ regex: '\\[\\.WebGL-0x\\d+\\]GL_INVALID_OPERATION: glDrawArrays: planted 9999', literal: 'planted 9999', example: GL_INVALID_LINE })]), /failure word/);
+  assert.throws(() => planted([entry({ regex: 'WebGL: CONTEXT_LOST_WEBGL: loseContext: context lost \\(planted 9999\\)', literal: 'planted 9999', example: CONTEXT_LOST_LINE })]), /failure word/);
+  // An entry that would allow any line, put in without validation: the W-D030 word still fails the message.
+  const forced = [{ regex: '.*', re: /^.*$/, literal: '', allows: () => true }];
+  assert.equal(verdict([['warning', GL_INVALID_LINE]], { allow: forced }).pass, false);
+  assert.equal(verdict([['warning', CONTEXT_LOST_LINE]], { allow: forced }).pass, false);
+});
+
 // ---- entries checked for form (Breaker 1.2 #2, manager must-fix console-allowlist-validation)
 test('control: an ISO expiry already past is dropped and the planted warning fails', () => {
   const allow = planted([entry({ expiry: '2026-09-01' })]);
