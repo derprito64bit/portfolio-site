@@ -3,7 +3,9 @@
 //              no game call to action; the nav is Work and Contact; and a grep of src/, scripts/ and tests/ finds none of
 //              the strings the plan lists (read from docs/direction/front-door-plan.md, so this file holds none of them)
 //   noWebgl    #61 item 3: Chromium --disable-3d-apis (WebGL2's constructor exists, no context): data-tier is static,
-//              data-cam camera and data-hero still before first paint, and never anything else; 0 console failures
+//              data-cam camera and data-hero still before first paint, and never anything else; 0 console failures;
+//              on / print 1's still is at opacity 1 when first paint is reported (read in the FCP callback); the
+//              noWebglControl (plant I: the still fades in after first paint) must fail
 //   withGl     the same probe leaves real GL alone: mouse profiles full (or a logged probe demotion), touch lite; a
 //              session that starts on the 404 boots GL after a Swup visit to /, and never after a Swup visit that lands
 //              on the 404 again (W-D029: GL off, no script fetched; Chromium and WebKit)
@@ -18,14 +20,17 @@
 //              1440 against 1425 px); asserted with and without the gutter, with hidden scrollbars too, and the
 //              control sized from html.clientWidth fails
 //   zero       round-1 must-fix: an iframe collapsed to 0 px wide or tall keeps the geometry finite and the stage idle
-//              (counters' motion-end window), and it settles again when restored (Chromium and WebKit)
+//              (counters' motion-end window), and it settles again when restored (Chromium and WebKit), judged only
+//              after the stage has ticked for the restore and 400 ms have passed; the zeroControl (kept awake once
+//              restored) must fail
 //   hooks      #54 item 2 under #14 ruling 2: a chunk loaded after stage:gl-start registers develop through
 //              __stage.registerEffect and hands other ids to `next` (the no-op: take, then give); a second
-//              registration chains and falls through on undefined; __stage.markDirty re-measures
+//              registration chains and falls through on undefined; __stage.markDirty re-measures; __stage.take and
+//              give borrow and hand back a slot's pixels for an impl that serves its own ids
 // Usage: node tests/w-f/m2.mjs [--out m2.json] [--dist <dir>] [--only door,noWebgl,...]
 //   --dist runs the browser checks against another build (the negative controls run them on main's dist).
 import sharp from 'sharp';
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
 import { PROFILES, ROOT, browser, budget, cliMain, consoleGate, expectedTier, newContext, readBudgets, serve, sleep, waitSettled } from '../harness/lib.mjs';
@@ -120,11 +125,21 @@ async function door(base) {
 }
 
 // ---------------------------------------------------------------- noWebgl (#61 item 3)
-/** Records every change of the tier, camera and hero attributes and first contentful paint, from document start. */
+/**
+ * Records every change of the tier, camera and hero attributes and first contentful paint, from document start, and
+ * what first paint showed (Breaker 2.3 #4): in the FCP observer's callback, the attributes and print 1's still opacity
+ * as computed then (a still that fades in after first paint reads 0 there, though it ends at 1).
+ */
 const ATTR_INIT = `(() => {
   const log = (window.__attrLog = []);
   window.__fcp = null;
-  try { new PerformanceObserver((l) => { for (const e of l.getEntries()) if (e.name === 'first-contentful-paint') window.__fcp = e.startTime; }).observe({ type: 'paint', buffered: true }); } catch (e) {}
+  window.__atFcp = null;
+  const snap = () => {
+    const h = document.documentElement;
+    const still = document.querySelector('.hero-still');
+    return { t: performance.now(), tier: h.dataset.tier ?? null, cam: h.dataset.cam ?? null, hero: h.dataset.hero ?? null, stillOpacity: still ? getComputedStyle(still).opacity : null };
+  };
+  try { new PerformanceObserver((l) => { for (const e of l.getEntries()) if (e.name === 'first-contentful-paint') { window.__fcp = e.startTime; window.__atFcp = snap(); } }).observe({ type: 'paint', buffered: true }); } catch (e) {}
   new MutationObserver((recs) => {
     const t = performance.now();
     for (const r of recs) if (r.target === document.documentElement) log.push({ attr: r.attributeName, value: r.target.getAttribute(r.attributeName), t });
@@ -138,9 +153,9 @@ const ATTR_INIT = `(() => {
  * probe's answer is kept, ion.webgl2). Static with reason no-webgl2 before first paint, never anything else, GL off,
  * and 0 console failures; on / by a full load, data-cam camera and print 1's still too.
  */
-async function noWebgl(base) {
+async function noWebgl(base, only = null) {
   const rows = [];
-  const cases = [
+  const cases = only ?? [
     ...['D1', 'D2', 'D3', 'S1', 'T1', 'T2', 'P1', 'P2'].map((p) => [p, '/', 'load']),
     ['D2', '/work/project-01/', 'load'], ['P2', '/work/project-01/', 'load'],
     ['D2', '/?tier=full', 'load'], ['S1', '/?tier=full', 'load'], ['D2', '/?tier=lite', 'load'], ['P2', '/?tier=lite', 'load'],
@@ -177,7 +192,7 @@ async function noWebgl(base) {
         tier: h.dataset.tier, cam: h.dataset.cam ?? null, hero: h.dataset.hero ?? null,
         reason: window.__stage?.tierReason ?? null, glState: window.__stage?.glState ?? null,
         stillOpacity: still ? getComputedStyle(still).opacity : null, cached,
-        fcp: window.__fcp, log: window.__attrLog,
+        fcp: window.__fcp, atFcp: window.__atFcp, log: window.__attrLog,
       };
     });
     const v = gate.verdict();
@@ -191,10 +206,36 @@ async function noWebgl(base) {
       profile, route, kind, ...s, consoleFailures: v.failures.map((f) => `${f.channel}/${f.level}: ${f.text.slice(0, 160)}`), changesAfterFcp: after,
       pass: s.constructorExists && !s.contextNow && s.fcp !== null && s.tier === 'static' && tiers.every((t) => t === 'static') && (kind === 'swup-home' || after.length === 0)
         && s.reason === 'no-webgl2' && s.glState === 'off' && s.cached === '0' && v.pass
-        && (!hero || (s.cam === 'camera' && s.hero === 'still' && s.stillOpacity === '1' && !s.log.some((e) => e.attr === 'data-hero' && e.value === 'eject'))),
+        // On / the hero's state at first paint (read in the FCP callback, Breaker 2.3 #4) and at the end.
+        && (!hero || (s.atFcp?.tier === 'static' && s.atFcp.cam === 'camera' && s.atFcp.hero === 'still' && s.atFcp.stillOpacity === '1'
+          && s.cam === 'camera' && s.hero === 'still' && s.stillOpacity === '1' && !s.log.some((e) => e.attr === 'data-hero' && e.value === 'eject'))),
     });
   }
   return { rows, pass: rows.length > 0 && rows.every((r) => r.pass) };
+}
+
+/** Plant I (Breaker 2.3 #4): print 1's still fades in from 0 after first paint; the / rows must catch it at FCP. */
+const PLANT_I = '<style data-plant="I">.hero-still{animation:m2-plant-i 1.5s 300ms both}@keyframes m2-plant-i{from{opacity:0}to{opacity:1}}</style>';
+async function noWebglPlantI(dist) {
+  const dir = mkdtempSync(join(tmpdir(), 'm2-plant-i-'));
+  try {
+    cpSync(dist, dir, { recursive: true });
+    const home = join(dir, 'index.html');
+    const html = readFileSync(home, 'utf8');
+    if (!html.includes('</head>')) throw new Error('plant I: index.html has no </head>');
+    writeFileSync(home, html.replace('</head>', `${PLANT_I}</head>`));
+    const srv = await serve(dir);
+    try {
+      const r = await noWebgl(srv.base, [['D2', '/', 'load'], ['S1', '/', 'load']]);
+      // Caught when a row fails on what first paint showed while its end state is whole.
+      const caught = r.rows.some((x) => !x.pass && x.atFcp?.stillOpacity !== '1' && x.stillOpacity === '1');
+      return { ...r, caught, pass: caught };
+    } finally {
+      await srv.close();
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 }
 
 async function withGl(base) {
@@ -491,10 +532,10 @@ async function gutter(base, plant = null) {
  * the idle window holds (counters' motionWindow: the collapse is the last change, nothing presented within its bound,
  * 0 rAF and 0 draws in the window). Restored, the geometry is finite and the stage settles again.
  */
-async function zero(base) {
+async function zero(base, opts = {}) {
   const rows = [];
-  for (const profile of ['D2', 'WK-P2']) {
-    for (const axis of ['width', 'height']) {
+  for (const profile of opts.profiles ?? ['D2', 'WK-P2']) {
+    for (const axis of opts.axes ?? ['width', 'height']) {
       const b = await browser(PROFILES[profile].browser);
       const ctx = await b.newContext({ viewport: { width: 1300, height: 900 }, deviceScaleFactor: 1 });
       await ctx.addInitScript({ content: COUNTERS_INIT });
@@ -524,18 +565,31 @@ async function zero(base) {
       await page.evaluate((axis) => { document.getElementById('probe').style[axis] = '0px'; }, axis);
       const win = await motionWindow(frame, since);
       const atZero = await geo();
+      // The control's plant (zeroControl): once the frame has an area again, something keeps the stage awake for good.
+      if (opts.plant === 'restore-awake') {
+        await frame.evaluate(() => addEventListener('resize', () => {
+          if (innerWidth > 0 && innerHeight > 0 && !window.__awake) window.__awake = setInterval(() => window.__stage.invalidate(), 100);
+        }));
+      }
+      const ticksBefore = await frame.evaluate(() => window.__stage.stats.ticks);
+      const restoredAt = Date.now();
       await page.evaluate((axis) => { document.getElementById('probe').style[axis] = axis === 'width' ? '1200px' : '800px'; }, axis);
+      // First the stage must see the restore (a tick after it, within 2 s) and 400 ms must pass: `settled` is still true
+      // from before the resize reaches the frame, so waiting for it at once proved nothing (the perf gate's round-2 note:
+      // it returned in 3 to 6 ms).
+      const sawRestore = await frame.waitForFunction((t) => window.__stage.stats.ticks > t, ticksBefore, { polling: 20, timeout: 2000 }).then(() => true, () => false);
+      if (Date.now() - restoredAt < 400) await sleep(400 - (Date.now() - restoredAt));
       const settledAfter = await frame.waitForFunction(() => window.__stage.settled, null, { polling: 100, timeout: 8000 }).then(() => true, () => false);
       await sleep(200);
       const restored = await geo();
       const v = gate.verdict();
       await ctx.close();
       rows.push({
-        profile, axis, browser: PROFILES[profile].browser, atZero, window: { pass: win.pass, bound: win.bound, afterMotion: win.afterMotion, stageInWindow: win.stageInWindow }, settledAfter, restored,
+        profile, axis, browser: PROFILES[profile].browser, plant: opts.plant ?? null, atZero, window: { pass: win.pass, bound: win.bound, afterMotion: win.afterMotion, uncappedInWindow: win.uncappedInWindow, stageInWindow: win.stageInWindow }, sawRestore, settledAfter, restored,
         drewAfterRestore: restored.draws > atZero.draws, consoleFailures: v.failures.map((f) => `${f.channel}/${f.level}: ${f.text.slice(0, 160)}`),
         // In WebKit, GL drawing nothing after a collapse and restore is pre-existing (main 5955491 too, Breaker 1.3):
-        // recorded, not asserted.
-        pass: atZero.finite && win.pass && atZero.settled && settledAfter && restored.finite && v.pass && (PROFILES[profile].browser !== 'chromium' || restored.draws > atZero.draws),
+        // recorded, not asserted (nor is its tick after the restore).
+        pass: atZero.finite && win.pass && atZero.settled && settledAfter && restored.finite && v.pass && (PROFILES[profile].browser !== 'chromium' || (sawRestore && restored.draws > atZero.draws)),
       });
     }
   }
@@ -592,10 +646,16 @@ async function hooks(base) {
     const before = s.stats.measuresInTick;
     s.markDirty();
     await new Promise((res) => setTimeout(res, 120));
+    // An impl that serves its own ids takes the slot's pixels and gives them back through __stage.take and give, with
+    // no import of src/stage (round-2 should-fix S8, the perf gate's row 6 note).
+    const el3 = document.querySelector('[data-gl-id="project-03"]');
+    const takeGive = typeof s.take === 'function' && typeof s.give === 'function'
+      ? (() => { s.take('project-03'); const on = el3.classList.contains('is-gl'); s.give('project-03'); return { on, off: !el3.classList.contains('is-gl') }; })()
+      : null;
     return {
-      types, glStart, loadedAfterGlStart: mod.at > gs, own, other, c2, through, calls: window.__devCalls,
+      types: { ...types, take: typeof s.take, give: typeof s.give }, glStart, loadedAfterGlStart: mod.at > gs, own, other, c2, through, calls: window.__devCalls,
       handback: classLog, focusKept: document.activeElement === focusBefore, isGlAfter: el2.classList.contains('is-gl'),
-      measuresInTick: s.stats.measuresInTick - before,
+      measuresInTick: s.stats.measuresInTick - before, takeGive,
     };
   });
   await ctx.close();
@@ -603,7 +663,7 @@ async function hooks(base) {
     && r.own?.by === 'w-s2' && r.other?.id === 'project-02' && r.other?.developed === true && !r.other?.by
     && r.handback?.join(',') === 'false,true' && r.focusKept && r.isGlAfter === false
     && r.c2?.by === 'w-c2' && r.through?.by === 'w-s2' && r.calls?.every((c) => c.hasNext)
-    && r.measuresInTick >= 1;
+    && r.measuresInTick >= 1 && r.takeGive?.on === true && r.takeGive?.off === true;
   return { ...r, pass: Boolean(ok) };
 }
 
@@ -627,6 +687,18 @@ export async function run(opts = {}) {
     if ((!only || only.has('present')) && !opts['no-controls']) {
       out.presentControl = await present(srv.base, ['WK-P2', 'WK-T2'], 'all').catch((e) => ({ error: String(e), rows: [] }));
       out.eraseControl = await present(srv.base, ['WK-P2', 'WK-T2'], 'erase').catch((e) => ({ error: String(e), rows: [] }));
+    }
+    // The restore control (the perf gate's round-2 note): a plant that keeps the stage awake once the frame is restored
+    // must fail zero's "settles again when restored".
+    if ((!only || only.has('zero')) && !opts['no-controls']) {
+      out.zeroControl = await zero(srv.base, { profiles: ['D2'], axes: ['width'], plant: 'restore-awake' }).catch((e) => ({ error: String(e), rows: [] }));
+      out.zeroControl.caught = out.zeroControl.rows?.some((r) => !r.pass && r.sawRestore && !r.settledAfter) ?? false;
+      out.zeroControl.pass = out.zeroControl.caught;
+    }
+    // The first-paint control (Breaker 2.3 #4, plant I): a copy of the dist whose print 1 still fades in after first
+    // paint (opacity 0 at FCP, 1 at the end) must fail noWebgl's / rows.
+    if ((!only || only.has('noWebgl')) && !opts['no-controls']) {
+      out.noWebglControl = await noWebglPlantI(opts.dist ? resolve(String(opts.dist)) : join(ROOT, 'dist')).catch((e) => ({ error: String(e), rows: [], pass: false }));
     }
     // The W-D013 control (ruling 5992943706): a stage sized from html.clientWidth fails on a page that does not scroll
     // under a classic-scrollbar gutter.
