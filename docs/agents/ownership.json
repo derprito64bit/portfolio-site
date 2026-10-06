@@ -1,5 +1,5 @@
 {
-  "$comment": "Crew -> owned globs (Wave 2 lock). A crew may only change files matching its globs. D-023 (2026-10-04): W-C7 is merged into W-C5 and its door globs are retired. W-F's follow-up (crew/w-f-m2) takes the door off / before the content step and G3a, deleting the door and handoff stubs through its one-off globs; W-C2 takes the one-off drip removal and removes the door tokens after that follow-up. D-023 also gives W-S3 the content validator's sourced-field exception (W-D005) and the teaser field's retirement, and W-R the fork's FORK.md / and /manor/ rows and the deletion of the fork's site/index.html; D-024 gives W-S1 the hero drawing durations and heroTimelineMs; content/*.json is otherwise the orchestrator's, including the game's entry (the plan's content step).",
+  "$comment": "Crew -> owned globs (Wave 2 lock). A crew may only change files matching its globs. D-023 (2026-10-04): W-C7 is merged into W-C5 and its door globs are retired. W-F's follow-up (crew/w-f-m2) takes the door off / before the content step and G3a, deleting the door and handoff stubs through its one-off globs; W-C2 takes the one-off drip removal and removes the door tokens after that follow-up. D-023 also gives W-S3 the content validator's sourced-field exception (W-D005) and the teaser field's retirement, and W-R the fork's FORK.md / and /manor/ rows and the deletion of the fork's site/index.html; D-024 gives W-S1 the hero drawing durations and heroTimelineMs; content/*.json is otherwise the orchestrator's, including the game's entry (the plan's content step). W-S3's day-one one-offs (#15 comment 5995441183) overlap W-F (src/layouts/Base.astro), W-S2 then W-C4 (src/gl/prints/**) and W-C3 (src/styles/motion.css); none of those crews is active while W-S3 runs, and each heir inherits the changes.",
   "W": {
     "W-F": [
       "package.json",
@@ -72,7 +72,10 @@
       "tests/w-s3/**",
       "src/lib/content/validate.js (D-023: the sourced-field exception and the teaser retirement only)",
       "src/lib/content/types.ts (D-023: the sourced-field exception and the teaser retirement only)",
-      "scripts/check/ph-gate.mjs (D-023: the same exception, only if it repeats the rule)"
+      "scripts/check/ph-gate.mjs (D-023: the same exception, only if it repeats the rule)",
+      "src/layouts/Base.astro (W-S3 day one rulings 1 and 2, #15 comment 5995441183: one import of src/sections/project/flight.ts in its module script, and data-swup-fade on main, only)",
+      "src/gl/prints/** (W-S3 day one ruling 1, #15 comment 5995441183: the flying entity's persistence, the flight's pose, print entities' bounds() and the destination entity's hold, only what W-S2's merge lacks)",
+      "src/styles/motion.css (W-S3 day one ruling 2, #15 comment 5995441183: the Swup out, in and reduced rules only; W-C3 inherits them)"
     ],
     "W-C13": [
       "assets-src/3d/**",
