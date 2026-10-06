@@ -64,6 +64,23 @@ export function setManualNow(ms: number): void {
   manualNow = ms;
 }
 
+/**
+ * One crew's code that throws must not stop the stage (self-break: a thrown error mid-animation). Every call the stage
+ * makes into code it does not own (a hook, a listener, a timeline, an entity) runs through here, one item at a time:
+ * the error is reported as uncaught (the console gate sees it), counted in stats.hookErrors, and `fallback` stands in
+ * for that item's result, so the loop goes on with the next item.
+ */
+export function guard<T>(fn: () => T, fallback: T): T {
+  try {
+    return fn();
+  } catch (e) {
+    stats.hookErrors++;
+    if (typeof window.reportError === 'function') window.reportError(e);
+    else window.setTimeout(() => { throw e; }, 0);
+    return fallback;
+  }
+}
+
 /** A user-timing mark with detail, plus a 'name=value' twin that Lighthouse's user-timings audit can show. */
 export function mark(name: string, value?: string): void {
   try {

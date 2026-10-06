@@ -4,7 +4,7 @@
 // It renders only when something moved, skips the render on idle frames and detaches after 1 s of idle, so a page at
 // rest costs 0 rAF callbacks and 0 draws. Any module wakes it with invalidate().
 import { durations } from '../lib/tokens.js';
-import { flags, mark, now, stats } from './state.ts';
+import { flags, guard, mark, now, stats } from './state.ts';
 import { governorReset, governorSample } from './tier.ts';
 import { anyActive, bindWake } from './timelines.ts';
 import { readScroll } from './scroll.ts';
@@ -134,20 +134,11 @@ function onFrame(): void {
 }
 
 /**
- * One crew's hook that throws must not stop the one ticker (self-break: a thrown error mid-animation). The error is
- * reported as uncaught (the console gate sees it), counted in stats.hookErrors, and the hook counts as idle for this
- * frame, so the loop still renders the rest and still detaches when nothing moves.
+ * One crew's hook that throws must not stop the one ticker (guard, state.ts): the error is reported and counted in
+ * stats.hookErrors, and the hook counts as idle for this frame, so the loop still renders the rest and still detaches
+ * when nothing moves.
  */
-export function guard<T>(fn: () => T, idle: T): T {
-  try {
-    return fn();
-  } catch (e) {
-    stats.hookErrors++;
-    if (typeof window.reportError === 'function') window.reportError(e);
-    else window.setTimeout(() => { throw e; }, 0);
-    return idle;
-  }
-}
+export { guard };
 
 function spin(ms: number): void {
   const until = performance.now() + ms;

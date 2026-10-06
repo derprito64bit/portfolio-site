@@ -3,7 +3,7 @@
 // and (hover: hover), Save-Data and ?tier=. The GL boot probe can demote full to lite; the governor steps down one
 // tier at a time and never back up; two context losses in 60 s end at static. Core counts and touch-point counts are
 // never read.
-import { mark, stats } from './state.ts';
+import { guard, mark, stats } from './state.ts';
 
 export type Tier = 'full' | 'lite' | 'static';
 const RANK: Record<Tier, number> = { static: 0, lite: 1, full: 2 };
@@ -43,7 +43,8 @@ export function demote(to: Tier, why: string): boolean {
     }
   }
   mark('stage:tier', `${to}:${why}`);
-  for (const fn of listeners) fn(to, why);
+  // Each listener on its own (guard): one that throws must not skip GL's teardown on a drop to static.
+  for (const fn of listeners) guard(() => fn(to, why), undefined);
   return true;
 }
 

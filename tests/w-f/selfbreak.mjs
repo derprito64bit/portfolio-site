@@ -7,9 +7,21 @@
 //               no error, each settles, the recolour is presented
 //   tierDrop    a recolour, then a demotion to lite and to static inside its present tail: GL gone, the stage settles
 //               and stops ticking
-//   ctxLoss     a recolour, then a context loss inside its tail; a restore; a recolour is presented again; settles
+//   ctxLoss     a recolour, then a context loss inside its tail (the restore waits for webglcontextlost); after the
+//               restore, with no input, the canvas shows the recoloured print again (Breaker 2.3 #3: a restore that
+//               re-takes the slots and never redraws leaves the bare page); then a recolour is presented; settles
 //   throw       an entity whose step() throws once in the middle of a spin: reported once, the spin finishes, the
 //               stage still renders, presents and sleeps (stats.hookErrors)
+//   finishThrow two running timelines, the first's finish() throws once; reduced motion turned on: the second ends in
+//               the same frame, setMotion does not throw, Lenis goes (full tier), one error counted, it settles
+//               (round-2 should-fix S1, Breaker 2.1 #1)
+//   timelineThrow a timeline whose update throws on every frame from 400 ms: it is finished and dropped after its
+//               first throws (not one per frame), the stage settles and a recolour is presented (Breaker 2.1 #1)
+//   lenisRace   reduced motion, or a drop to lite or static, while Lenis's chunk is still loading: Lenis stays off once
+//               it arrives (Breaker 2.3 #1, W-D014); with no change it comes on (the control)
+//   entityThrow one entity's snap(), unbind() and restore() each throw once (Breaker 2.2 #3): reduced motion still
+//               snaps the next entity; a Swup visit still forgets the old slots and rebinds the persistent cube; a
+//               context restore still redraws the other prints with no input
 //   renderThrow a three hook (onBeforeRender) that throws once inside one view's draw, through a ticker frame and
 //               through a layout render (renderNow): the other views still draw that frame, the error is counted
 //   history     Swup to a project and Back (focus on the print link; settles; one chain; grid), a real bfcache restore
@@ -40,8 +52,8 @@ async function open(base, profile, path, extra = {}) {
   await page.goto(base + path, { waitUntil: 'load' });
   return { ctx, page, gate };
 }
-async function bench(base, profile, query = '') {
-  const o = await open(base, profile, `/bench/?tier=lite${query}`);
+async function bench(base, profile, query = '', tier = 'lite') {
+  const o = await open(base, profile, `/bench/?tier=${tier}${query}`);
   await o.page.waitForFunction(() => window.__stage?.glState === 'ready' && window.__stage.fixtures, null, { polling: 100, timeout: 20000 });
   await o.page.evaluate(() => document.querySelector('[data-gl-id="fx-1"]').scrollIntoView({ block: 'center' }));
   await waitSettled(o.page, 10000);
@@ -63,6 +75,29 @@ async function tintAndRest(page, rgb, id = 'fx-1') {
   await page.waitForFunction((n) => window.__stage.stats.sleeps > n, s0, { polling: 50, timeout: 10000 });
   await sleep(80);
   return colourOf(page, id);
+}
+/**
+ * In the page: (optionally recolour a quad, then) a context loss, and the restore once webglcontextlost has fired: one
+ * rAF was not always enough for Chromium to dispatch it, and a restore before it is refused (Breaker 2.3 #3).
+ */
+async function lossAndRestore({ tint } = {}) {
+  const s = window.__stage;
+  const c = document.getElementById('gl');
+  const within = (p, ms) => Promise.race([p.then(() => true), new Promise((res) => setTimeout(() => res(false), ms))]);
+  if (tint) {
+    s.fixtures.tint(...tint);
+    await new Promise((res) => requestAnimationFrame(res));
+  }
+  const lost = new Promise((res) => c.addEventListener('webglcontextlost', res, { once: true }));
+  const restored = new Promise((res) => c.addEventListener('webglcontextrestored', res, { once: true }));
+  s.gl.forceContextLoss();
+  const lostEvent = await within(lost, 3000);
+  // The browser allows the restore only once the lost event's dispatch has finished (its default prevented): a task.
+  await new Promise((res) => setTimeout(res, 50));
+  const isGlAfterLoss = document.querySelectorAll('.is-gl').length;
+  s.gl.forceContextRestore();
+  const restoredEvent = await within(restored, 3000);
+  return { lostEvent, restoredEvent, isGlAfterLoss, tier: s.tier, restores: s.stats.restores };
 }
 const verdict = (gate, expect = null) => {
   const v = gate.verdict();
@@ -163,23 +198,197 @@ const CASES = {
   },
   async ctxLoss(base, profile) {
     const { ctx, page, gate } = await bench(base, profile);
-    const r = await page.evaluate(async () => {
-      const s = window.__stage;
-      s.fixtures.tint('fx-1', 250, 30, 30);
-      await new Promise((res) => requestAnimationFrame(res));
-      s.gl.forceContextLoss();
-      await new Promise((res) => requestAnimationFrame(res));
-      const isGl = document.querySelectorAll('.is-gl').length;
-      s.gl.forceContextRestore();
-      await new Promise((res) => setTimeout(res, 800));
-      return { isGlAfterLoss: isGl, tier: s.tier, restores: s.stats.restores };
-    });
+    const r = await page.evaluate(lossAndRestore, { tint: ['fx-1', 250, 30, 30] });
+    // No input after the restore: the stage must draw the prints back by itself.
     const after = await settles(page);
+    const redrawn = await colourOf(page, 'fx-1');
     const got = await tintAndRest(page, [30, 30, 250]);
     const grid = await gridOf(page);
     const c = verdict(gate);
     await ctx.close();
-    return { ...r, after, got, grid, ...c, pass: r.isGlAfterLoss === 0 && r.restores >= 1 && r.tier === 'lite' && after.ok && near(got, [30, 30, 250]) && grid.ok && c.ok };
+    return { ...r, after, redrawn, got, grid, ...c, pass: r.lostEvent && r.restoredEvent && r.isGlAfterLoss === 0 && r.restores >= 1 && r.tier === 'lite' && after.ok && near(redrawn, [250, 30, 30]) && near(got, [30, 30, 250]) && grid.ok && c.ok };
+  },
+  async finishThrow(base, profile) {
+    // The full tier (Lenis on) where the profile has a mouse; touch profiles run lite (no Lenis to drop).
+    const full = !touch(profile);
+    const { ctx, page, gate } = await bench(base, profile, '', full ? 'full' : 'lite');
+    const lenisBefore = full ? await page.waitForFunction(() => document.documentElement.classList.contains('lenis'), null, { polling: 100, timeout: 8000 }).then(() => true, () => false) : null;
+    const r = await page.evaluate(async () => {
+      const s = window.__stage;
+      const e = s.gl.entity('fx-1');
+      const make = (id, throwOnce) => {
+        let done = false;
+        let threw = false;
+        return {
+          id,
+          get active() { return !done; },
+          finish() {
+            if (throwOnce && !threw) { threw = true; throw new Error('self-break: timeline finish threw'); }
+            done = true;
+          },
+        };
+      };
+      const A = make('self-break:A', true);
+      const B = make('self-break:B', false);
+      const queue = [A, B];
+      e.startSpin = () => queue.shift();
+      s.fixtures.spin(0, 'fx-1');
+      s.fixtures.spin(0, 'fx-1');
+      const h0 = s.stats.hookErrors;
+      await new Promise((res) => requestAnimationFrame(res));
+      let threwToCaller = null;
+      try {
+        s.setMotion('reduced');
+      } catch (err) {
+        threwToCaller = String(err).slice(0, 120);
+      }
+      const sameTask = B.active;
+      await new Promise((res) => requestAnimationFrame(res));
+      return { bActiveSameTask: sameTask, bActiveNextFrame: B.active, threwToCaller, hookErrors: s.stats.hookErrors - h0, motion: s.motion, lenisAfter: document.documentElement.classList.contains('lenis') };
+    });
+    const after = await settles(page);
+    const c = verdict(gate, /self-break: timeline finish threw/);
+    await ctx.close();
+    return {
+      full, lenisBefore, ...r, after, ...c,
+      pass: !r.bActiveSameTask && !r.bActiveNextFrame && r.threwToCaller === null && r.hookErrors === 1 && r.motion === 'reduced' && (!full || (lenisBefore && !r.lenisAfter)) && after.ok && c.planted >= 1 && c.ok,
+    };
+  },
+  async timelineThrow(base, profile) {
+    const { ctx, page, gate } = await bench(base, profile);
+    await page.evaluate(() => document.querySelector('[data-gl-id="fixture-cube"]').scrollIntoView({ block: 'center' }));
+    await waitSettled(page, SETTLE_MS);
+    const r = await page.evaluate(async () => {
+      const s = window.__stage;
+      const e = s.gl.entity('fixture-cube');
+      let spin = 0;
+      let throws = 0;
+      let armed = true;
+      const at = performance.now() + 400;
+      // The spin tween writes entity.spin from its `active` getter on every frame: from 400 ms on, each write throws.
+      Object.defineProperty(e, 'spin', {
+        configurable: true,
+        get: () => spin,
+        set: (v) => {
+          if (armed && performance.now() > at) { throws++; throw new Error('self-break: timeline update threw'); }
+          spin = v;
+        },
+      });
+      const h0 = s.stats.hookErrors;
+      s.fixtures.spin(1200);
+      await new Promise((res) => setTimeout(res, 2600));
+      armed = false;
+      return { throws, hookErrors: s.stats.hookErrors - h0, spinning: s.fixtures.spinning() };
+    });
+    const after = await settles(page);
+    await page.evaluate(() => document.querySelector('[data-gl-id="fx-1"]').scrollIntoView({ block: 'center' }));
+    await waitSettled(page, SETTLE_MS);
+    const got = await tintAndRest(page, [30, 200, 30]);
+    const c = verdict(gate, /self-break: timeline update threw/);
+    await ctx.close();
+    // Its `active` throws, then the finish that ends it throws once more; never one error per frame.
+    return { ...r, after, got, ...c, pass: r.throws >= 1 && r.throws <= 3 && r.hookErrors === r.throws && !r.spinning && after.ok && near(got, [30, 200, 30]) && c.planted >= 1 && c.ok };
+  },
+  async lenisRace(base, profile) {
+    // Lenis's chunk held 2.5 s in flight (network latency); reduced motion or a drop to lite or static lands inside the
+    // hold. When the chunk arrives Lenis must stay off (W-D014: full tier with motion full only). The control changes
+    // nothing and Lenis comes on.
+    const LENIS = /\/_astro\/lenis\.[\w-]+\.js$/;
+    // Playwright's WebKit routing logs a failed blob: request and "preloaded but not used" warnings (Breaker 2.3): those
+    // are the probe's, expected there and nowhere else.
+    const routeNoise = PROFILES[profile].browser === 'webkit' ? /preload|blob:/i : null;
+    const rows = [];
+    for (const change of [null, 'reduced', 'lite', 'static']) {
+      const ctx = await newContext(profile);
+      let held = 0;
+      await ctx.route(LENIS, async (route) => {
+        held++;
+        await sleep(2500);
+        await route.continue();
+      });
+      const page = await ctx.newPage();
+      const gate = consoleGate(page);
+      const arrived = page.waitForResponse(LENIS, { timeout: 20000 }).then(() => true, () => false);
+      await page.goto(`${base}/bench/?tier=full`, { waitUntil: 'load' });
+      await page.waitForFunction(() => window.__stage?.glState === 'ready', null, { polling: 50, timeout: 20000 });
+      await sleep(300);
+      if (change === 'reduced') await page.emulateMedia({ reducedMotion: 'reduce' });
+      else if (change) await page.evaluate((t) => window.__stage.demote(t, 'self-break'), change);
+      const got = await arrived;
+      await sleep(500);
+      const s = await page.evaluate(() => ({ lenis: document.documentElement.classList.contains('lenis'), tier: window.__stage.tier, motion: window.__stage.motion }));
+      const c = verdict(gate, routeNoise);
+      await ctx.close();
+      rows.push({ change, held, arrived: got, ...s, console: c, ok: held >= 1 && got && (change === null ? s.lenis : !s.lenis) && c.ok });
+    }
+    return { rows, pass: rows.every((r) => r.ok) };
+  },
+  async entityThrow(base, profile) {
+    // (a) snap: fx-1's snap throws once; fx-2 moves until its snap runs. Reduced motion must still snap fx-2.
+    const A = await bench(base, profile);
+    const snap = await A.page.evaluate(async () => {
+      const s = window.__stage;
+      const e1 = s.gl.entity('fx-1');
+      const e2 = s.gl.entity('fx-2');
+      let thrown = 0;
+      let snaps2 = 0;
+      let moving2 = true;
+      e1.snap = () => { if (!thrown++) throw new Error('self-break: entity snap threw'); };
+      e2.step = () => moving2;
+      e2.snap = () => { snaps2++; moving2 = false; };
+      s.invalidate();
+      await new Promise((res) => setTimeout(res, 200));
+      let threwToCaller = null;
+      try {
+        s.setMotion('reduced');
+      } catch (err) {
+        threwToCaller = String(err).slice(0, 120);
+      }
+      const h = s.stats.hookErrors;
+      await new Promise((res) => setTimeout(res, 400));
+      return { thrown, snaps2, moving2, threwToCaller, hookErrors: h };
+    });
+    snap.after = await settles(A.page);
+    snap.console = verdict(A.gate, /self-break: entity snap threw/);
+    await A.ctx.close();
+    snap.ok = snap.thrown === 1 && snap.snaps2 === 1 && !snap.moving2 && snap.threwToCaller === null && snap.after.ok && snap.console.planted >= 1 && snap.console.ok;
+    // (b) unbind: fx-1's unbind throws once on a Swup visit to /bench/swap/. The old slots must be forgotten and the
+    // persistent cube must rebind to the new page's slot (no duplicate-id warning, the cube drawn).
+    const B = await bench(base, profile);
+    await B.page.evaluate(() => {
+      const e1 = window.__stage.gl.entity('fx-1');
+      const orig = e1.unbind.bind(e1);
+      let n = 0;
+      e1.unbind = () => { if (!n++) throw new Error('self-break: entity unbind threw'); return orig(); };
+    });
+    await press(B.page, profile, '.bench-head a[href="/bench/swap/"]');
+    const arrived = await B.page.waitForFunction(() => location.pathname === '/bench/swap/' && !document.documentElement.hasAttribute('aria-busy'), null, { polling: 50, timeout: 10000 }).then(() => true, () => false);
+    await B.page.evaluate(() => document.querySelector('[data-gl-id="fixture-cube"]').scrollIntoView({ block: 'center' }));
+    const unbindAfter = await settles(B.page);
+    const unbind = await B.page.evaluate(() => ({ slots: window.__stage.slots().map((x) => x.id).sort(), cube: window.__stage.bounds('fixture-cube')?.gl ?? null, entities: window.__stage.gl.info().entities, hookErrors: window.__stage.stats.hookErrors }));
+    Object.assign(unbind, { arrived, after: unbindAfter, console: verdict(B.gate, /self-break: entity unbind threw/) });
+    await B.ctx.close();
+    unbind.ok = unbind.arrived && unbind.slots.join(',') === 'fixture-cube,fx-7,fx-8,fx-9' && Boolean(unbind.cube) && unbind.entities === 4 && unbind.after.ok && unbind.console.planted >= 1 && unbind.console.ok;
+    // (c) restore: fx-1's restore throws once after a context loss. fx-2 (recoloured first) must be drawn again with no
+    // input: the other entities still restore, and the stage still resizes and redraws.
+    const C = await bench(base, profile);
+    await C.page.evaluate(() => document.querySelector('[data-gl-id="fx-2"]').scrollIntoView({ block: 'center' }));
+    await waitSettled(C.page, SETTLE_MS);
+    const before = await tintAndRest(C.page, [30, 30, 250], 'fx-2');
+    await C.page.evaluate(() => {
+      const e1 = window.__stage.gl.entity('fx-1');
+      const orig = e1.restore.bind(e1);
+      let n = 0;
+      e1.restore = () => { if (!n++) throw new Error('self-break: entity restore threw'); return orig(); };
+    });
+    const restore = await C.page.evaluate(lossAndRestore, {});
+    restore.after = await settles(C.page);
+    restore.redrawn = await colourOf(C.page, 'fx-2');
+    restore.before = before;
+    restore.console = verdict(C.gate, /self-break: entity restore threw/);
+    await C.ctx.close();
+    restore.ok = restore.lostEvent && restore.restoredEvent && near(before, [30, 30, 250]) && near(restore.redrawn, [30, 30, 250]) && restore.after.ok && restore.console.planted >= 1 && restore.console.ok;
+    return { snap, unbind, restore, pass: snap.ok && unbind.ok && restore.ok };
   },
   async throw(base, profile) {
     const { ctx, page, gate } = await bench(base, profile);

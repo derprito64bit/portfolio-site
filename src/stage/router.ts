@@ -12,7 +12,7 @@ import { isReduced } from './motion.ts';
 import { scan, unscan } from './slots.ts';
 import { getLenis, scrollToElement, scrollToY } from './scroll.ts';
 import { invalidate, markDirty } from './ticker.ts';
-import { stats } from './state.ts';
+import { guard, stats } from './state.ts';
 
 const html = document.documentElement;
 /** Fork-owned paths (/manor/, /arcade/, /play/: publish.ps1 reserved) are always full loads, never Swup visits. */
@@ -97,12 +97,13 @@ export function bootRouter(): Swup {
     if (visit.to.hash) visit.a11y.focus = `[id="${CSS.escape(decodeURIComponent(visit.to.hash.slice(1)))}"]`;
     if (visit.history.popstate) visit.a11y.focus = false; // handled after the swap, below
     getLenis()?.stop();
-    for (const fn of startListeners) fn(visit);
+    // Each crew's hook on its own (guard): one that throws must not stop the others or the visit.
+    for (const fn of startListeners) guard(() => fn(visit), undefined);
     invalidate();
   });
 
   swup.hooks.before('content:replace', (visit) => {
-    for (const fn of beforeReplace) fn(visit);
+    for (const fn of beforeReplace) guard(() => fn(visit), undefined);
     unscan();
   });
 
@@ -113,7 +114,7 @@ export function bootRouter(): Swup {
     scan(document.getElementById('swup') ?? document);
     getLenis()?.resize();
     if (visit.history.popstate) scrollToY(Number(entry().ionScroll) || 0);
-    for (const fn of afterReplace) fn(visit);
+    for (const fn of afterReplace) guard(() => fn(visit), undefined);
     markDirty();
   });
 

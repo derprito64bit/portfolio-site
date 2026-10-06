@@ -20,10 +20,13 @@ if (flags.debug) html.dataset.debug = flags.debug;
 
 // ---------------------------------------------------------------- motion axis: applied live (W-D017)
 let lenisMod: typeof import('./lenis.ts') | null = null;
+let lenisLoad: Promise<typeof import('./lenis.ts')> | null = null;
+const wantLenis = (): boolean => getTier() === 'full' && !isReduced() && glState() === 'ready';
 async function syncLenis(): Promise<void> {
-  const want = getTier() === 'full' && !isReduced() && glState() === 'ready';
-  if (want && !lenisMod) lenisMod = await import('./lenis.ts');
-  if (want) lenisMod?.enableLenis();
+  if (wantLenis() && !lenisMod) lenisMod = await (lenisLoad ??= import('./lenis.ts'));
+  // Read again after the await (Breaker 2.3 #1): a motion or tier change while the chunk loaded wins, so Lenis never
+  // comes on under reduced motion, lite or static. enableLenis checks both axes again too (W-D014).
+  if (wantLenis()) lenisMod?.enableLenis();
   else lenisMod?.disableLenis();
 }
 onMotion((m) => {
@@ -123,6 +126,13 @@ const hooks = {
   invalidate,
   /** Layout moved a slot without resizing it: re-measure every slot on the next frame, then render (#54). */
   markDirty,
+  /**
+   * GL borrows a slot's pixels (take: .is-gl hides its poster image) and hands them back (give), for an effect impl
+   * registered through registerEffect that serves its own ids (#54 item 2, #14 ruling 2): take, then give, without
+   * importing src/stage.
+   */
+  take,
+  give,
   raise,
   lower,
   demote,

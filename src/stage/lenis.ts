@@ -4,6 +4,8 @@
 import Lenis from 'lenis';
 import { onActive, onBefore, wake } from './ticker.ts';
 import { setLenis } from './scroll.ts';
+import { getTier } from './tier.ts';
+import { isReduced } from './motion.ts';
 
 let lenis: Lenis | null = null;
 let offBefore: (() => void) | null = null;
@@ -24,7 +26,8 @@ function step(time: number): void {
 }
 
 export function enableLenis(): void {
-  if (lenis) return;
+  // W-D014: the full tier with motion full only, checked here too, so a caller holding a stale answer cannot turn it on.
+  if (lenis || getTier() !== 'full' || isReduced()) return;
   lenis = new Lenis({ autoRaf: false, lerp: 0.15, smoothWheel: true, syncTouch: false, anchors: false, stopInertiaOnNavigate: true });
   offBefore = onBefore(step);
   offActive = onActive(() => Boolean(lenis?.isScrolling));

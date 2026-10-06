@@ -168,7 +168,7 @@ function updatePageCamera(sy: number, anchor: number): void {
 }
 
 function hasContent(): boolean {
-  for (const e of entities.values()) if (e.visible()) return true;
+  for (const e of entities.values()) if (guard(() => e.visible(), false)) return true;
   for (const v of views) if (v.visible && getSlot(v.slotId)?.near) return true;
   return false;
 }
@@ -255,24 +255,29 @@ function render(sy: number, tailFrame = false): void {
 }
 
 // ---------------------------------------------------------------- entities
+// Every call into a crew's entity or factory runs under guard(), one entity at a time (Breaker 2.2 #3): one that
+// throws is reported and counted in stats.hookErrors, and the stage goes on with the others (bind the rest of the
+// slots, unbind and forget the old page's, restore and redraw after a context loss, snap under reduced motion).
 function bindSlot(s: Slot): void {
   let e = entities.get(s.id);
   if (!e) {
-    const f = factories.find((x) => x.match(s));
+    const f = factories.find((x) => guard(() => x.match(s), false));
     if (!f) return;
-    e = f.create(s, api);
+    e = guard(() => f.create(s, api), undefined as Entity | undefined);
+    if (!e) return;
     entities.set(s.id, e);
   }
-  e.bind(s);
+  const bound = e;
+  guard(() => bound.bind(s), undefined);
   invalidate();
 }
 function unbindSlots(gone: Slot[]): void {
   for (const s of gone) {
     const e = entities.get(s.id);
     if (!e) continue;
-    e.unbind();
-    if (!e.persistent) {
-      e.dispose();
+    guard(() => e.unbind(), undefined);
+    if (!guard(() => e.persistent, false)) {
+      guard(() => e.dispose(), undefined);
       entities.delete(s.id);
     }
   }
@@ -295,7 +300,7 @@ function onRestored(): void {
   lost = false;
   presentedClear = false;
   stats.restores++;
-  for (const e of entities.values()) e.restore?.();
+  for (const e of entities.values()) guard(() => e.restore?.(), undefined);
   resize();
   markDirty();
 }
@@ -305,7 +310,7 @@ function teardown(): void {
   dead = true;
   giveAll();
   setRender(null);
-  for (const e of entities.values()) e.dispose();
+  for (const e of entities.values()) guard(() => e.dispose(), undefined);
   entities.clear();
   views.clear();
   renderer?.dispose();
@@ -331,7 +336,10 @@ function wireAnime(): void {
 }
 /** Reduced motion: every anime timeline jumps to its end. */
 function completeAnime(): void {
-  for (let t = animeHead(); t; t = t._next) t.complete?.();
+  for (let t = animeHead(); t; t = t._next) {
+    const tick = t;
+    guard(() => tick.complete?.(), undefined);
+  }
 }
 
 // ---------------------------------------------------------------- the API crews use
@@ -445,7 +453,7 @@ export async function boot(): Promise<GLApi | null> {
   onMotion((m) => {
     if (m !== 'reduced') return;
     completeAnime();
-    for (const e of entities.values()) e.snap?.();
+    for (const e of entities.values()) guard(() => e.snap?.(), undefined);
   });
   addEventListener('resize', resize, { passive: true });
   const watchDpr = () => {
@@ -463,6 +471,11 @@ export async function boot(): Promise<GLApi | null> {
   // Test fixtures and the GPU bench load only on the pages that ask for them (/bench/).
   if (document.querySelector('[data-gl-fixture]') || flags.debug) (await import('./fixtures.ts')).install(api);
   if (document.querySelector('[data-bench]')) (await import('./bench.ts')).install(api);
+  // A drop to static while those chunks loaded has already torn the stage down (onTier): bind nothing, and say so.
+  if (dead || getTier() === 'static') {
+    teardown();
+    return null;
+  }
   for (const s of allSlots()) bindSlot(s);
 
   mark('stage:tier', `${getTier()}:${tierReason()}`);
