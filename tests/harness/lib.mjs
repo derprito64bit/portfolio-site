@@ -167,16 +167,37 @@ export function validateAllowEntry(a, i = 0) {
 }
 
 /**
- * Attach the console gate to a page. Collects every console level, pageerror, requestfailed and every response of 400
- * or more. verdict() fails on errors, page errors, failed requests, unexpected statuses, any message with a CONSOLE_RE
- * word (whatever the allowlist says: W-D030), and warnings that are not wholly allowlisted: a warning passes only when
- * every line of it matches an entry, so a multi-line log (three logs a program's whole info log in one warning) cannot
- * carry another warning through on an allowed line. expectStatus lets a test accept a known status for a URL (the 404
- * route itself). `allow` replaces the allowlist (tests of the gate itself).
+ * The console types that are error level (W-D030): Playwright reports a failed console.assert as 'assert', which
+ * DevTools and Web Inspector both show as an error.
+ */
+export const ERROR_LEVELS = new Set(['error', 'assert']);
+/**
+ * The browser's echo of a 4xx/5xx response (Chromium and WebKit word it the same), as the WHOLE message: any other text
+ * around it is judged like any other message.
+ */
+export const RESPONSE_ECHO_RE = /^Failed to load resource: the server responded with a status of (\d{3}) \([^()\r\n]*\)$/;
+
+/**
+ * Attach the console gate to a page. Collects every console level (with the message's source URL), pageerror,
+ * requestfailed and every response of 400 or more. verdict() fails on error-level messages (ERROR_LEVELS), page errors,
+ * failed requests, unexpected statuses, any message with a CONSOLE_RE word (whatever the allowlist says: W-D030), and
+ * warnings that are not wholly allowlisted: a warning passes only when every line of it matches an entry, so a
+ * multi-line log (three logs a program's whole info log in one warning) cannot carry another warning through on an
+ * allowed line. expectStatus lets a test accept a known status for a URL (the 404 route itself); the browser's echo of
+ * that response is skipped only when it is the whole message, its status is the expected one and its source URL is a
+ * response that status was expected for. `allow` replaces the allowlist (tests of the gate itself).
  */
 export function consoleGate(page, { expectStatus = [], allow = loadAllowlist() } = {}) {
   const events = [];
-  page.on('console', (m) => events.push({ channel: 'console', level: m.type(), text: m.text() }));
+  page.on('console', (m) => {
+    let url = '';
+    try {
+      url = m.location?.()?.url ?? '';
+    } catch {
+      url = '';
+    }
+    events.push({ channel: 'console', level: m.type(), text: m.text(), url });
+  });
   page.on('pageerror', (e) => events.push({ channel: 'pageerror', level: 'error', text: String(e?.stack || e) }));
   page.on('requestfailed', (r) => {
     const why = r.failure()?.errorText ?? '';
@@ -186,24 +207,27 @@ export function consoleGate(page, { expectStatus = [], allow = loadAllowlist() }
   page.on('response', (r) => {
     if (r.status() < 400) return;
     const expected = expectStatus.some((e) => e.status === r.status() && e.url.test(r.url()));
-    events.push({ channel: 'response', level: expected ? 'info' : 'error', text: `${r.status()} ${r.url()}`, expected });
+    events.push({ channel: 'response', level: expected ? 'info' : 'error', text: `${r.status()} ${r.url()}`, status: r.status(), url: r.url(), expected });
   });
   return {
     events,
     verdict() {
       const failures = [];
-      const expectedStatuses = new Set(events.filter((e) => e.channel === 'response' && e.expected).map((e) => Number(e.text.split(' ')[0])));
+      const expectedResponses = events.filter((e) => e.channel === 'response' && e.expected);
+      /** The echo of an expected response: the whole message, that status, and that response's URL as its source. */
+      const expectedEcho = (e) => {
+        const m = RESPONSE_ECHO_RE.exec(e.text);
+        return Boolean(m) && e.url !== '' && expectedResponses.some((r) => r.status === Number(m[1]) && r.url === e.url);
+      };
       const wholly = (text) => {
         const lines = messageLines(text);
         return lines.length > 0 && lines.every((l) => allow.some((a) => a.re.test(l)));
       };
       for (const e of events) {
         if (e.channel === 'response' && e.expected) continue;
-        // Chrome echoes every 4xx response to the console; an expected status covers its echo.
-        const echo = e.channel === 'console' && e.text.match(/Failed to load resource: the server responded with a status of (\d+)/);
-        if (echo && expectedStatuses.has(Number(echo[1]))) continue;
+        if (e.channel === 'console' && expectedEcho(e)) continue;
         if (e.channel !== 'console') failures.push({ ...e, why: e.channel });
-        else if (e.level === 'error') failures.push({ ...e, why: 'error level' });
+        else if (ERROR_LEVELS.has(e.level)) failures.push({ ...e, why: 'error level' });
         else if (CONSOLE_RE.test(e.text)) failures.push({ ...e, why: 'W-D030 failure word' });
         else if ((e.level === 'warning' || e.level === 'warn') && !wholly(e.text)) failures.push({ ...e, why: 'warning not wholly allowlisted' });
       }

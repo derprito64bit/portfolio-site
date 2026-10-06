@@ -19,12 +19,19 @@ const X4122 = 'THREE.WebGLProgram: Program Info Log: (210,81-129): warning X4122
 const X4122_LINE = '(211,9-60): warning X4122: sum of 0.5 and -1.2e-017 cannot be represented accurately in double precision';
 const TODAY = '2026-10-05';
 
-/** A stand-in page: emits console messages the way Playwright's page does. */
+/**
+ * A stand-in page: emits console messages ([type, text, sourceUrl]) and responses ({ response: { status, url } }) the
+ * way Playwright's page does.
+ */
 function fakePage(messages) {
   const page = new EventEmitter();
   return {
     page,
-    flush: () => messages.forEach(([type, text]) => page.emit('console', { type: () => type, text: () => text })),
+    flush: () => messages.forEach((m) => {
+      if (m.response) return page.emit('response', { status: () => m.response.status, url: () => m.response.url });
+      const [type, text, url = ''] = m;
+      return page.emit('console', { type: () => type, text: () => text, location: () => ({ url, lineNumber: 0, columnNumber: 0 }) });
+    }),
   };
 }
 function verdict(messages, opts) {
@@ -138,6 +145,49 @@ test('negative: an example that the regex does not match, or that holds a failur
   assert.throws(() => planted([entry({ example: 'warning X9998: planted note' })]), /example/);
   assert.throws(() => planted([entry({ regex: 'warning X9999: planted note(?: failed)?', example: 'warning X9999: planted note failed' })]), /failure word/);
 });
+// ---- the error level and the response echo (Breaker 2.3 #2, round-2 must-fix console-gate-error-level)
+const MISSING = 'http://127.0.0.1:4321/work/no-such-print/';
+const ECHO = (status = 404, words = 'Not Found') => `Failed to load resource: the server responded with a status of ${status} (${words})`;
+const EXPECT_404 = { expectStatus: [{ status: 404, url: /\/work\/no-such-print\/$/ }] };
+const missingResponse = { response: { status: 404, url: MISSING } };
+
+test('negative: a failed console.assert (type assert) fails the gate, as an error does', () => {
+  assert.equal(verdict([['assert', '[stage] canvas drifted 3 px off its slot']]).pass, false);
+  assert.equal(verdict([['assert', 'Assertion failed: console.assert']]).pass, false);
+  assert.equal(verdict([['error', '[stage] canvas drifted 3 px off its slot']]).pass, false);
+});
+
+test('control: the echo of an expected 404, as the whole message from that URL, is skipped', () => {
+  assert.equal(verdict([missingResponse, ['error', ECHO(), MISSING]], EXPECT_404).pass, true);
+});
+
+const echoPlus = {
+  'the echo, then Uncaught TypeError on a new line': `${ECHO()}\nUncaught TypeError: Cannot read properties of null (reading 'width')`,
+  'the echo, then CONTEXT_LOST_WEBGL': `${ECHO()}; CONTEXT_LOST_WEBGL`,
+  'a GL boot failure quoting the echo': `[stage] GL boot failed: ${ECHO()}; CONTEXT_LOST_WEBGL`,
+  'the echo with trailing text': `${ECHO()} and then the stage drifted`,
+};
+for (const [name, text] of Object.entries(echoPlus)) {
+  test(`negative: ${name} fails, even from the expected URL`, () => {
+    assert.equal(verdict([missingResponse, ['error', text, MISSING]], EXPECT_404).pass, false);
+    assert.equal(verdict([missingResponse, ['log', text, MISSING]], EXPECT_404).pass, false);
+  });
+}
+
+test('negative: the echo fails when its source is not a URL whose status was expected', () => {
+  const chunk = 'http://127.0.0.1:4321/_astro/gl.DOF3o0XO.js';
+  // A chunk's 404 while the page's own 404 was expected: same status, another URL.
+  assert.equal(verdict([missingResponse, { response: { status: 404, url: chunk } }, ['error', ECHO(), chunk]], EXPECT_404).pass, false);
+  // No source URL at all.
+  assert.equal(verdict([missingResponse, ['error', ECHO()]], EXPECT_404).pass, false);
+  // The expected URL, but no such response was seen.
+  assert.equal(verdict([['error', ECHO(), MISSING]], EXPECT_404).pass, false);
+  // The expected URL, another status.
+  assert.equal(verdict([missingResponse, ['error', ECHO(500, 'Internal Server Error'), MISSING]], EXPECT_404).pass, false);
+  // Nothing expected.
+  assert.equal(verdict([missingResponse, ['error', ECHO(), MISSING]]).pass, false);
+});
+
 test('the shipped file loads (every entry well formed) on today and on its last day', () => {
   assert.ok(loadAllowlist(TODAY).length >= 1);
   assert.ok(loadAllowlist('2027-01-01').length >= 1);
