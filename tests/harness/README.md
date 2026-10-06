@@ -9,6 +9,14 @@ built `dist/` served by `scripts/serve-dist.mjs` (gzip, Pages rules), and prints
 - **GPU.** Numbers that depend on the GPU count only on a real renderer. `SOFTWARE_RENDERER` in `lib.mjs` is the
   regex that makes a run INVALID. Budgets compare only on the reference host (RX 6700 XT).
 - **CI.** It runs the GPU-free instruments: content, spring, contrast, `flash --self-test` and `console --fixtures-only`.
+- **The console gate** (`consoleGate` in `lib.mjs`, W-D030). Error-level messages (`error` and `assert`), page errors,
+  failed requests, unexpected statuses and any message with a W-D030 word fail. A warning passes only when every line
+  of it passes an entry of `console-allow.json`. The browser's echo of a 4xx response is skipped only when it is the
+  whole message and comes from a URL whose status the test expected.
+- **The allowlist is reviewed.** Every new entry in `console-allow.json` needs a regex, a reason, who added it, an
+  expiry, a literal (fixed text every allowed line must hold, at least 10 characters with a digit, such as the
+  diagnostic code) and one real example. `loadAllowlist` rejects a malformed or broad entry, but it cannot judge
+  intent: an entry lands only in a reviewed PR whose gate re-reads it, and its reason names the request or ruling.
 - **Profiles and modes.** These are in `lib.mjs`: `PROFILES` (D1, D2, D3, T1, T2, P1, P2, WK-P2, WK-T2, S1, S2, R1,
   Z-D2, Z-P2) and `MODES` (auto, static, reduced). `expectedTier(profile)` gives the tier auto mode must report:
   mouse full (or a logged probe demotion), touch lite.

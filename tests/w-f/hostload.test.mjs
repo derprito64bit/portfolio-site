@@ -167,7 +167,10 @@ test('(e) planted: a busy precheck waits while a retry fits in the wait, then bl
   assert.equal(lib.precheckNext({ exitCode: 2, verdict: null }, 0, wait), 'blocked');
 });
 
-test('(a)-(e) wiring: crew.mjs lighthouse uses these rules, and run.mjs passes no wait of its own', () => {
+// A text check only: that crew.mjs names these rules and run.mjs adds no wait. What crew.mjs does with their results
+// is tested by running it: tests/w-f/crew-lighthouse.test.mjs (crew.mjs --stub), with its mutants in
+// tests/w-f/crew-lighthouse.mutants.mjs (round-2 should-fix S2, Breaker 2.1 #2).
+test('(a)-(e) wiring (text): crew.mjs lighthouse names these rules, and run.mjs passes no wait of its own', () => {
   const crew = readFileSync(new URL('../../scripts/crew.mjs', import.meta.url), 'utf8');
   for (const fn of ['lighthouseBudget(', 'r5Grow(', 'lighthouseSetSummary(', 'precheckItems(', 'precheckNext(', "precheckWaitMin(o['precheck-wait']"]) assert.ok(crew.includes(`lib.${fn}`), `crew.mjs calls lib.${fn}`);
   assert.doesNotMatch(crew, /precheck-wait'\]\) \|\| 0/);

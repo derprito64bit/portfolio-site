@@ -28,6 +28,8 @@ const STEPS = [
   ['selfbreak', ...node('tests/w-f/selfbreak.mjs', '--out', out('selfbreak.json'))],
   // The self-break cases' own negative controls: each must fail on the plant that breaks what it claims.
   ['selfbreak-plants', ...node('tests/w-f/selfbreak-plants.mjs', '--out', out('selfbreak-plants.json'))],
+  // crew.mjs lighthouse's own negative control: each mutant of its set loop must fail crew-lighthouse.test.mjs.
+  ['crew-mutants', ...node('tests/w-f/crew-lighthouse.mutants.mjs', '--out', out('crew-lighthouse-mutants.json'))],
   ['fonts', ...node('tests/w-f/fonts.mjs', '--out', out('fonts.json'))],
   ['negatives', ...node('tests/w-f/negatives.mjs', '--out', out('negatives.json'))],
   ['h-console', ...node('tests/harness/console/run.mjs', '--out', out('console.json'))],

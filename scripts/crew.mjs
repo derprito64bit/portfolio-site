@@ -18,6 +18,7 @@
 // Options: --routes /,/work/project-01/,/404.html  --profiles D1,D2,...  --modes auto,static,reduced
 //          --crew W-F  --wave wave3a  --role crew|gate  --out <dir>
 //          lighthouse: --runs n  --budgets <budgets.md>  --precheck-wait <min>  --plant bench-low:<n|all>,watch-flagged:<n|all>,a11y-low:<n|all>
+//                      --stub <file> (tests only: planted hostload and Lighthouse results, see STUB below)
 // Evidence goes to ../portfolio-evidence/<wave>/<crew>/<sha7>/<role>/<command>/ with manifest.json. Any failed item
 // makes the command exit 1; otherwise a blocked (host) item makes it exit 75.
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
@@ -323,20 +324,41 @@ const planted = (kind, n) => {
   return s !== null && (s === 'all' || s.split('+').map(Number).includes(n));
 };
 
+/**
+ * --stub <file> (tests only, never a measurement): the hostload precheck and -Watch results and the Lighthouse reports
+ * come from a JSON file instead of PowerShell and Lighthouse ({ prechecks: [{exitCode, json}], runs: { mobile: [{lhr,
+ * watch}], desktop: [...] } }, each list taken in order, its last entry repeated), and R1's wait runs on a virtual
+ * clock. Everything else is this command as it runs for real, so tests/w-f/hostload.test.mjs drives the whole set
+ * loop (R1, R3, R5, the summary, the manifest items and the exit code) with planted runs (round-2 should-fix S2).
+ */
+const STUB = o.stub ? JSON.parse(readFileSync(resolve(String(o.stub)), 'utf8')) : null;
+const stubNext = (list) => (list.length > 1 ? list.shift() : list[0]);
+let virtualMs = 0;
+const clock = STUB ? { now: () => virtualMs, sleep: async (ms) => { virtualMs += ms; } } : { now: () => Date.now(), sleep: (ms) => new Promise((r) => setTimeout(r, ms)) };
+
 /** One Lighthouse run in a watched worker. Resolves with its report fields, host load and R2 verdict. */
 async function lighthouseRun(lib, dir, b, route, ff, n) {
   const base = `${slug(route)}-${ff}-${n}`;
   const file = join(dir, `${base}.json`);
   const watchFile = join(dir, `hostload-${base}-watch.json`);
-  const child = spawn(process.execPath, [join(ROOT, 'scripts/crew.mjs'), 'lh-run', '--route', route, '--ff', ff, '--file', file, ...(o.budgets ? ['--budgets', String(o.budgets)] : [])], { cwd: ROOT, stdio: ['pipe', 'ignore', 'pipe'] });
-  let stderr = '';
-  child.stderr.on('data', (d) => (stderr += d));
-  const exited = new Promise((res) => child.on('close', res));
-  const watch = lib.startHostload(['-Watch', child.pid, '-Out', watchFile, '-MaxMinutes', 15], { budgetsFile: o.budgets ? resolve(String(o.budgets)) : undefined });
-  await lib.sleep(watch.child ? 3000 : 0); // hostload's first sample lands within its 5 s head-gap bound
-  child.stdin.end('go\n');
-  const [status, w] = await Promise.all([exited, watch.done]);
-  if (status !== 0 || !existsSync(file)) throw new Error(`lighthouse failed (run ${n}): ${stderr.slice(-400)}`);
+  let w;
+  if (STUB) {
+    const s = stubNext(STUB.runs[ff]);
+    writeFileSync(file, JSON.stringify(s.lhr));
+    w = s.watch ?? { exitCode: null, json: null };
+    if (w.json) writeFileSync(watchFile, JSON.stringify(w.json));
+  } else {
+    const child = spawn(process.execPath, [join(ROOT, 'scripts/crew.mjs'), 'lh-run', '--route', route, '--ff', ff, '--file', file, ...(o.budgets ? ['--budgets', String(o.budgets)] : [])], { cwd: ROOT, stdio: ['pipe', 'ignore', 'pipe'] });
+    let stderr = '';
+    child.stderr.on('data', (d) => (stderr += d));
+    const exited = new Promise((res) => child.on('close', res));
+    const watch = lib.startHostload(['-Watch', child.pid, '-Out', watchFile, '-MaxMinutes', 15], { budgetsFile: o.budgets ? resolve(String(o.budgets)) : undefined });
+    await lib.sleep(watch.child ? 3000 : 0); // hostload's first sample lands within its 5 s head-gap bound
+    child.stdin.end('go\n');
+    const [status, done] = await Promise.all([exited, watch.done]);
+    w = done;
+    if (status !== 0 || !existsSync(file)) throw new Error(`lighthouse failed (run ${n}): ${stderr.slice(-400)}`);
+  }
   const lhr = JSON.parse(readFileSync(file, 'utf8'));
   let benchmarkIndex = lhr.environment?.benchmarkIndex ?? null;
   const plantedFields = [];
@@ -394,16 +416,23 @@ async function lighthouseRun(lib, dir, b, route, ff, n) {
 const PRECHECK_RETRY_MS = 60000;
 async function precheck(lib, dir, name) {
   const waitMs = lib.precheckWaitMin(o['precheck-wait'], lib.readBudgets(o.budgets ? resolve(String(o.budgets)) : undefined).host) * 60000;
-  const t0 = Date.now();
+  const t0 = clock.now();
   const tries = [];
   for (let k = 0; ; k++) {
     const file = join(dir, `hostload-${name}${k ? `-retry${k}` : ''}.json`);
-    const r = await lib.startHostload(['-Out', file], { budgetsFile: o.budgets ? resolve(String(o.budgets)) : undefined }).done;
+    let r;
+    if (STUB) {
+      const s = stubNext(STUB.prechecks);
+      writeFileSync(file, JSON.stringify(s.json ?? {}));
+      r = { exitCode: s.exitCode, json: s.json ?? null, stderr: s.stderr ?? '', file };
+    } else {
+      r = await lib.startHostload(['-Out', file], { budgetsFile: o.budgets ? resolve(String(o.budgets)) : undefined }).done;
+    }
     tries.push({ file: r.file ? r.file.slice(dir.length + 1) : null, at: new Date().toISOString(), exitCode: r.exitCode, verdict: r.json?.verdict ?? null, reasons: r.json?.reasons ?? (r.stderr ? [r.stderr] : []), cpuBusyPct: r.json?.cpuBusyPct?.median ?? null, gpu3dPct: r.json?.gpu3dPct?.median ?? null });
     // 0 clear; 75 busy, flagged, incomplete or no-data: wait; uncalibrated, or any other exit (a broken tool): blocked.
-    const next = lib.precheckNext({ exitCode: r.exitCode, verdict: r.json?.verdict ?? null }, Date.now() - t0, waitMs, PRECHECK_RETRY_MS);
-    if (next !== 'wait') return { ok: next === 'run', last: tries[tries.length - 1], tries, waitedMin: Math.round((Date.now() - t0) / 6000) / 10 };
-    await lib.sleep(PRECHECK_RETRY_MS);
+    const next = lib.precheckNext({ exitCode: r.exitCode, verdict: r.json?.verdict ?? null }, clock.now() - t0, waitMs, PRECHECK_RETRY_MS);
+    if (next !== 'wait') return { ok: next === 'run', last: tries[tries.length - 1], tries, waitedMin: Math.round((clock.now() - t0) / 6000) / 10 };
+    await clock.sleep(PRECHECK_RETRY_MS);
   }
 }
 
@@ -503,7 +532,8 @@ async function finish(lib, dir, items, name, hostLoad = {}) {
   const failed = items.filter((i) => i.pass === false || (i.pass !== true && i.pass !== null));
   const blocked = items.filter((i) => i.blocked === 'host');
   const replaced = items.filter((i) => i.replaced);
-  const path = await lib.writeManifest(dir, items, { crew: crewId(), hostLoad, fields: { command: name, failed: failed.length, blocked: blocked.length, replaced: replaced.length } });
+  const stubbed = STUB ? { host: { stub: true, ...hostLoad }, tools: { stub: true }, name: 'manifest.json' } : {};
+  const path = await lib.writeManifest(dir, items, { crew: crewId(), hostLoad, ...stubbed, fields: { command: name, failed: failed.length, blocked: blocked.length, replaced: replaced.length, ...(STUB ? { stub: true } : {}) } });
   await lib.closeBrowsers();
   console.log(`${name}: ${items.length} items, ${failed.length} failed, ${blocked.length} blocked (host), ${replaced.length} replaced; manifest ${path}`);
   for (const f of failed.slice(0, 20)) console.log(`  FAIL ${f.kind} ${f.route} ${f.profile} ${f.mode} ${JSON.stringify(f.metrics).slice(0, 200)}`);

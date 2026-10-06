@@ -117,25 +117,38 @@ export function isIsoDate(s) {
 /**
  * Lines no allowlist entry may match. An entry is tested against one whole line of a message (anchored), so one that
  * matches any of these (nothing, whitespace, one character, a bare word, a generic sentence, another compiler warning,
- * three's log prefix alone) would let unrelated text through: it is too broad to be an allowlist line.
+ * three's log prefixes with and without their trailing space and with a real warning after them, a long line) would let
+ * unrelated text through: it is too broad to be an allowlist line.
  */
 export const ALLOW_BREADTH_PROBES = [
   '', ' ', 'x', '0', 'warning', 'Warning: something happened', 'THREE.WebGLProgram: Program Info Log:',
-  'THREE.WebGLRenderer: an unrelated warning', '(1,1): warning X3571: pow(f, e) will not work for negative f',
+  'THREE.WebGLProgram: Program Info Log: ', 'THREE.WebGLRenderer: ', 'THREE.WebGLRenderer: an unrelated warning',
+  'THREE.WebGLProgram: Program Info Log: (1,1): warning X3571: pow(f, e) will not work for negative f',
+  'THREE.WebGLRenderer: Texture marked for update but no image data found.',
+  'THREE.WebGLRenderer: A WebGL context could not be created. Reason: Web page caused context loss and was blocked',
+  '(1,1): warning X3571: pow(f, e) will not work for negative f',
   '(12,3-40): warning X3557: loop only executes for 1 iteration(s), forcing loop to unroll',
-  'The quick brown fox jumps over the lazy dog', 'x'.repeat(240),
+  'The quick brown fox jumps over the lazy dog', 'x'.repeat(240), 'x'.repeat(241), 'x'.repeat(4096),
+  `${'A long, unrelated warning line from some library, repeated. '.repeat(20).trim()}`,
 ];
 /** The lines of a console message an allowlist entry is judged on: trimmed, blank lines dropped. */
 export const messageLines = (text) => String(text).split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+/** The shortest `literal` an entry may name (W-D030 allowlist; round-2 should-fix S3). */
+export const ALLOW_LITERAL_MIN = 10;
 
 /**
  * The dated allowlist (W-D030: regex, reason, added-by, expiry), checked for form, not only presence: a malformed
  * entry throws, so every gate built on it fails loudly instead of letting an entry stay in force.
- * - regex, reason and addedBy are non-empty strings; the regex compiles and is anchored to one whole line here;
+ * - regex, reason, addedBy, literal and example are non-empty strings; the regex compiles and is anchored to one whole
+ *   line here;
  * - expiry is a zero-padded YYYY-MM-DD that names a real day (so the comparison with `today` is a date comparison);
- * - the regex matches none of ALLOW_BREADTH_PROBES (a catch-all such as '.', '.*' or 'warning.*' throws);
- * - an optional `example` (one real message) must have every line match the entry and no CONSOLE_RE word.
- * Returns the entries still in force on `today`; an expired entry stops matching.
+ * - the regex matches none of ALLOW_BREADTH_PROBES (a catch-all such as '.', '.*', '.{241,}' or 'warning.*' throws);
+ * - `literal` is the fixed text every allowed line must contain (round-2 should-fix S3: breadth is not left to a probe
+ *   list alone): at least ALLOW_LITERAL_MIN characters with a digit in it (a diagnostic code such as 'warning X4122'),
+ *   found in no probe line, and a line passes the entry only when it matches the regex AND contains the literal;
+ * - `example` (one real message) must have every line match the entry, contain the literal, and hold no CONSOLE_RE word.
+ * Every new entry is reviewed (tests/harness/README.md). Returns the entries still in force on `today`; an expired
+ * entry stops matching.
  */
 export function loadAllowlist(today = new Date().toISOString().slice(0, 10), file = join(ROOT, 'tests/harness/console-allow.json')) {
   if (!isIsoDate(today)) throw new Error(`console allowlist: today '${today}' is not a YYYY-MM-DD date`);
@@ -146,7 +159,7 @@ export function loadAllowlist(today = new Date().toISOString().slice(0, 10), fil
 }
 export function validateAllowEntry(a, i = 0) {
   const where = `console allowlist entry ${i}`;
-  for (const k of ['regex', 'reason', 'addedBy', 'expiry']) {
+  for (const k of ['regex', 'reason', 'addedBy', 'expiry', 'literal', 'example']) {
     if (typeof a?.[k] !== 'string' || !a[k].trim()) throw new Error(`${where}: "${k}" must be a non-empty string`);
   }
   if (!isIsoDate(a.expiry)) throw new Error(`${where}: expiry '${a.expiry}' is not a zero-padded YYYY-MM-DD date`);
@@ -158,12 +171,16 @@ export function validateAllowEntry(a, i = 0) {
   }
   const hit = ALLOW_BREADTH_PROBES.find((p) => re.test(p));
   if (hit !== undefined) throw new Error(`${where}: regex /${a.regex}/ is too broad (it matches the probe line ${JSON.stringify(hit.slice(0, 60))})`);
-  if (a.example !== undefined) {
-    const lines = messageLines(a.example);
-    if (!lines.length || !lines.every((l) => re.test(l))) throw new Error(`${where}: its example does not match the regex line by line`);
-    if (CONSOLE_RE.test(a.example)) throw new Error(`${where}: its example holds a W-D030 failure word, which no entry can allow`);
-  }
-  return { ...a, re };
+  const lit = a.literal;
+  if (lit.length < ALLOW_LITERAL_MIN || !/\d/.test(lit)) throw new Error(`${where}: literal '${lit}' must be at least ${ALLOW_LITERAL_MIN} characters with a digit (a diagnostic code)`);
+  const probeHit = ALLOW_BREADTH_PROBES.find((p) => p.includes(lit));
+  if (probeHit !== undefined) throw new Error(`${where}: literal '${lit}' is too generic (the probe line ${JSON.stringify(probeHit.slice(0, 60))} holds it)`);
+  if (CONSOLE_RE.test(lit)) throw new Error(`${where}: literal '${lit}' holds a W-D030 failure word, which no entry can allow`);
+  const lines = messageLines(a.example);
+  if (!lines.length || !lines.every((l) => re.test(l))) throw new Error(`${where}: its example does not match the regex line by line`);
+  if (!lines.every((l) => l.includes(lit))) throw new Error(`${where}: its example does not hold the literal '${lit}' on every line`);
+  if (CONSOLE_RE.test(a.example)) throw new Error(`${where}: its example holds a W-D030 failure word, which no entry can allow`);
+  return { ...a, re, allows: (line) => re.test(line) && line.includes(lit) };
 }
 
 /**
@@ -221,7 +238,7 @@ export function consoleGate(page, { expectStatus = [], allow = loadAllowlist() }
       };
       const wholly = (text) => {
         const lines = messageLines(text);
-        return lines.length > 0 && lines.every((l) => allow.some((a) => a.re.test(l)));
+        return lines.length > 0 && lines.every((l) => allow.some((a) => a.allows(l)));
       };
       for (const e of events) {
         if (e.channel === 'response' && e.expected) continue;
@@ -532,7 +549,10 @@ export async function toolVersions() {
 
 export const AGENT = { model: 'claude-opus-5-5', effort: 'xhigh' };
 
-/** Build a GES-1 manifest for the given items and write it. */
+/**
+ * Build a GES-1 manifest for the given items and write it. `extra.host` and `extra.tools` replace the probed host and
+ * tool fields (crew.mjs --stub only: a test run measures nothing, so it launches no browser to describe the host).
+ */
 export async function writeManifest(dir, items, extra = {}) {
   const manifest = {
     schema: 1,
@@ -540,8 +560,8 @@ export async function writeManifest(dir, items, extra = {}) {
     crew: extra.crew ?? 'W-F',
     sha: gitSha(),
     createdAt: new Date().toISOString(),
-    host: await hostInfo(extra.hostLoad),
-    tools: await toolVersions(),
+    host: extra.host ?? (await hostInfo(extra.hostLoad)),
+    tools: extra.tools ?? (await toolVersions()),
     agent: AGENT,
     ...extra.fields,
     items,

@@ -1,8 +1,9 @@
 {
-  "$comment": "Dated console-warning allowlist (W-D030), read by tests/harness/lib.mjs loadAllowlist. Every entry needs a regex, a reason, who added it and an expiry (a zero-padded YYYY-MM-DD that is a real date); a malformed entry throws, and expired entries stop matching. Each regex is matched against one whole line of a warning (anchored), and a warning passes only when every line of it matches an entry. A regex that matches a generic line (ALLOW_BREADTH_PROBES) throws. An optional example is one real message the entry must match line by line. Errors, and any message with a W-D030 failure word, are never allowlisted.",
+  "$comment": "Dated console-warning allowlist (W-D030), read by tests/harness/lib.mjs loadAllowlist. Every entry needs a regex, a reason, who added it, an expiry (a zero-padded YYYY-MM-DD that is a real date), a literal and an example; a malformed entry throws, and expired entries stop matching. Each regex is matched against one whole line of a warning (anchored), and a line passes an entry only when it matches the regex AND contains the literal (fixed text of at least 10 characters with a digit, such as a diagnostic code, found in no generic probe line); a warning passes only when every line of it passes an entry. A regex that matches a generic line (ALLOW_BREADTH_PROBES) throws. The example is one real message the entry must pass line by line. Errors, and any message with a W-D030 failure word, are never allowlisted. Every new entry is reviewed (tests/harness/README.md).",
   "allow": [
     {
       "regex": "(?:THREE\\.WebGLProgram: Program Info Log: )?\\(\\d+,\\d+(?:-\\d+)?\\): warning X4122: sum of [-+.\\de]+ and [-+.\\de]+ cannot be represented accurately in double precision",
+      "literal": "warning X4122",
       "reason": "ANGLE's D3D11 HLSL compiler note on three r186's PMREMGGXConvolution program. The program links and runs; three echoes the trimmed program info log as one console warning: 'THREE.WebGLProgram: Program Info Log: ' and then one line per HLSL note (#54 item 3, from W-S1).",
       "addedBy": "W-F (crew/w-f-m2, #54)",
       "expiry": "2027-01-01",

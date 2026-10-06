@@ -3,7 +3,11 @@
 // - not the same text as an error, not another compiler warning, not after its expiry, not with main's empty list;
 // - not when the same warning carries another line (three logs a program's whole info log in one console.warn), and
 //   never a W-D030 failure word, whatever the allowlist says;
-// - a malformed entry (a non-date or unpadded expiry, a missing field, a catch-all regex) throws instead of matching.
+// - a malformed entry (a non-date or unpadded expiry, a missing field, a catch-all regex) throws instead of matching;
+// - breadth (round-2 should-fix S3, Breaker 2.1 #3): the probe lines include long lines and three's prefixes with a
+//   trailing space and a real warning after them, and every entry names a literal that each allowed line must hold;
+// - the error level and the response echo (round-2 must-fix console-gate-error-level): an assert fails, and the echo of
+//   an expected 404 is skipped only as the whole message from that URL.
 // Negative control: ALLOW_LIB=<a copy of the pre-fix lib.mjs in tests/harness/> runs these tests against it.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -48,7 +52,7 @@ function planted(entries, today = TODAY) {
   writeFileSync(file, JSON.stringify({ allow: entries }));
   return loadAllowlist(today, file);
 }
-const entry = (over) => ({ regex: 'warning X9999: planted note', reason: 'a planted entry for the gate test', addedBy: 'test', expiry: '2026-12-31', ...over });
+const entry = (over) => ({ regex: 'warning X9999: planted note', literal: 'warning X9999', reason: 'a planted entry for the gate test', addedBy: 'test', expiry: '2026-12-31', example: 'warning X9999: planted note', ...over });
 
 test('the allowlist holds the X4122 entry with a reason, an owner and an expiry of 2027-01-01', () => {
   const e = loadAllowlist(TODAY).find((a) => /X4122/.test(a.regex));
@@ -128,7 +132,7 @@ for (const regex of ['.', '.*', '.+', '[\\s\\S]*', 'warning.*', '(?:)', '\\S+', 
     assert.throws(() => planted([entry({ regex })]), /too broad/);
   });
 }
-for (const field of ['regex', 'reason', 'addedBy', 'expiry']) {
+for (const field of ['regex', 'reason', 'addedBy', 'expiry', 'literal', 'example']) {
   test(`negative: a missing or blank ${field} throws`, () => {
     assert.throws(() => planted([entry({ [field]: undefined })]), new RegExp(field));
     assert.throws(() => planted([entry({ [field]: '  ' })]), new RegExp(field));
@@ -186,6 +190,27 @@ test('negative: the echo fails when its source is not a URL whose status was exp
   assert.equal(verdict([missingResponse, ['error', ECHO(500, 'Internal Server Error'), MISSING]], EXPECT_404).pass, false);
   // Nothing expected.
   assert.equal(verdict([missingResponse, ['error', ECHO(), MISSING]]).pass, false);
+});
+
+// ---- breadth (round-2 should-fix S3, Breaker 2.1 #3)
+for (const regex of ['.{241,}', 'THREE\\.\\w+: .{30,}', 'THREE\\.WebGLProgram: Program Info Log: .*', 'THREE\\.WebGLRenderer: .+', '[^\\n]{100,}', '(?:.|\\n){50,}']) {
+  test(`negative: the broad regex ${JSON.stringify(regex)} throws (long lines, three's prefixes with a real warning after them)`, () => {
+    assert.throws(() => planted([entry({ regex, literal: 'warning X9999', example: 'THREE.WebGLRenderer: warning X9999: a planted note that is long enough to pass every length bound in the probes' })]), /too broad/);
+  });
+}
+test('negative: a literal that is short, has no digit, sits in a probe line or holds a failure word throws', () => {
+  assert.throws(() => planted([entry({ literal: 'X9999' })]), /literal/);
+  assert.throws(() => planted([entry({ regex: 'warning planted note here', literal: 'warning planted', example: 'warning planted note here' })]), /literal/);
+  assert.throws(() => planted([entry({ regex: '\\(\\d+,\\d+\\): warning X3571: pow\\(f, e\\) will not work for negative f!', literal: 'warning X3571', example: '(1,1): warning X3571: pow(f, e) will not work for negative f!' })]), /too generic/);
+  assert.throws(() => planted([entry({ regex: 'warning X9999: planted note(?: failed)?', literal: 'X9999: planted note failed', example: 'warning X9999: planted note failed' })]), /failure word/);
+});
+test('negative: an example without the literal on every line throws', () => {
+  assert.throws(() => planted([entry({ regex: 'warning X999\\d: planted note', example: 'warning X9999: planted note\nwarning X9998: planted note' })]), /literal/);
+});
+test('negative: a line the regex matches but without the literal fails the gate; with it, it passes', () => {
+  const allow = planted([entry({ regex: 'warning X\\d{4}: planted note' })]);
+  assert.equal(verdict([['warning', 'warning X9999: planted note']], { allow }).pass, true);
+  assert.equal(verdict([['warning', 'warning X9998: planted note']], { allow }).pass, false);
 });
 
 test('the shipped file loads (every entry well formed) on today and on its last day', () => {
