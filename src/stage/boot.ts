@@ -106,10 +106,22 @@ async function start(why: string): Promise<void> {
     state = 'ready';
     resolveReady(api);
   } catch (e) {
+    // A navigation away cancels the chunk import (WebKit rejects it: 'Importing a module script failed'): the page is
+    // leaving, so that is not a failure to report. GL is off, and a bfcache restore schedules the boot again.
+    if (leaving) return standDown();
     state = 'failed';
     console.error('[stage] GL boot failed; the page stays on its stills', e);
   }
 }
+
+let leaving = false;
+addEventListener('pagehide', () => {
+  leaving = true;
+});
+addEventListener('pageshow', (e) => {
+  leaving = false;
+  if (e.persisted) rescanGLIntent();
+});
 
 // A drop to static while GL is only scheduled or deferred (the governor, two context losses, Breaker 3.2 #3): no boot
 // will run, so GL is off and the page can settle.
