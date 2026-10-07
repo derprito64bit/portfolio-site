@@ -307,7 +307,117 @@ async function withGl(base) {
         && s.glState === 'off' && s.glStarts === 0 && scripts.length === 0 && v.pass,
     });
   }
+  rows.push(...(await inFlight404(base)));
   return { rows, pass: rows.every((r) => r.pass) };
+}
+
+/**
+ * A proxy in front of the dist that holds the responses whose path matches `re` for `ms` (a slow network for one chunk;
+ * no Playwright routing, so WebKit's console stays the page's own). Returns { base, close }.
+ */
+export async function holdingProxy(target, re, ms) {
+  const { createServer, request } = await import('node:http');
+  const t = new URL(target);
+  const server = createServer((req, res) => {
+    const go = () => {
+      const up = request({ host: t.hostname, port: t.port, path: req.url, method: req.method, headers: { ...req.headers, host: t.host } }, (r) => {
+        res.writeHead(r.statusCode ?? 502, r.headers);
+        r.pipe(res);
+      });
+      up.on('error', () => res.destroy());
+      req.pipe(up);
+    };
+    if (re.test(req.url ?? '')) setTimeout(go, ms);
+    else go();
+  });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  return { base: `http://127.0.0.1:${server.address().port}`, close: () => new Promise((r) => server.close(r)) };
+}
+
+/** Records every WebGL context the page creates on the stage canvas, with the page's path and opt-out at that moment. */
+const CONTEXT_LOG = `(() => {
+  const log = (window.__ctxLog = []);
+  const gc = HTMLCanvasElement.prototype.getContext;
+  HTMLCanvasElement.prototype.getContext = function (type, attrs) {
+    const had = this.__ctx ?? null;
+    const c = gc.call(this, type, attrs);
+    if (this.id === 'gl' && /webgl/.test(String(type)) && c && !had) log.push({ path: location.pathname, glPage: document.documentElement.dataset.glPage ?? null, t: Math.round(performance.now()) });
+    if (c) this.__ctx = c;
+    return c;
+  };
+})();`;
+
+/**
+ * A GL boot in flight when a Swup visit lands on the 404 (round-3 must-fix s2-404-gl-boot, Breaker 3.2 #1; W-D029: the
+ * 404 has no WebGL). The gl chunk (the boot's dynamic import) is held HOLD_MS by a proxy (long enough for the visit to
+ * land, short enough that WebKit's 'preloaded but not used within a few seconds of load' note on the chunk's own
+ * modulepreload, which the hold alone causes, stays out of the console); once glState is 'booting', a
+ * Swup visit goes to a missing URL. On the 404: no WebGL context is created on the stage canvas, glState ends 'off',
+ * no stage:gl-ready, Lenis off, the console clean; then a Swup visit back to / boots GL (ready). Variant back404
+ * (Breaker 3.2): a full load of the missing URL, its 'Back to the work' link (a Swup visit to /), and Back while GL
+ * boots. Chromium and WebKit, full (mouse) and lite (touch, where the boot starts on the hero print's near observer).
+ */
+const HOLD_MS = 1500;
+async function inFlight404(base) {
+  const rows = [];
+  const proxy = await holdingProxy(base, /^\/_astro\/gl\.[^/]*\.js/, HOLD_MS);
+  const missing = '/work/no-such-print/';
+  try {
+    for (const [profile, engine, variant] of [['D2', null, 'visit'], ['P2', null, 'visit'], ['D3', 'webkit', 'visit'], ['WK-P2', null, 'visit'], ['D2', null, 'back404'], ['D3', 'webkit', 'back404']]) {
+      const ctx = await newContext(profile, 'auto', engine ? { browser: engine } : {});
+      await ctx.addInitScript({ content: CONTEXT_LOG });
+      const page = await ctx.newPage();
+      const gate = consoleGate(page, { expectStatus: [{ status: 404, url: new RegExp(`${missing.replaceAll('/', '\\/')}$`) }] });
+      let r = {};
+      try {
+        if (variant === 'visit') {
+          await page.goto(`${proxy.base}/`, { waitUntil: 'load' });
+        } else {
+          await page.goto(`${proxy.base}${missing}`, { waitUntil: 'load' });
+          await page.click('main a[href="/"]');
+          await page.waitForFunction(() => location.pathname === '/' && document.documentElement.dataset.page === 'home', null, { polling: 50, timeout: 10000 });
+        }
+        const booting = await page.waitForFunction(() => window.__stage?.glState === 'booting', null, { polling: 20, timeout: 12000 }).then(() => true, () => false);
+        if (variant === 'visit') {
+          await page.evaluate((href) => {
+            const a = document.createElement('a');
+            a.href = href;
+            a.id = 'm2-missing';
+            a.textContent = 'a print that is not there';
+            document.querySelector('main').append(a);
+          }, missing);
+          await page.click('#m2-missing');
+        } else {
+          await page.goBack();
+        }
+        const arrived = await page.waitForFunction((p) => location.pathname === p && document.documentElement.dataset.page === 'notfound', missing, { polling: 20, timeout: 10000 }).then(() => true, () => false);
+        const atArrival = await page.evaluate(() => ({ glState: window.__stage.glState, glPage: document.documentElement.dataset.glPage }));
+        // The held chunk arrives HOLD_MS after it was asked for: watch well past it.
+        await sleep(HOLD_MS + 2500);
+        const on404 = await page.evaluate(() => ({
+          glState: window.__stage.glState, ctxOn404: window.__ctxLog.filter((c) => c.glPage === 'off'), contexts: window.__ctxLog,
+          glReady: window.__stage.marks().filter((m) => m.name === 'stage:gl-ready').length, standDowns: window.__stage.stats.standDowns ?? null,
+          lenis: document.documentElement.classList.contains('lenis'), gl: window.__stage.gl ? 'set' : null, settled: window.__stage.settled,
+        }));
+        const v = gate.verdict();
+        // Then a Swup visit to / boots GL.
+        await page.click('a.site-mark');
+        await page.waitForFunction(() => location.pathname === '/' && document.documentElement.dataset.page === 'home', null, { polling: 50, timeout: 10000 });
+        const bootedAfter = await page.waitForFunction(() => window.__stage.glState === 'ready', null, { polling: 100, timeout: 15000 }).then(() => true, () => false);
+        r = {
+          booting, arrived, atArrival, on404, bootedAfter, consolePass: v.pass, consoleFailures: v.failures.map((f) => `${f.channel}/${f.level}: ${f.text.slice(0, 160)}`),
+          pass: booting && arrived && on404.glState === 'off' && on404.ctxOn404.length === 0 && on404.glReady === 0 && !on404.lenis && on404.gl === null && on404.settled === true && v.pass && bootedAfter,
+        };
+      } catch (e) {
+        r = { pass: false, error: String(e?.message || e).slice(0, 300) };
+      }
+      await ctx.close();
+      rows.push({ profile: engine ? `${profile}@${engine}` : profile, inFlight404: variant, ...r });
+    }
+  } finally {
+    await proxy.close();
+  }
+  return rows;
 }
 
 // ---------------------------------------------------------------- present (#61 item 1)

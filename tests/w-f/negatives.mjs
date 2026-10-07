@@ -5,10 +5,17 @@
 //   stacking  a transform on #main in the live page makes every slot's ancestor a stacking context
 //   lint      a second rAF call site and a forbidden navigator read, in a scratch copy of the lint's rules
 //   detach    a ticker kept awake (__stage.invalidate every 250 ms) must fail the counters' after-scroll idle window
-//   draws     draws outside the ticker (a timer calling drawArrays on the stage's context: no rAF, no clear) at D2 /,
-//             where the intro passes the counters' old 20,000-stamp cap, must fail h-counters' step 1 (idle after a
-//             mouse move and a key) and step 2 (idle after a scroll); the clean page passes both (round-2 must-fix
-//             counters-draw-cap). NEG_COUNTERS_DIR=<dir> runs it with another counters instrument (the pre-fix one).
+//   draws     draws outside the ticker (a timer on the stage's context: no rAF) at D2 / (where the intro passes the
+//             counters' old 20,000-stamp cap) and WK-P2 /, one kind per plant: drawArrays, WEBGL_multi_draw,
+//             clearBufferfv, and blitFramebuffer into the default framebuffer where valid (lite: single-sampled); each
+//             must fail h-counters' step 1 (idle after a mouse move and a key) and step 2 (idle after a scroll); the
+//             clean page passes both (round-2 and round-3 must-fix counters-draw-cap). NEG_COUNTERS_INIT=<init.js> runs
+//             it with another in-page instrument (7a2d0df's misses all but drawArrays); NEG_COUNTERS_DIR=<dir> another
+//             counters directory
+//   tolerance one rAF callback planted at motion end + 1 s + 40 ms fails the window, one at + 1 s + 20 ms passes
+//             (ruling 6030949628 item 2: max(2 frames, 34 ms)), D2 and WK-P2
+//   arrival   a wake that presents nothing (180 rAF callbacks, no draw) 1.5 s after the load fails h-counters' arrival
+//             window (ruling 6030949628 item 1), D2 and WK-P2; the clean arrivals pass
 //   resize    ResizeObserver callbacks deferred by a task (GL re-measures a frame after the layout moved, the round-2
 //             defect) must fail the drift harness's resize probe at a toolbar collapse and expand
 //   lcp       a wrong or missing Lighthouse LCP element (budgets.md: the h1 on desktop; the h1 or print 1's still on
@@ -23,7 +30,7 @@ import { join } from 'node:path';
 import { validateContent } from '../../src/lib/content/validate.js';
 import { scanInPage } from '../../scripts/check/stacking.mjs';
 import { ROOT, cliMain, lcpElementOf, lcpElementVerdict, newContext, serve, sleep, waitSettled } from '../harness/lib.mjs';
-import { INIT as COUNTERS_INIT, idleAfterScroll, motionWindow } from '../harness/counters/run.mjs';
+import { INIT as COUNTERS_INIT, arrivals, idleAfterScroll, motionWindow } from '../harness/counters/run.mjs';
 import { resizeProbeOnly } from '../harness/drift/run.mjs';
 
 function contentControl() {
@@ -137,51 +144,192 @@ async function detachControl() {
 }
 
 /**
- * Draws outside the ticker inside the idle window at D2 / (Breaker 2.2 #2): the window's draw count must see them in
- * both h-counters steps. The row records how many stamps the intro had already pushed (g.draws at the plant), so the
- * control shows it ran past the old cap.
+ * Draws outside the ticker, every 250 ms on the stage's own context, inside the idle window (Breaker 2.2 #2, Breaker
+ * 3.3 #1; round-2 and round-3 must-fix counters-draw-cap): the gate must see each kind of draw in both h-counters steps.
+ * One plant per entry point that writes the default framebuffer (see init.js): drawArrays, WEBGL_multi_draw's
+ * multiDrawArraysWEBGL, clearBufferfv and a blitFramebuffer into the default framebuffer (only where that is valid: a
+ * single-sampled default framebuffer, so the lite tier). D2 / (full; the intro passes the old 20,000-stamp cap) and
+ * WK-P2 / (lite). A plant whose extension the engine lacks is reported as unsupported, not as caught.
  */
+const DRAW_PLANTS = {
+  drawArrays: (gl) => () => gl.drawArrays(gl.POINTS, 0, 0),
+  multiDraw: (gl) => {
+    const ext = gl.getExtension('WEBGL_multi_draw');
+    if (!ext) return null;
+    return () => ext.multiDrawArraysWEBGL(gl.POINTS, new Int32Array([0]), 0, new Int32Array([0]), 0, 1);
+  },
+  clearBufferfv: (gl) => () => gl.clearBufferfv(gl.COLOR, 0, new Float32Array([0, 0, 0, 0])),
+  blitFramebuffer: (gl) => {
+    if (gl.getContextAttributes().antialias) return null; // blitting into a multisampled default framebuffer is invalid
+    const fb = gl.createFramebuffer();
+    const tex = gl.createTexture();
+    const prevTex = gl.getParameter(gl.TEXTURE_BINDING_2D);
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 4, 4, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    gl.bindTexture(gl.TEXTURE_2D, prevTex);
+    const prevRead = gl.getParameter(gl.READ_FRAMEBUFFER_BINDING);
+    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, fb);
+    gl.framebufferTexture2D(gl.READ_FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, prevRead);
+    return () => {
+      const pr = gl.getParameter(gl.READ_FRAMEBUFFER_BINDING);
+      const pd = gl.getParameter(gl.DRAW_FRAMEBUFFER_BINDING);
+      gl.bindFramebuffer(gl.READ_FRAMEBUFFER, fb);
+      gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
+      gl.blitFramebuffer(0, 0, 4, 4, 0, 0, 4, 4, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+      gl.bindFramebuffer(gl.READ_FRAMEBUFFER, pr);
+      gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, pd);
+    };
+  },
+};
 async function drawsControl() {
   // NEG_COUNTERS_DIR=<another tests/harness/counters> runs the control with that instrument (init.js and run.mjs), so
-  // the pre-fix instrument can be shown to miss the plant.
+  // the pre-fix instrument can be shown to miss the plants.
+  // NEG_COUNTERS_INIT=<an init.js> swaps only the in-page instrument (round 4: 7a2d0df's init.js under this window).
   const dir = process.env.NEG_COUNTERS_DIR;
   const counters = dir ? await import(pathToFileURL(join(dir, 'run.mjs')).href) : { INIT: COUNTERS_INIT, motionWindow, idleAfterScroll };
-  const init = counters.INIT;
+  const init = process.env.NEG_COUNTERS_INIT ? readFileSync(process.env.NEG_COUNTERS_INIT, 'utf8') : counters.INIT;
   const srv = await serve();
   try {
     const rows = [];
-    for (const plant of [null, 'draws']) {
-      const ctx = await newContext('D2');
-      await ctx.addInitScript({ content: init });
-      const page = await ctx.newPage();
-      await page.goto(`${srv.base}/`, { waitUntil: 'load' });
-      await waitSettled(page, 15000);
-      await sleep(300);
-      const atPlant = await page.evaluate(() => {
-        const g = window.__gateCounters;
-        return { draws: g.draws, drawStamps: g.drawTimes.length, stampsDropped: g.stampsDropped ?? null, tier: window.__stage.tier, glState: window.__stage.glState };
-      });
-      if (plant === 'draws') {
-        await page.evaluate(() => {
-          const gl = window.__stage.gl.renderer.getContext();
-          window.__plant = setInterval(() => gl.drawArrays(gl.POINTS, 0, 0), 250);
+    for (const profile of ['D2', 'WK-P2']) {
+      for (const plant of [null, ...Object.keys(DRAW_PLANTS)]) {
+        const ctx = await newContext(profile);
+        await ctx.addInitScript({ content: init });
+        const page = await ctx.newPage();
+        await page.goto(`${srv.base}/`, { waitUntil: 'load' });
+        await waitSettled(page, 15000);
+        await page.waitForFunction(() => window.__stage.glState === 'ready', null, { polling: 100, timeout: 15000 }).catch(() => {});
+        await waitSettled(page, 15000);
+        await sleep(300);
+        const atPlant = await page.evaluate(() => {
+          const g = window.__gateCounters;
+          return { draws: g.draws, drawStamps: g.drawTimes.length, stampsDropped: g.stampsDropped ?? null, tier: window.__stage.tier, glState: window.__stage.glState };
         });
+        let supported = true;
+        if (plant) {
+          supported = await page.evaluate(({ plant, src }) => {
+            const gl = window.__stage.gl?.renderer?.getContext();
+            if (!gl) return false;
+            const make = new Function(`return (${src})`)();
+            const fire = make(gl);
+            if (!fire) return false;
+            window.__plantErrors = [];
+            window.__plant = setInterval(() => {
+              fire();
+              const e = gl.getError();
+              if (e) window.__plantErrors.push(e);
+            }, 250);
+            return true;
+          }, { plant, src: DRAW_PLANTS[plant].toString() });
+        }
+        if (!supported) {
+          await ctx.close();
+          rows.push({ profile, plant, supported: false });
+          continue;
+        }
+        const { width, height } = page.viewportSize();
+        const since = await page.evaluate(() => performance.now());
+        await page.mouse.move(width / 2, height / 2);
+        await page.mouse.move(width / 2 + 40, height / 2 + 10);
+        await page.keyboard.press('Shift');
+        const step1 = await counters.motionWindow(page, since).catch((e) => ({ error: String(e).slice(0, 200), pass: false }));
+        const step2 = await counters.idleAfterScroll(page, null).catch((e) => ({ error: String(e).slice(0, 200), pass: false }));
+        const end = await page.evaluate(() => ({ draws: window.__gateCounters.draws, drawsBy: window.__gateCounters.drawsBy ?? null, plantErrors: window.__plantErrors ?? [] }));
+        await ctx.close();
+        const brief = (r) => ({ pass: r.pass, error: r.error, window: r.afterMotion, uncapped: r.uncappedInWindow, bound: r.bound, restarts: r.windowRestarts, motionEndsBy: r.motionEndsBy });
+        rows.push({ profile, plant, supported, atPlant, drawsDuringSteps: end.draws - atPlant.draws, drawsBy: end.drawsBy, plantGlErrors: end.plantErrors.length, step1: brief(step1), step2: brief(step2), caught1: !step1.pass, caught2: !step2.pass });
       }
-      const { width, height } = page.viewportSize();
-      const since = await page.evaluate(() => performance.now());
-      await page.mouse.move(width / 2, height / 2);
-      await page.mouse.move(width / 2 + 40, height / 2 + 10);
-      await page.keyboard.press('Shift');
-      const step1 = await counters.motionWindow(page, since).catch((e) => ({ error: String(e).slice(0, 200), pass: false }));
-      const step2 = await counters.idleAfterScroll(page, null).catch((e) => ({ error: String(e).slice(0, 200), pass: false }));
-      const g1 = await page.evaluate(() => window.__gateCounters.draws);
-      await ctx.close();
-      const brief = (r) => ({ pass: r.pass, error: r.error, window: r.afterMotion, uncapped: r.uncappedInWindow, bound: r.bound, restarts: r.windowRestarts, motionEndsBy: r.motionEndsBy });
-      rows.push({ plant, atPlant, drawsDuringSteps: g1 - atPlant.draws, step1: brief(step1), step2: brief(step2), caught1: !step1.pass, caught2: !step2.pass });
     }
-    const [clean, planted] = rows;
-    const pastOldCap = planted.atPlant.draws > 20000;
-    return { instrument: dir ?? 'tests/harness/counters', rows, pastOldCap, pass: pastOldCap && !clean.caught1 && !clean.caught2 && planted.caught1 && planted.caught2 };
+    const clean = rows.filter((r) => r.plant === null);
+    const planted = rows.filter((r) => r.plant !== null && r.supported);
+    const pastOldCap = rows.some((r) => r.profile === 'D2' && r.plant === 'drawArrays' && r.atPlant.draws > 20000);
+    // Every kind is planted where it is valid: drawArrays, multiDraw and clearBufferfv in both engines' rows (when the
+    // engine has the extension), blitFramebuffer at least once (the lite tier's single-sampled framebuffer).
+    const kindsRun = new Set(planted.map((r) => r.plant));
+    return {
+      instrument: process.env.NEG_COUNTERS_INIT ?? dir ?? 'tests/harness/counters', rows, pastOldCap, kindsRun: [...kindsRun],
+      missedKinds: [...new Set(planted.filter((r) => !r.caught1 || !r.caught2).map((r) => `${r.profile} ${r.plant}`))],
+      unsupported: rows.filter((r) => r.supported === false).map((r) => `${r.profile} ${r.plant}`),
+      pass: pastOldCap && clean.every((r) => !r.caught1 && !r.caught2) && planted.length > 0 && planted.every((r) => r.caught1 && r.caught2 && r.plantGlErrors === 0)
+        && Object.keys(DRAW_PLANTS).every((k) => kindsRun.has(k)),
+    };
+  } finally {
+    await srv.close();
+  }
+}
+
+/**
+ * The window's tolerance (ruling 6030949628 item 2: the window opens at motion end + 1 s + max(2 frames, 34 ms)): one
+ * rAF callback planted at motion end + 1 s + 40 ms must fail the window; one at + 1 s + 20 ms (inside the tolerance,
+ * outside the old 2-frame tolerance at 238 Hz) must pass. The plant watches the gate's own stamps for the motion end.
+ */
+const TOLERANCE_PLANT = (afterMs) => `(() => {
+  let fired = 0;
+  const tick = () => {
+    const g = window.__gateCounters;
+    if (!g || !window.__plantArmedAt) return setTimeout(tick, 5);
+    const since = window.__plantArmedAt;
+    const last = (l) => { for (let i = l.length - 1; i >= 0; i--) if (l[i] > since) return l[i]; return 0; };
+    const end = Math.max(since, g.lastUserInputAt > since ? g.lastUserInputAt : 0, g.lastScrollAt > since ? g.lastScrollAt : 0, last(g.drawTimes), last(g.clearTimes));
+    if (fired !== end && performance.now() >= end + ${afterMs}) {
+      fired = end;
+      window.__plantFiredAt = performance.now() - end;
+      requestAnimationFrame(() => { window.__plantRafAt = performance.now() - end; });
+    }
+    setTimeout(tick, 2);
+  };
+  tick();
+})();`;
+async function toleranceControl() {
+  const srv = await serve();
+  try {
+    const rows = [];
+    for (const profile of ['D2', 'WK-P2']) {
+      for (const afterMs of [null, 1020, 1040]) {
+        const ctx = await newContext(profile);
+        await ctx.addInitScript({ content: COUNTERS_INIT });
+        if (afterMs) await ctx.addInitScript({ content: TOLERANCE_PLANT(afterMs) });
+        const page = await ctx.newPage();
+        await page.goto(`${srv.base}/bench/`, { waitUntil: 'load' });
+        await waitSettled(page, 15000);
+        await sleep(300);
+        const { width, height } = page.viewportSize();
+        const since = await page.evaluate(() => (window.__plantArmedAt = performance.now()));
+        await page.mouse.move(width / 2, height / 2);
+        await page.keyboard.press('Shift');
+        const r = await motionWindow(page, since).catch((e) => ({ error: String(e).slice(0, 200), pass: false }));
+        const plant = await page.evaluate(() => ({ firedAt: window.__plantFiredAt ?? null, rafAt: window.__plantRafAt ?? null }));
+        await ctx.close();
+        rows.push({ profile, afterMs, plant, pass: r.pass, window: r.afterMotion, frameMs: r.frameMs, lastRafAfterMotionMs: r.lastRafAfterMotionMs, error: r.error });
+      }
+    }
+    const at = (p, a) => rows.find((r) => r.profile === p && r.afterMs === a);
+    const ok = ['D2', 'WK-P2'].every((p) => at(p, null).pass && at(p, 1040).pass === false && at(p, 1040).plant.rafAt !== null);
+    // The +20 ms plant passes only where the old 2-frame tolerance was below 20 ms (a display above 100 Hz, D2 here).
+    const inside = at('D2', 1020);
+    return { rows, insideTolerancePasses: inside.pass, pass: ok && inside.pass && inside.plant.rafAt !== null };
+  } finally {
+    await srv.close();
+  }
+}
+
+/**
+ * A wake after an arrival that presents nothing (ruling 6030949628 item 1; perf row 26): about 180 rAF callbacks and no
+ * draw, starting 1.5 s after the load, must fail h-counters' arrival window; the clean arrival passes.
+ */
+const ARRIVAL_PLANT = `addEventListener('load', () => setTimeout(() => {
+  let n = 0;
+  const f = () => { if (++n < 180) requestAnimationFrame(f); };
+  requestAnimationFrame(f);
+}, 1500), { once: true });`;
+async function arrivalControl() {
+  const srv = await serve();
+  try {
+    const clean = await arrivals(srv.base, ['D2', 'WK-P2']);
+    const planted = await arrivals(srv.base, ['D2', 'WK-P2'], { plant: ARRIVAL_PLANT });
+    const loads = (x) => x.rows.filter((r) => r.kind === 'load' || r.kind === 'back');
+    return { clean: clean.rows, planted: loads(planted), pass: clean.pass && loads(planted).length > 0 && loads(planted).every((r) => !r.pass) };
   } finally {
     await srv.close();
   }
@@ -240,6 +388,8 @@ export async function run(opts = {}) {
   if (want('lint')) out.lint = lintControl();
   if (want('detach')) out.detach = await detachControl();
   if (want('draws')) out.draws = await drawsControl();
+  if (want('tolerance')) out.tolerance = await toleranceControl();
+  if (want('arrival')) out.arrival = await arrivalControl();
   if (want('resize')) out.resize = await resizeControl();
   if (want('lcp')) out.lcp = lcpControl();
   const parts = Object.entries(out);
