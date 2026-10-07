@@ -2,7 +2,7 @@
 // no-op develop, and the stage-local projection of the fixture cube. Reference host only (real GPU).
 // Usage: node tests/w-f/stage.mjs [--out stage.json]
 import sharp from 'sharp';
-import { PROFILES, browser, cliMain, expectedTier, newContext, serve, sleep, waitSettled } from '../harness/lib.mjs';
+import { PROFILES, browser, budget, cliMain, expectedTier, newContext, serve, sleep, waitSettled } from '../harness/lib.mjs';
 
 const nextFrames = (page, n = 1) => page.evaluate((k) => new Promise((r) => { let i = 0; const f = () => (++i >= k ? r(i) : window.requestAnimationFrame(f)); window.requestAnimationFrame(f); }), n);
 
@@ -49,20 +49,31 @@ async function governor(base) {
   return { busyMs: 30, busyFramesBeforeStep, firstStep: first.log[first.log.length - 1], afterwards: seen, neverUp, pass: first.tier === 'lite' && busyFramesBeforeStep >= 45 && busyFramesBeforeStep <= 50 && neverUp };
 }
 
-/** The canvas at 1920 x 1080, DPR 2: <= 4.5 Mpx on full, <= 1.5 Mpx on lite. */
+/**
+ * The canvas at 1920 x 1080, DPR 2. The pixel caps (json budgets block, site.canvasMpx) on the buffer the GPU allocates: fresh loads on full and lite,
+ * and a drop from full to lite after GL is up (round-3 should-fix S4: the canvas must reallocate to lite's caps, not
+ * keep the full one; selfbreak-plants P keeps it and fails selfbreak tierDrop).
+ */
 async function caps(base) {
   const out = {};
-  for (const tier of ['full', 'lite']) {
+  const cap = { full: budget('site.canvasMpx.full') * 1e6, lite: budget('site.canvasMpx.lite') * 1e6 };
+  for (const [name, tier, drop] of [['full', 'full', false], ['lite', 'lite', false], ['demoted', 'full', true]]) {
     const b = await browser('chromium');
     const ctx = await b.newContext({ viewport: { width: 1920, height: 1080 }, deviceScaleFactor: 2 });
     const page = await ctx.newPage();
     await page.goto(`${base}/bench/?tier=${tier}`, { waitUntil: 'load' });
     await waitSettled(page, 15000);
-    out[tier] = await page.evaluate(() => ({ tier: window.__stage.tier, dpr: window.__stage.stats.dpr, canvasPx: window.__stage.stats.canvasPx, buffer: [document.getElementById('gl').width, document.getElementById('gl').height] }));
+    if (drop) {
+      await page.evaluate(() => window.__stage.demote('lite', 'stage-caps'));
+      await sleep(500);
+      await waitSettled(page, 15000);
+    }
+    out[name] = await page.evaluate(() => ({ tier: window.__stage.tier, dpr: window.__stage.stats.dpr, canvasPx: window.__stage.stats.canvasPx, buffer: [document.getElementById('gl').width, document.getElementById('gl').height] }));
     await ctx.close();
   }
   const px = (t) => out[t].buffer[0] * out[t].buffer[1];
-  return { ...out, bufferPx: { full: px('full'), lite: px('lite') }, pass: out.full.tier === 'full' && px('full') <= 4.5e6 && px('lite') <= 1.5e6 && out.full.canvasPx === px('full') && out.lite.canvasPx === px('lite') };
+  const ok = (t, c) => px(t) <= cap[c] && out[t].canvasPx === px(t);
+  return { ...out, cap, bufferPx: { full: px('full'), lite: px('lite'), demoted: px('demoted') }, pass: out.full.tier === 'full' && out.demoted.tier === 'lite' && ok('full', 'full') && ok('lite', 'lite') && ok('demoted', 'lite') };
 }
 
 /** Turning on reduced motion mid-timeline ends running timelines within 1 frame. */

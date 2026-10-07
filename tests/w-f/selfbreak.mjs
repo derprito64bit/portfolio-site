@@ -222,9 +222,10 @@ const CASES = {
     const after = await settles(page);
     const c = verdict(gate);
     await ctx.close();
-    // The DPR cap on the buffer the GPU holds: at most floor(css size x cap) pixels each way (the stage's grid DPR sits a
-    // hair above a whole-pixel ratio by design, rail.ts gridDpr), and the pixel cap on their product.
-    const capsOk = atLite.tier === 'lite' && atLite.width <= Math.floor(atLite.W * caps.dpr + 1e-6) && atLite.height <= Math.floor(atLite.Hc * caps.dpr + 1e-6) && atLite.px <= caps.px && atLite.statPx === atLite.px;
+    // The DPR cap on the buffer the GPU holds: at most the CSS size x cap, rounded up, each way (the stage's grid DPR and
+    // grid height sit a hair off a whole-pixel ratio by design, rail.ts gridDpr and gridHeight), and the pixel cap on
+    // their product.
+    const capsOk = atLite.tier === 'lite' && atLite.width <= Math.ceil(atLite.W * caps.dpr - 1e-6) && atLite.height <= Math.ceil(atLite.Hc * caps.dpr - 1e-6) && atLite.px <= caps.px && atLite.statPx === atLite.px;
     // WebKit shows no GL after a buffer reallocation (#88, pre-existing): there the colour is recorded, not asserted.
     const presents = PROFILES[profile].browser === 'chromium';
     return {
