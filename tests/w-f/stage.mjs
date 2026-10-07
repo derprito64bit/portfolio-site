@@ -278,19 +278,14 @@ async function cubeProjection(base) {
   return { scrollRangePx: Math.round(0.4 * vh), samples, boundsDriftPx, pixelDriftPx, pixelSizeSpreadPx, angleDriftDeg, pass: boundsDriftPx < 0.5 && pixelDriftPx < 0.5 && angleDriftDeg < 1 };
 }
 
-export async function run() {
-  const srv = await serve();
+// --only caps,... runs some checks; --dist runs them on another build (a planted copy for a negative control).
+export async function run(opts = {}) {
+  const srv = await serve(opts.dist ? String(opts.dist) : undefined);
+  const only = opts.only ? new Set(String(opts.only).split(',')) : null;
+  const checks = { tiers, governor, caps, reducedMidTimeline, motionSwitch, railSlack, contextLoss, developKeepsFocus, cubeProjection };
   const out = {};
   try {
-    out.tiers = await tiers(srv.base);
-    out.governor = await governor(srv.base);
-    out.caps = await caps(srv.base);
-    out.reducedMidTimeline = await reducedMidTimeline(srv.base);
-    out.motionSwitch = await motionSwitch(srv.base);
-    out.railSlack = await railSlack(srv.base);
-    out.contextLoss = await contextLoss(srv.base);
-    out.developKeepsFocus = await developKeepsFocus(srv.base);
-    out.cubeProjection = await cubeProjection(srv.base);
+    for (const [name, fn] of Object.entries(checks)) if (!only || only.has(name)) out[name] = await fn(srv.base);
   } finally {
     await srv.close();
   }
