@@ -4,8 +4,9 @@
 //              the strings the plan lists (read from docs/direction/front-door-plan.md, so this file holds none of them)
 //   noWebgl    #61 item 3: Chromium --disable-3d-apis (WebGL2's constructor exists, no context): data-tier is static,
 //              data-cam camera and data-hero still before first paint, and never anything else; 0 console failures;
-//              on / print 1's still is at opacity 1 when first paint is reported (read in the FCP callback); the
-//              noWebglControl (plant I: the still fades in after first paint) must fail
+//              on / print 1's still is visible when first paint is reported (read in the FCP callback: opacity 1,
+//              visibility visible, a non-zero box with transforms); the noWebglControl (plants I, J and K: the still
+//              is at opacity 0, hidden or at scale 0 at first paint, whole at the end) must fail
 //   withGl     the same probe leaves real GL alone: mouse profiles full (or a logged probe demotion), touch lite; a
 //              session that starts on the 404 boots GL after a Swup visit to /, and never after a Swup visit that lands
 //              on the 404 again (W-D029: GL off, no script fetched; Chromium and WebKit)
@@ -27,6 +28,11 @@
 //              __stage.registerEffect and hands other ids to `next` (the no-op: take, then give); a second
 //              registration chains and falls through on undefined; __stage.markDirty re-measures; __stage.take and
 //              give borrow and hand back a slot's pixels for an impl that serves its own ids
+//   flush      perf row 26: on a history Back to the top of / (full tier: D2, D3, WebKit D3) the camera's first frame
+//              comes before the first stage:idle and the stage sleeps once in 4 s (the stage flushes its context each
+//              frame; at 7a2d0df the camera's program link waited for the detach and woke the stage again at D2)
+//   withGl also holds the in-flight 404 rows (round-3 must-fix s2-404-gl-boot); zero's window opens at the motion end
+//              + 1 s + max(2 frames, 34 ms) (ruling 6030949628 item 2)
 // Usage: node tests/w-f/m2.mjs [--out m2.json] [--dist <dir>] [--only door,noWebgl,...]
 //   --dist runs the browser checks against another build (the negative controls run them on main's dist).
 import sharp from 'sharp';
@@ -137,7 +143,9 @@ const ATTR_INIT = `(() => {
   const snap = () => {
     const h = document.documentElement;
     const still = document.querySelector('.hero-still');
-    return { t: performance.now(), tier: h.dataset.tier ?? null, cam: h.dataset.cam ?? null, hero: h.dataset.hero ?? null, stillOpacity: still ? getComputedStyle(still).opacity : null };
+    const cs = still ? getComputedStyle(still) : null;
+    const box = still ? still.getBoundingClientRect() : null; // transforms included (a scale(0) still has no box)
+    return { t: performance.now(), tier: h.dataset.tier ?? null, cam: h.dataset.cam ?? null, hero: h.dataset.hero ?? null, stillOpacity: cs ? cs.opacity : null, stillVisibility: cs ? cs.visibility : null, stillBox: box ? [Math.round(box.width), Math.round(box.height)] : null };
   };
   try { new PerformanceObserver((l) => { for (const e of l.getEntries()) if (e.name === 'first-contentful-paint') { window.__fcp = e.startTime; window.__atFcp = snap(); } }).observe({ type: 'paint', buffered: true }); } catch (e) {}
   new MutationObserver((recs) => {
@@ -207,35 +215,51 @@ async function noWebgl(base, only = null) {
       pass: s.constructorExists && !s.contextNow && s.fcp !== null && s.tier === 'static' && tiers.every((t) => t === 'static') && (kind === 'swup-home' || after.length === 0)
         && s.reason === 'no-webgl2' && s.glState === 'off' && s.cached === '0' && v.pass
         // On / the hero's state at first paint (read in the FCP callback, Breaker 2.3 #4) and at the end.
+        // Print 1's still is visible at first paint: opaque, not hidden, and with a box (Breaker 3.1 #2: opacity alone
+        // let a hidden or scale(0) still through).
         && (!hero || (s.atFcp?.tier === 'static' && s.atFcp.cam === 'camera' && s.atFcp.hero === 'still' && s.atFcp.stillOpacity === '1'
+          && s.atFcp.stillVisibility === 'visible' && s.atFcp.stillBox?.[0] > 0 && s.atFcp.stillBox?.[1] > 0
           && s.cam === 'camera' && s.hero === 'still' && s.stillOpacity === '1' && !s.log.some((e) => e.attr === 'data-hero' && e.value === 'eject'))),
     });
   }
   return { rows, pass: rows.length > 0 && rows.every((r) => r.pass) };
 }
 
-/** Plant I (Breaker 2.3 #4): print 1's still fades in from 0 after first paint; the / rows must catch it at FCP. */
-const PLANT_I = '<style data-plant="I">.hero-still{animation:m2-plant-i 1.5s 300ms both}@keyframes m2-plant-i{from{opacity:0}to{opacity:1}}</style>';
-async function noWebglPlantI(dist) {
-  const dir = mkdtempSync(join(tmpdir(), 'm2-plant-i-'));
-  try {
-    cpSync(dist, dir, { recursive: true });
-    const home = join(dir, 'index.html');
-    const html = readFileSync(home, 'utf8');
-    if (!html.includes('</head>')) throw new Error('plant I: index.html has no </head>');
-    writeFileSync(home, html.replace('</head>', `${PLANT_I}</head>`));
-    const srv = await serve(dir);
+/**
+ * First-paint plants on print 1's still, each whole again by the end: I fades in from opacity 0 (Breaker 2.3 #4); J is
+ * visibility hidden for its first 1.5 s and K scale(0) for its first 1.5 s (Breaker 3.1 #2). The / rows must catch each
+ * at FCP.
+ */
+const STILL_PLANTS = {
+  I: '<style data-plant="I">.hero-still{animation:m2-plant-i 1.5s 300ms both}@keyframes m2-plant-i{from{opacity:0}to{opacity:1}}</style>',
+  J: '<style data-plant="J">.hero-still{animation:m2-plant-j 1ms 1500ms both}@keyframes m2-plant-j{from{visibility:hidden}to{visibility:visible}}</style>',
+  K: '<style data-plant="K">.hero-still{animation:m2-plant-k 1ms 1500ms both}@keyframes m2-plant-k{from{transform:scale(0)}to{transform:none}}</style>',
+};
+async function noWebglPlants(dist) {
+  const out = {};
+  for (const [id, css] of Object.entries(STILL_PLANTS)) {
+    const dir = mkdtempSync(join(tmpdir(), `m2-plant-${id.toLowerCase()}-`));
     try {
-      const r = await noWebgl(srv.base, [['D2', '/', 'load'], ['S1', '/', 'load']]);
-      // Caught when a row fails on what first paint showed while its end state is whole.
-      const caught = r.rows.some((x) => !x.pass && x.atFcp?.stillOpacity !== '1' && x.stillOpacity === '1');
-      return { ...r, caught, pass: caught };
+      cpSync(dist, dir, { recursive: true });
+      const home = join(dir, 'index.html');
+      const html = readFileSync(home, 'utf8');
+      if (!html.includes('</head>')) throw new Error(`plant ${id}: index.html has no </head>`);
+      writeFileSync(home, html.replace('</head>', `${css}</head>`));
+      const srv = await serve(dir);
+      try {
+        const r = await noWebgl(srv.base, [['D2', '/', 'load'], ['S1', '/', 'load']]);
+        // Caught when a row fails on what first paint showed while its end state is whole.
+        const atFcpWhole = (x) => x.atFcp?.stillOpacity === '1' && x.atFcp.stillVisibility === 'visible' && x.atFcp.stillBox?.[0] > 0;
+        const caught = r.rows.some((x) => !x.pass && !atFcpWhole(x) && x.stillOpacity === '1');
+        out[id] = { rows: r.rows.map((x) => ({ profile: x.profile, pass: x.pass, atFcp: x.atFcp, end: { opacity: x.stillOpacity } })), caught };
+      } finally {
+        await srv.close();
+      }
     } finally {
-      await srv.close();
+      rmSync(dir, { recursive: true, force: true });
     }
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
   }
+  return { plants: out, pass: Object.values(out).every((p) => p.caught) };
 }
 
 async function withGl(base) {
@@ -777,7 +801,45 @@ async function hooks(base) {
   return { ...r, pass: Boolean(ok) };
 }
 
-const CHECKS = { door, noWebgl, withGl, present, grid, aspect, gutter, zero, hooks };
+/**
+ * The second wake after an arrival (perf row 26, ruling 6030949628 item 1), by its named cause. On the D2 history Back
+ * to the top of / (a hash with no target, the arrival the perf gate measured), the camera's kept print program, linked
+ * from a timer, completed only about 90 ms after the ticker had detached (its link sat unflushed while the ticker ran
+ * frames that issued no GL), so the camera's first frame (hero:cam-ready) came after the first stage:idle and woke the
+ * stage a second time. With the stage flushing its context each frame the camera is ready inside the first active
+ * period: hero:cam-ready before the first stage:idle after the arrival, and one sleep in the 4 s after it. The full
+ * tier only (lite boots GL on intent, so a first sleep before the boot is by design). 7a2d0df fails it 9 of 10.
+ */
+async function flush(base) {
+  const rows = [];
+  for (const [profile, engine] of [['D2', null], ['D3', null], ['D3', 'webkit']]) {
+    for (let rep = 0; rep < 3; rep++) {
+      const ctx = await newContext(profile, 'auto', engine ? { browser: engine } : {});
+      const page = await ctx.newPage();
+      await page.goto(`${base}/#arrival`, { waitUntil: 'load' });
+      await waitSettled(page, 15000);
+      await page.goto(`${base}/work/project-02/`, { waitUntil: 'load' });
+      await waitSettled(page, 15000);
+      await page.goBack({ waitUntil: 'load' });
+      await waitSettled(page, 15000);
+      await sleep(4000);
+      const r = await page.evaluate(() => {
+        const m = performance.getEntriesByType('mark');
+        const at = (name) => m.find((x) => x.name === name)?.startTime ?? null;
+        return { tier: window.__stage.tier, nav: performance.getEntriesByType('navigation')[0]?.type ?? null, camReady: at('hero:cam-ready'), firstIdle: at('stage:idle'), sleeps: window.__stage.stats.sleeps };
+      });
+      await ctx.close();
+      const round = (x) => (x === null ? null : Math.round(x));
+      rows.push({
+        profile: engine ? `${profile}@${engine}` : profile, rep, ...r, camReady: round(r.camReady), firstIdle: round(r.firstIdle),
+        pass: r.tier === 'full' && r.nav === 'back_forward' && r.camReady !== null && r.firstIdle !== null && r.camReady < r.firstIdle && r.sleeps === 1,
+      });
+    }
+  }
+  return { rows, pass: rows.length > 0 && rows.every((r) => r.pass) };
+}
+
+const CHECKS = { door, noWebgl, withGl, present, grid, aspect, gutter, zero, hooks, flush };
 
 export async function run(opts = {}) {
   const only = opts.only ? new Set(String(opts.only).split(',')) : null;
@@ -805,10 +867,11 @@ export async function run(opts = {}) {
       out.zeroControl.caught = out.zeroControl.rows?.some((r) => !r.pass && r.sawRestore && !r.settledAfter) ?? false;
       out.zeroControl.pass = out.zeroControl.caught;
     }
-    // The first-paint control (Breaker 2.3 #4, plant I): a copy of the dist whose print 1 still fades in after first
-    // paint (opacity 0 at FCP, 1 at the end) must fail noWebgl's / rows.
+    // The first-paint controls (Breaker 2.3 #4 plant I, Breaker 3.1 #2 plants J and K): copies of the dist whose print 1
+    // still is invisible at first paint (opacity 0, visibility hidden, scale 0) and whole at the end must fail
+    // noWebgl's / rows.
     if ((!only || only.has('noWebgl')) && !opts['no-controls']) {
-      out.noWebglControl = await noWebglPlantI(opts.dist ? resolve(String(opts.dist)) : join(ROOT, 'dist')).catch((e) => ({ error: String(e), rows: [], pass: false }));
+      out.noWebglControl = await noWebglPlants(opts.dist ? resolve(String(opts.dist)) : join(ROOT, 'dist')).catch((e) => ({ error: String(e), plants: {}, pass: false }));
     }
     // The W-D013 control (ruling 5992943706): a stage sized from html.clientWidth fails on a page that does not scroll
     // under a classic-scrollbar gutter.

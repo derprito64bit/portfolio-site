@@ -5,8 +5,11 @@
 // (__stage.settled). Round 2: every case can fail on what it claims (round-1 review, Breakers 1.1 #3, 1.2 #3, 1.3 #3).
 //   rest        rest past the idle detach (2.5 x durations.idleDetach), then a real wheel, a real press and a recolour:
 //               no error, each settles, the recolour is presented
-//   tierDrop    a recolour, then a demotion to lite and to static inside its present tail: GL gone, the stage settles
-//               and stops ticking
+//   tierDrop    from full: a recolour, then a demotion to lite inside its present tail (lite's DPR and pixel caps from
+//               the json budgets block hold on the allocated canvas, the grid holds, the recolour is presented), then
+//               a recolour and a drop to static inside its tail: GL gone, the stage settles and stops ticking (round-3
+//               should-fix S4; plant P keeps the full canvas after the drop and must fail it)
+//   staticScheduled a drop to static while GL is only scheduled: glState off, no boot, settled within 10 s (S5)
 //   ctxLoss     a recolour, then a context loss inside its tail (the restore waits for webglcontextlost); after the
 //               restore, with no input, the canvas shows the recoloured print again (Breaker 2.3 #3: a restore that
 //               re-takes the slots and never redraws leaves the bare page); then a recolour is presented; settles
@@ -24,6 +27,13 @@
 //               context restore still redraws the other prints with no input
 //   renderThrow a three hook (onBeforeRender) that throws once inside one view's draw, through a ticker frame and
 //               through a layout render (renderNow): the other views still draw that frame, the error is counted
+//   crewThrow   an entity factory whose match() throws for one slot (the others still bind, nothing reaches the
+//               caller) and a registered develop impl that takes its slot and throws (the call resolves through next,
+//               the slot is handed back); both counted (round-3 should-fix S1, Breaker 3.1 #3)
+//   scrollRestore a full-load Back and a reload land where the reader was (+-1 px), also after a Swup visit touched
+//               the entry (round-3 should-fix S8, Breaker 3.3 #3)
+//   gapGovernor a 3 s bfcache stay during the opening or a Lenis glide does not step the tier (round-3 should-fix S7,
+//               Breaker 3.3 #2; Chromium with the back/forward cache on)
 //   history     Swup to a project and Back (focus on the print link; settles; one chain; grid), a real bfcache restore
 //               (Chromium with the back/forward cache on: pageshow.persisted; one chain; recolour presented), a
 //               reload and a hash arrival. Playwright's WebKit never restores from its page cache: its row records
@@ -36,7 +46,7 @@
 // Usage: node tests/w-f/selfbreak.mjs [--out selfbreak.json] [--profiles D2,P2,WK-P2] [--only rest,history]
 import sharp from 'sharp';
 import { durations } from '../../src/lib/tokens.js';
-import { PROFILES, cliMain, consoleGate, newContext, serve, sleep, waitSettled } from '../harness/lib.mjs';
+import { PROFILES, budget, cliMain, consoleGate, newContext, serve, sleep, waitSettled } from '../harness/lib.mjs';
 import { INIT as COUNTERS_INIT } from '../harness/counters/run.mjs';
 
 const near = (a, b, tol = 4) => a.every((v, i) => Math.abs(v - b[i]) <= tol);
@@ -179,12 +189,30 @@ const CASES = {
     return { asleepBefore: asleep, afterWheel, afterPress, got, grid, ...c, pass: asleep && afterWheel.ok && afterPress.ok && near(got, [250, 30, 30]) && grid.ok && c.ok };
   },
   async tierDrop(base, profile) {
-    const { ctx, page, gate } = await bench(base, profile, '&tier=full');
-    const r = await page.evaluate(async () => {
+    // Starts on full (round-3 should-fix S4, Breaker 3.2 #2: '?tier=lite&tier=full' started on lite, so the drop to lite
+    // was a no-op). A recolour, then a drop to lite inside its present tail: lite's caps hold (DPR and pixels, from the
+    // json budgets block) on the canvas the GPU allocates, the canvas stays on its grid, and the recolour is presented
+    // at the lite size; then a recolour and a drop to static inside its tail: GL gone, the stage settles and stops.
+    const caps = { dpr: budget('site.dprCap.lite'), px: budget('site.canvasMpx.lite') * 1e6 };
+    const { ctx, page, gate } = await bench(base, profile, '', 'full');
+    const startTier = await page.evaluate(() => window.__stage.tier);
+    await page.evaluate(async () => {
       const s = window.__stage;
       s.fixtures.tint('fx-1', 250, 30, 30);
       await new Promise((res) => requestAnimationFrame(res));
       s.demote('lite', 'self-break');
+    });
+    await sleep(durations.idleDetach * 1.5); // the reallocation, its render and tail, then the idle detach
+    const atLite = await page.evaluate(() => {
+      const s = window.__stage;
+      const c = document.getElementById('gl');
+      return { tier: s.tier, dpr: s.view.dpr, W: s.view.W, Hc: s.view.Hc, width: c.width, height: c.height, px: c.width * c.height, statPx: s.stats.canvasPx };
+    });
+    const liteGrid = await gridOf(page);
+    const liteColour = await colourOf(page, 'fx-1');
+    const r = await page.evaluate(async () => {
+      const s = window.__stage;
+      s.fixtures.tint('fx-1', 30, 30, 250);
       await new Promise((res) => requestAnimationFrame(res));
       s.demote('static', 'self-break');
       const draws = s.stats.draws;
@@ -194,7 +222,30 @@ const CASES = {
     const after = await settles(page);
     const c = verdict(gate);
     await ctx.close();
-    return { ...r, after, ...c, pass: r.tier === 'static' && r.isGl === 0 && !r.railShown && r.drawsAfter <= 1 && after.ok && c.ok };
+    // The DPR cap on the buffer the GPU holds: at most floor(css size x cap) pixels each way (the stage's grid DPR sits a
+    // hair above a whole-pixel ratio by design, rail.ts gridDpr), and the pixel cap on their product.
+    const capsOk = atLite.tier === 'lite' && atLite.width <= Math.floor(atLite.W * caps.dpr + 1e-6) && atLite.height <= Math.floor(atLite.Hc * caps.dpr + 1e-6) && atLite.px <= caps.px && atLite.statPx === atLite.px;
+    // WebKit shows no GL after a buffer reallocation (#88, pre-existing): there the colour is recorded, not asserted.
+    const presents = PROFILES[profile].browser === 'chromium';
+    return {
+      startTier, atLite, caps, capsOk, liteGrid, liteColour, colourAsserted: presents, ...r, after, ...c,
+      pass: startTier === 'full' && capsOk && liteGrid.ok && (!presents || near(liteColour, [250, 30, 30])) && r.tier === 'static' && r.isGl === 0 && !r.railShown && r.drawsAfter <= 1 && after.ok && c.ok,
+    };
+  },
+  async staticScheduled(base, profile) {
+    // A drop to static while GL is only scheduled (Breaker 3.2 #3, round-3 should-fix S5): the boot never runs, glState
+    // goes off and the page settles within 10 s. On / the boot is scheduled until first paint's idle callback (full) or
+    // the near observer (lite): the drop comes from the head of the page, before any of those can fire.
+    const ctx = await newContext(profile);
+    await ctx.addInitScript({ content: `addEventListener('DOMContentLoaded', () => { const t = setInterval(() => { const s = window.__stage; if (!s) return; clearInterval(t); window.__stateAtDrop = s.glState; s.demote('static', 'self-break'); }, 0); });` });
+    const page = await ctx.newPage();
+    const gate = consoleGate(page);
+    await page.goto(`${base}/`, { waitUntil: 'load' });
+    const settled = await waitSettled(page, 10000);
+    const s = await page.evaluate(() => ({ stateAtDrop: window.__stateAtDrop ?? null, glState: window.__stage.glState, tier: window.__stage.tier, glStarts: window.__stage.marks().filter((m) => m.name === 'stage:gl-start').length }));
+    const c = verdict(gate);
+    await ctx.close();
+    return { ...s, settled, ...c, pass: ['scheduled', 'deferred'].includes(s.stateAtDrop) && settled && s.glState === 'off' && s.tier === 'static' && s.glStarts === 0 && c.ok };
   },
   async ctxLoss(base, profile) {
     const { ctx, page, gate } = await bench(base, profile);
@@ -531,6 +582,147 @@ const CASES = {
       back, bf, reload, hash, ...c,
       pass: back.focus === 'project-02' && back.canvas && back.after.ok && back.chain.ok && back.grid.ok && Boolean(reload.tier) && hash.y > 0 && hash.cam === 'camera' && bf.ok && c.ok,
     };
+  },
+  async crewThrow(base, profile) {
+    // The two calls into crew code round 3 left unguarded (Breaker 3.1 #3, round-3 should-fix S1), on / with GL ready:
+    // (a) an entity factory whose match() throws for one unbound slot: the error is counted, never reaches the caller,
+    //     and every other slot the factory matches is still bound;
+    // (b) a registered develop impl that takes its print's slot and then throws: the call resolves through `next` (the
+    //     no-op: take, then give), so the slot is handed back (no .is-gl), and the error is counted.
+    const { ctx, page, gate } = await open(base, profile, '/');
+    await page.waitForFunction(() => window.__stage?.glState === 'ready', null, { polling: 100, timeout: 20000 });
+    await waitSettled(page, 15000);
+    const r = await page.evaluate(async () => {
+      const s = window.__stage;
+      const unbound = s.slots().filter((x) => x.kind === 'print' && !s.gl.entity(x.id)).map((x) => x.id);
+      const victim = unbound[0];
+      const h0 = s.stats.hookErrors;
+      let threwToCaller = null;
+      const made = [];
+      try {
+        s.gl.registerEntityFactory({
+          match: (slot) => {
+            if (slot.id === victim) throw new Error('self-break: factory match threw');
+            return unbound.includes(slot.id);
+          },
+          create: (slot) => {
+            made.push(slot.id);
+            return { id: slot.id, persistent: false, bind() {}, unbind() {}, place() {}, visible: () => false, dispose() {} };
+          },
+        });
+      } catch (e) {
+        threwToCaller = String(e).slice(0, 120);
+      }
+      const factory = { unbound: unbound.length, victim, bound: unbound.filter((id) => id !== victim && s.gl.entity(id)).length, made: made.length, threwToCaller, hookErrors: s.stats.hookErrors - h0 };
+      // (b) the effect chain.
+      const target = 'project-02';
+      const h1 = s.stats.hookErrors;
+      s.registerEffect('develop', (id, opts, next) => {
+        if (id !== target) return next(id, opts);
+        s.take(id);
+        throw new Error('self-break: develop impl threw');
+      });
+      let result = null;
+      let rejected = null;
+      try {
+        result = await s.effects.develop(target, { trigger: 'self-break' });
+      } catch (e) {
+        rejected = String(e).slice(0, 120);
+      }
+      await new Promise((res) => setTimeout(res, 0));
+      const el = document.querySelector(`[data-gl-id="${target}"]`);
+      const effect = { result, rejected, isGl: el?.classList.contains('is-gl') ?? null, hookErrors: s.stats.hookErrors - h1 };
+      return { factory, effect };
+    });
+    const after = await settles(page);
+    const c = verdict(gate, /self-break: (factory match|develop impl) threw/);
+    await ctx.close();
+    const f = r.factory;
+    const e = r.effect;
+    return {
+      ...r, after, ...c,
+      pass: f.unbound >= 2 && f.threwToCaller === null && f.hookErrors === 1 && f.bound === f.unbound - 1 && e.rejected === null && e.result?.developed === true && e.isGl === false && e.hookErrors === 1 && after.ok && c.planted >= 2 && c.ok,
+    };
+  },
+  async scrollRestore(base, profile) {
+    // #11 'Back restores scroll to +-1 px' on full loads too (Breaker 3.3 #3, round-3 should-fix S8): the reader
+    // scrolls, leaves by a full load and comes Back (a fresh load: Playwright's browsers keep no bfcache here), or
+    // reloads; and the same after a Swup visit has touched the entry (the router restores ionScroll itself there).
+    const rows = [];
+    const scrollTo = async (page, y) => {
+      await page.evaluate((top) => window.scrollTo({ top, left: 0, behavior: 'instant' }), y);
+      await sleep(400); // the router's scroll writer is debounced 150 ms
+      return page.evaluate(() => Math.round(window.scrollY));
+    };
+    const yNow = (page) => page.evaluate(() => Math.round(window.scrollY));
+    for (const kind of ['back', 'reload', 'swupBack']) {
+      const { ctx, page, gate } = await open(base, profile, '/');
+      await waitSettled(page, 15000);
+      if (kind === 'swupBack') {
+        // A Swup visit to a project and Back first: from here the entry's scroll restoration is the router's.
+        const link = page.locator('#sheet ~ ol [data-gl-id="project-02"]');
+        await link.scrollIntoViewIfNeeded();
+        await link.focus();
+        await page.keyboard.press('Enter');
+        await page.waitForFunction(() => location.pathname === '/work/project-02/' && !document.documentElement.hasAttribute('aria-busy'), null, { timeout: 10000 });
+        await waitSettled(page, 10000);
+        await page.goBack();
+        await page.waitForFunction(() => location.pathname === '/' && !document.documentElement.hasAttribute('aria-busy'), null, { timeout: 10000 });
+        await waitSettled(page, 10000);
+      }
+      const want = await scrollTo(page, 1200);
+      const mode = await page.evaluate(() => history.scrollRestoration);
+      if (kind === 'reload') await page.reload({ waitUntil: 'load' });
+      else {
+        await page.goto(`${base}/work/project-01/`, { waitUntil: 'load' });
+        await waitSettled(page, 10000);
+        await page.goBack({ waitUntil: 'load' });
+      }
+      await waitSettled(page, 15000);
+      await sleep(300);
+      const got = await yNow(page);
+      const nav = await page.evaluate(() => performance.getEntriesByType('navigation')[0]?.type ?? null);
+      const c = verdict(gate);
+      await ctx.close();
+      rows.push({ kind, modeBefore: mode, want, got, nav, ...c, ok: want > 0 && Math.abs(got - want) <= 1 && c.ok });
+    }
+    return { rows, pass: rows.every((r) => r.ok) };
+  },
+  async gapGovernor(base, profile) {
+    // A stay in the back/forward cache mid-motion is a gap, not a busy frame (Breaker 3.3 #2, perf row 29, W-D017): the
+    // visitor leaves / during the opening, or during a Lenis glide after a wheel step, by a full load, stays 3 s and
+    // comes Back (a bfcache restore). The tier and the governor's step count do not change. Chromium with the
+    // back/forward cache on; Playwright's WebKit never restores from its page cache, so its row does not apply.
+    if (PROFILES[profile].browser !== 'chromium') return { applies: false, why: "Playwright's WebKit never restores from its page cache", pass: true };
+    const rows = [];
+    for (const variant of ['intro', 'wheel']) {
+      const ctx = await newContext(profile, 'auto', { browser: 'chromium-bfcache' });
+      await ctx.addInitScript({ content: 'window.__shows = []; addEventListener("pageshow", (e) => window.__shows.push(e.persisted));' });
+      const page = await ctx.newPage();
+      const gate = consoleGate(page, { expectStatus: [{ status: 404, url: /\/manor\/$/ }] });
+      await page.goto(`${base}/`, { waitUntil: 'load' });
+      await page.waitForFunction(() => window.__stage?.glState === 'ready', null, { polling: 50, timeout: 20000 });
+      if (variant === 'intro') await sleep(600);
+      else {
+        await waitSettled(page, 20000);
+        const { width, height } = page.viewportSize();
+        await page.mouse.move(width / 2, height / 2);
+        await page.mouse.wheel(0, 900);
+        await sleep(120);
+      }
+      const before = await page.evaluate(() => ({ tier: window.__stage.tier, steps: window.__stage.stats.governorSteps, moving: !window.__stage.settled }));
+      await page.goto(`${base}/manor/`, { waitUntil: 'load' });
+      await sleep(3000);
+      await page.goBack({ waitUntil: 'commit' });
+      await page.waitForFunction(() => window.__stage && location.pathname === '/', null, { timeout: 15000 });
+      await sleep(2500);
+      const after = await page.evaluate(() => ({ tier: window.__stage.tier, steps: window.__stage.stats.governorSteps, restored: window.__shows.includes(true), tierLog: window.__stage.tierLog }));
+      const settled = await settles(page);
+      const c = verdict(gate);
+      await ctx.close();
+      rows.push({ variant, before, after, settled, ...c, ok: before.moving && after.restored && after.tier === before.tier && after.steps === before.steps && settled.ok && c.ok });
+    }
+    return { rows, pass: rows.every((r) => r.ok) };
   },
   async rapid(base, profile) {
     // /bench/: a wheel, a click on a print link (a Swup visit), Back and a second click, with no waits between them.

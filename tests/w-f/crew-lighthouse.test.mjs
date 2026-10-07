@@ -32,15 +32,16 @@ const busy = { exitCode: 75, json: { verdict: 'busy', reasons: ['cpu median 48% 
 
 /** A Lighthouse report with every field crew.mjs reads; by default well inside every budget for `ff`. */
 function lhr(ff, x = {}) {
-  const v = { perf: Math.min(1, budget[ff].performance + 0.03), a11y: 1, bp: 1, seo: 1, lcp: Math.round(0.4 * budget[ff].lcp), tbt: Math.round(0.2 * budget[ff].tbt), cls: 0, fcp: 700, bench: BASE, ...x };
+  const v = { perf: Math.min(1, budget[ff].performance + 0.03), a11y: 1, bp: 1, seo: 1, lcp: Math.round(0.4 * budget[ff].lcp), tbt: Math.round(0.2 * budget[ff].tbt), cls: 0, fcp: 700, bench: BASE, renderer: 'ANGLE (planted, Direct3D11)', ...x };
+  const glStart = v.glStart ?? v.fcp + 100;
   return {
     environment: { benchmarkIndex: v.bench },
     categories: { performance: { score: v.perf }, accessibility: { score: v.a11y }, 'best-practices': { score: v.bp }, seo: { score: v.seo } },
     audits: {
-      'user-timings': { details: { items: [{ name: 'stage:renderer=ANGLE (planted, Direct3D11)' }, { name: `stage:tier=${ff === 'mobile' ? 'lite' : 'full'}:detect` }, { name: 'stage:gl-start', startTime: v.fcp + 100 }] } },
+      'user-timings': { details: { items: [{ name: `stage:renderer=${v.renderer}` }, { name: `stage:tier=${ff === 'mobile' ? 'lite' : 'full'}:detect` }, { name: 'stage:gl-start', startTime: glStart }] } },
       'lcp-breakdown-insight': { details: { type: 'list', items: [{ type: 'node', selector: 'main#main > section.hero > div > h1#hero-title', snippet: '<h1 id="hero-title" class="wordmark">' }] } },
       metrics: { details: { items: [{ observedFirstContentfulPaint: v.fcp }] } },
-      'network-requests': { details: { items: [{ url: 'http://127.0.0.1:1/_astro/gl.planted.js', networkRequestTime: v.fcp + 150 }] } },
+      'network-requests': { details: { items: [{ url: 'http://127.0.0.1:1/_astro/gl.planted.js', networkRequestTime: glStart + 50 }] } },
       'largest-contentful-paint': { numericValue: v.lcp },
       'cumulative-layout-shift': { numericValue: v.cls },
       'total-blocking-time': { numericValue: v.tbt },
@@ -141,4 +142,47 @@ test('verdict: a median under the performance minimum fails the set (exit 1), af
   assert.equal(r.mobile.pass, false);
   assert.equal(r.mobile.runs.length, rules.nearBudgetRuns);
   assert.equal(r.desktop.pass, true);
+});
+
+// ---- round-3 should-fix S2 (Breaker 3.1 #1): every rule of the verdict and the report is pinned, so taking any one
+// out of crew.mjs fails a test here (crew-lighthouse.mutants.mjs holds the 10 mutants; each must be caught).
+const failsOn = (name, mobileRuns) => test(`verdict: ${name} fails the set (exit 1)`, () => {
+  const r = crew({ prechecks: [clear], runs: { mobile: runs('mobile', mobileRuns), desktop: fine.desktop } });
+  assert.equal(r.status, 1, r.out);
+  assert.equal(r.mobile.pass, false);
+  assert.equal(r.desktop.pass, true);
+  assert.equal(r.manifest.items.find((i) => i.kind === 'lighthouse' && i.profile === 'mobile').pass, false);
+});
+failsOn('a median accessibility under a11yMin', [{ a11y: budget.mobile.accessibility - 0.05 }]);
+failsOn('a median best practices under bestPracticesMin', [{ bp: budget.mobile.bestPractices - 0.05 }]);
+failsOn('a median TBT past its maximum', [{ tbt: budget.mobile.tbt + 20 }]);
+failsOn('a median LCP past its maximum', [{ lcp: budget.mobile.lcp + 200 }]);
+failsOn("a median CLS above 0 (inside budgets.md's limit: #11 asks for CLS 0)", [{ cls: budget.mobile.cls / 2 }]);
+failsOn('the GL chunk starting before first contentful paint (D-005)', [{ glStart: 300, fcp: 700 }]);
+failsOn('an invalid run (a software renderer)', [{ renderer: 'SwiftShader (planted)' }]);
+
+test('report: the summary and the manifest carry the worst run and the count past budget (R5)', () => {
+  // Ten clean runs (one past the TBT maximum grows the set), the third the worst on TBT and the only one past budget.
+  const tbts = [20, 30, budget.mobile.tbt + 40, 40, 50, 25, 35, 45, 55, 15];
+  const r = crew({ prechecks: [clear], runs: { mobile: runs('mobile', tbts.map((tbt) => ({ tbt }))), desktop: fine.desktop } });
+  assert.equal(r.status, 0, r.out);
+  assert.equal(r.mobile.runs.length, rules.nearBudgetRuns);
+  assert.deepEqual(r.mobile.worst.tbt, { run: 3, value: budget.mobile.tbt + 40 });
+  assert.equal(r.mobile.pastBudget.count, 1);
+  assert.deepEqual(r.mobile.pastBudget.runs.map((x) => x.run), [3]);
+  assert.equal(typeof r.mobile.worstRun, 'number');
+  const m = r.manifest.items.find((i) => i.kind === 'lighthouse' && i.profile === 'mobile').metrics;
+  assert.deepEqual(m.worst.tbt, { run: 3, value: budget.mobile.tbt + 40 });
+  assert.equal(m.pastBudgetCount, 1);
+  assert.equal(m.worstRun, r.mobile.worstRun);
+});
+
+test('R3: more host-suspect runs than extraRunsPerSetMax block the set (exit 75), never pass it', () => {
+  const max = rules.extraRunsPerSetMax;
+  const list = [...Array.from({ length: max + 1 }, () => ({ bench: SUSPECT })), {}];
+  const r = crew({ prechecks: [clear], runs: { mobile: runs('mobile', list), desktop: fine.desktop } });
+  assert.equal(r.status, 75, r.out);
+  assert.match(r.mobile.blocked, /R3/);
+  assert.equal(r.mobile.pass, null);
+  assert.equal(r.mobile.runs.length, max + 1);
 });

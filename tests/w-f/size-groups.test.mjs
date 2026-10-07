@@ -115,3 +115,14 @@ test('without page data every entry is counted together (an upper bound for any 
   assert.equal(g.preGL.length, 1);
   assert.deepEqual(g.preGL[0].files, ['_astro/Base.js', '_astro/Hero.js', '_astro/stage.js', '_astro/tier.js']);
 });
+
+test('planted: a chunk reached only by a dynamic import from a GL root, outside every GL path, counts toward GL (gate residual 5)', () => {
+  // A lazy helper (no GL module path, not a GL entry itself) that only gl.js imports dynamically: a closure that
+  // followed static imports alone would leave it out.
+  const lazy = chunk('_astro/lazy-gl.js', ['src/lib/lazy-gl.ts'], [], { isDynamicEntry: true });
+  const graph = [...shared.map((c) => (c.file === '_astro/gl.js' ? { ...c, dynamicImports: ['_astro/lazy-gl.js'] } : c)), lazy];
+  const g = sizeGroups(graph, pages);
+  assert.ok(g.gl.includes('_astro/lazy-gl.js'), 'reached by the dynamic import');
+  assert.ok(!g.glRoots.includes('_astro/lazy-gl.js'), 'not a GL root: only the closure can find it');
+  assert.ok(g.glByClosureOnly.includes('_astro/lazy-gl.js'));
+});

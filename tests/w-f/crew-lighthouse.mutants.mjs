@@ -16,6 +16,17 @@ export const MUTANTS = {
   'R3 no extra run for a suspect one': ["const step = lib.setStep(reports.map((r) => ({ suspect: r.suspect })), need, rules.extraRunsPerSetMax ?? 0);", 'const step = lib.setStep(reports.map(() => ({ suspect: [] })), need, rules.extraRunsPerSetMax ?? 0);'],
   'R1 busy-then-cleared try marked blocked (d)': ['...(t.blocked ? { blocked: t.blocked } : {})', "...(t.exitCode !== 0 ? { blocked: 'host' } : {})"],
   'pass ignores the median performance minimum': ['medians.performance >= budget.performance &&', 'true &&'],
+  // Breaker 3.1 #1's ten (round-3 should-fix S2): round 1's crew-mjs-r1-r5 (a) and (b) among them.
+  'pass ignores the accessibility minimum (round-1 a)': ['medians.accessibility >= budget.accessibility &&', 'true &&'],
+  'pass ignores the best-practices minimum (round-1 a)': ['medians.bestPractices >= budget.bestPractices &&', 'true &&'],
+  'summary drops the worst run and the count past budget (round-1 b)': ['worstRun: sum.worstRun, worst: sum.worst, pastBudget: sum.pastBudget, budgetPass', 'budgetPass'],
+  'manifest drops the worst run and the count past budget (round-1 b)': ['worstRun: sum.worstRun, worst: sum.worst, pastBudgetCount: sum.pastBudget.count, pastBudget: sum.pastBudget.runs,', ''],
+  'R3 extra-run cap removed': ['need, rules.extraRunsPerSetMax ?? 0);', 'need, Infinity);'],
+  'pass ignores the TBT median': ['medians.tbt <= budget.tbt &&', 'true &&'],
+  'pass ignores the LCP median': ['medians.lcp <= budget.lcp &&', 'true &&'],
+  'pass ignores CLS 0': ['medians.cls === 0 &&', 'true &&'],
+  'pass ignores GL after first paint': ['const glOrderPass = clean.every((r) => r.glAfterFcp);', 'const glOrderPass = true;'],
+  'pass ignores invalid runs': ['clean.every((r) => r.valid) &&', 'true &&'],
 };
 
 export async function run() {
