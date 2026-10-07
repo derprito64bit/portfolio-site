@@ -25,12 +25,24 @@ function step(time: number): void {
   lenis?.raf(clock);
 }
 
+/**
+ * Lenis is moving the page: its own glide ('smooth'), or a native scroll it follows ('native') while that scroll still
+ * moves. Lenis 1.3 sets 'native' on every native scroll event but clears it only from a timer it starts when the event
+ * moved the page; a scroll event that moves nothing leaves 'native' set for good. A Swup visit from / to the 404 (a
+ * page shorter than the viewport) fires one at y 0, and the ticker never slept there: 1 rAF a frame and 0 draws at D2
+ * (round 4, ruling 6031879782 item 3). A native scroll with no velocity is not motion.
+ */
+function scrolling(): boolean {
+  if (!lenis) return false;
+  return lenis.isScrolling === 'smooth' || (lenis.isScrolling === 'native' && lenis.velocity !== 0);
+}
+
 export function enableLenis(): void {
   // W-D014: the full tier with motion full only, checked here too, so a caller holding a stale answer cannot turn it on.
   if (lenis || getTier() !== 'full' || isReduced()) return;
   lenis = new Lenis({ autoRaf: false, lerp: 0.15, smoothWheel: true, syncTouch: false, anchors: false, stopInertiaOnNavigate: true });
   offBefore = onBefore(step);
-  offActive = onActive(() => Boolean(lenis?.isScrolling));
+  offActive = onActive(scrolling);
   for (const t of INPUTS) addEventListener(t, wake, { passive: true, capture: true });
   setLenis(lenis, wake);
 }
