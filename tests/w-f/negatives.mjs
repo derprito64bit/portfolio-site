@@ -3,7 +3,9 @@
 //   ph-gate   a copy of dist/ with an unmarked placeholder, an em dash, a duplicate title, a token on an indexable page
 //             and one link name pointing to two URLs
 //   stacking  a transform on #main in the live page makes every slot's ancestor a stacking context
-//   lint      a second rAF call site and a forbidden navigator read, in a scratch copy of the lint's rules
+//   lint      scripts/check/lint.mjs --src on scratch copies of src/ with one planted form each (a second rAF chain by
+//             .bind, ?.(), .call, a destructured alias or a computed name; a core or touch-point read by a computed key,
+//             destructuring or an alias of navigator): each fails it, the clean copy passes (round-3 should-fix S9)
 //   detach    a ticker kept awake (__stage.invalidate every 250 ms) must fail the counters' after-scroll idle window
 //   draws     draws outside the ticker (a timer on the stage's context: no rAF) at D2 / (where the intro passes the
 //             counters' old 20,000-stamp cap) and WK-P2 /, one kind per plant: drawArrays, WEBGL_multi_draw,
@@ -26,7 +28,7 @@ import { spawnSync } from 'node:child_process';
 import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { pathToFileURL } from 'node:url';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { validateContent } from '../../src/lib/content/validate.js';
 import { scanInPage } from '../../scripts/check/stacking.mjs';
 import { ROOT, cliMain, lcpElementOf, lcpElementVerdict, newContext, serve, sleep, waitSettled } from '../harness/lib.mjs';
@@ -86,14 +88,41 @@ async function stackingControl() {
   }
 }
 
+/**
+ * The lint itself (scripts/check/lint.mjs --src) on scratch copies of src/, each with one planted form (round-3
+ * should-fix S9, Breaker 3.3 #4): a second rAF chain reached by .bind, ?.(), .call, a destructured alias or a computed
+ * name, and a core or touch-point read by a computed key, destructuring or an alias of navigator. Each must fail it;
+ * the clean copy passes. NEG_LINT=<another lint.mjs> runs the same plants through that one (7a2d0df's misses them).
+ */
+const LINT_PLANTS = {
+  rafBind: 'const f = requestAnimationFrame.bind(window);\nf(() => {});',
+  rafOptionalCall: 'window.requestAnimationFrame?.(() => {});',
+  rafCall: 'requestAnimationFrame.call(window, () => {});',
+  rafDestructured: 'const { requestAnimationFrame: r } = window;\nr(() => {});',
+  rafComputed: "const r = (window as any)['requestAnimation' + 'Frame'];\nr(() => {});",
+  readComputed: "export const n = (navigator as any)['hardware' + 'Concurrency'];",
+  readDestructured: "const { ['max' + 'TouchPoints']: m } = navigator as any;\nexport { m };",
+  readAlias: "const nav: any = navigator;\nconst key = 'hardware' + 'Concurrency';\nexport const n = nav[key];",
+};
 function lintControl() {
-  // The lint's own regexes, applied to a planted snippet (the lint reads src/, which stays clean).
-  const code = 'requestAnimationFrame(a);\nwindow.requestAnimationFrame(b);\nconst n = navigator.hardwareConcurrency;';
-  const raf = (code.match(/\brequestAnimationFrame\s*\(/g) || []).length;
-  const forbidden = (code.match(/\b(hardwareConcurrency|maxTouchPoints)\b/g) || []).length;
-  const src = readFileSync(join(ROOT, 'scripts/check/lint.mjs'), 'utf8');
-  const sameRules = src.includes('/\\brequestAnimationFrame\\s*\\(/g') && src.includes('/\\b(hardwareConcurrency|maxTouchPoints)\\b/g');
-  return { rafCallSites: raf, forbiddenReads: forbidden, sameRulesAsLint: sameRules, pass: raf === 2 && forbidden === 1 && sameRules };
+  const lint = process.env.NEG_LINT ? resolve(process.env.NEG_LINT) : join(ROOT, 'scripts/check/lint.mjs');
+  const runLint = (srcDir) => spawnSync(process.execPath, [lint, '--src', srcDir, '--json'], { cwd: ROOT, encoding: 'utf8' });
+  const scratch = mkdtempSync(join(tmpdir(), 'lint-plants-'));
+  try {
+    const rows = [];
+    for (const [name, code] of [['clean', null], ...Object.entries(LINT_PLANTS)]) {
+      const dir = join(scratch, name, 'src');
+      cpSync(join(ROOT, 'src'), dir, { recursive: true });
+      if (code) writeFileSync(join(dir, 'stage', `plant-${name}.ts`), `${code}\n`);
+      const r = runLint(dir);
+      rows.push({ plant: name, exit: r.status, caught: r.status !== 0 && /requestAnimationFrame|core or touch-point/.test(r.stderr), out: r.stderr.slice(0, 300) });
+    }
+    const clean = rows.find((r) => r.plant === 'clean');
+    const planted = rows.filter((r) => r.plant !== 'clean');
+    return { lint, rows, pass: clean.exit === 0 && planted.every((r) => r.caught), missed: planted.filter((r) => !r.caught).map((r) => r.plant) };
+  } finally {
+    rmSync(scratch, { recursive: true, force: true });
+  }
 }
 
 /**

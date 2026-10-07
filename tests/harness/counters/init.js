@@ -56,11 +56,15 @@
     });
     mo.observe(document, { childList: true });
   }
-  // A visit without the animated classes (reduced motion, or a page with nothing to fade) still replaces #swup's
-  // children: that replacement is its arrival (and the class change after it, when there is one, comes later and wins).
+  // A visit without the animated classes (reduced motion, or a page with nothing to fade) still replaces the #swup
+  // container (Swup swaps the element itself): that replacement is its arrival (and the class change after it, when
+  // there is one, comes later and wins).
   addEventListener('DOMContentLoaded', () => {
-    const box = document.getElementById('swup');
-    if (box) new MutationObserver(() => arrive('swup')).observe(box, { childList: true });
+    const parent = document.getElementById('swup')?.parentNode;
+    if (!parent) return;
+    new MutationObserver((recs) => {
+      if (recs.some((r) => [...r.addedNodes].some((n) => n.id === 'swup'))) arrive('swup');
+    }).observe(parent, { childList: true });
   }, { once: true });
 
   let inRaf = 0;

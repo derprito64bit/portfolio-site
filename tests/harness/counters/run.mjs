@@ -221,7 +221,7 @@ export async function arrivals(base, profiles, opts = {}) {
           await waitSettled(page, 15000);
           await page.goto(`${base}/work/project-02/`, { waitUntil: 'load' });
           await waitSettled(page, 15000);
-          await page.goBack({ waitUntil: 'load' });
+          await page.goBack({ waitUntil: 'commit' }); // a bfcache restore fires pageshow, not load
           r = await arrivalWindow(page, 'bfcache');
         } else {
           // A Swup visit by keyboard (no pointer move after it): the nav's Work link (/#work) from a project page.
@@ -236,7 +236,7 @@ export async function arrivals(base, profiles, opts = {}) {
         r = { kind, pass: false, error: String(e?.message || e).slice(0, 300) };
       }
       await ctx.close();
-      rows.push({ profile, ...r });
+      rows.push({ profile, case: kind, ...r });
     }
   }
   return { rows, pass: rows.length > 0 && rows.every((x) => x.pass) };
@@ -244,8 +244,9 @@ export async function arrivals(base, profiles, opts = {}) {
 
 export async function run(opts = {}) {
   const profiles = String(opts.profiles || 'D2,P2,WK-P2').split(',');
-  const routes = String(opts.routes || '/,/bench/').split(',');
-  const srv = await serve();
+  // --arrivals-only runs step 5 alone (the other steps keep their own routes).
+  const routes = opts['arrivals-only'] ? [] : String(opts.routes || '/,/bench/').split(',');
+  const srv = await serve(opts.dist ? String(opts.dist) : undefined);
   const rows = [];
   let arrivalStep = null;
   try {
@@ -324,7 +325,7 @@ export async function run(opts = {}) {
     schema: 4, instrument: 'counters',
     motionEndWindow: `${WINDOW_START_MS / 1000} s + max(2 frames, ${TOLERANCE_FLOOR_MS} ms) to ${WINDOW_END_MS / 1000} s after the motion end: the later of the last input event (scroll, wheel, pointer, key), the last arrival (load, bfcache restore, Swup visit end) and the last presented frame (draws through any entry point and clears, tail and clear-only frames included); the motion must end within ${WINDOW_END_MS / 1000} s of the last input or arrival (Orchestrator rulings on #11, 5992928262 and 6030949628)`,
     pass, rows, arrivals: arrivalStep,
-    arrivalSummary: arrivalStep?.rows.map((r) => `${r.profile} ${r.kind}: ${r.pass ? 'pass' : 'FAIL'} (motion ends by ${r.motionEndsBy} +${r.motionEndsMs} ms, last rAF +${r.lastRafAfterMotionMs} ms, window raf ${r.afterMotion?.raf} draws ${r.afterMotion?.draws}${r.error ? `, ${r.error}` : ''})`).join(' | ') ?? null,
+    arrivalSummary: arrivalStep?.rows.map((r) => `${r.profile} ${r.case}: ${r.pass ? 'pass' : 'FAIL'} (motion ends by ${r.motionEndsBy} +${r.motionEndsMs} ms, last rAF +${r.lastRafAfterMotionMs} ms, window raf ${r.afterMotion?.raf} draws ${r.afterMotion?.draws}${r.error ? `, ${r.error}` : ''})`).join(' | ') ?? null,
     summary: rows.map((r) => `${r.profile} ${r.route}: idle raf ${r.idle.afterMotion.raf} draws ${r.idle.afterMotion.draws} (ends +${r.idle.motionEndsMs} ms); after ${r.afterScroll.input} (motion ends +${r.afterScroll.motionEndsMs} ms by ${r.afterScroll.motionEndsBy}, last rAF +${r.afterScroll.lastRafAfterMotionMs} ms after it) raf ${r.afterScroll.afterMotion.raf} draws ${r.afterScroll.afterMotion.draws} bound ${r.afterScroll.bound.pass ? 'ok' : 'FAIL'} [from input: raf ${r.afterScroll.afterInput.raf}]; active raf ${r.active.gate.raf - r.active.gate.rafFromDependencies}=${r.active.stage.ticks} draws ${r.active.gate.draws}=${r.active.stage.drawCalls}${r.empty ? `, empty page renders ${r.active.stage.renders} clears ${r.active.gate.clears} skips ${r.active.stage.renderSkips}` : ''}; scroll rect-in-raf ${r.scroll.gate.rectReadsInRaf}`).join(' | '),
   };
 }
