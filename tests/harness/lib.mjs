@@ -132,6 +132,29 @@ export const ALLOW_BREADTH_PROBES = [
   'The quick brown fox jumps over the lazy dog', 'x'.repeat(240), 'x'.repeat(241), 'x'.repeat(4096),
   `${'A long, unrelated warning line from some library, repeated. '.repeat(20).trim()}`,
 ];
+/**
+ * Unrelated text an entry's regex must not accept around its own diagnostic (round-3 must-fix allowlist-breadth; W-D030:
+ * an entry lists one diagnostic, not any line that names its code). validateAllowEntry puts each of these before and
+ * after every example line and around the literal alone; a regex that matches any such line could pass a line that only
+ * mentions the code (three's own 'Texture marked for update but no image data found. (see warning X4122)', a library's
+ * 'see warning X4122 in the docs'), so it throws at load. Lines are trimmed before they are judged, so there is no
+ * whitespace-only text here.
+ */
+export const ALLOW_WRAP_BEFORE = ['x', 'x '.repeat(30).trim(), 'warning ', 'THREE.WebGLRenderer: ', 'THREE.WebGLRenderer: Texture marked for update but no image data found. (see ', 'Some library: deprecated option used; see '];
+export const ALLOW_WRAP_AFTER = ['x', ` ${'x '.repeat(30).trim()}`, ')', ' in the docs', '. (see the console)'];
+export function allowWrapProbes(literal, lines) {
+  const out = [];
+  for (const b of ALLOW_WRAP_BEFORE) {
+    out.push(b + literal);
+    for (const a of ALLOW_WRAP_AFTER) out.push(b + literal + a);
+    for (const l of lines) out.push(b + l);
+  }
+  for (const a of ALLOW_WRAP_AFTER) {
+    out.push(literal + a);
+    for (const l of lines) out.push(l + a);
+  }
+  return out;
+}
 /** The lines of a console message an allowlist entry is judged on: trimmed, blank lines dropped. */
 export const messageLines = (text) => String(text).split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
 /** The shortest `literal` an entry may name (W-D030 allowlist; round-2 should-fix S3). */
@@ -147,7 +170,9 @@ export const ALLOW_LITERAL_MIN = 10;
  * - `literal` is the fixed text every allowed line must contain (round-2 should-fix S3: breadth is not left to a probe
  *   list alone): at least ALLOW_LITERAL_MIN characters with a digit in it (a diagnostic code such as 'warning X4122'),
  *   found in no probe line, and a line passes the entry only when it matches the regex AND contains the literal;
- * - `example` (one real message) must have every line match the entry, contain the literal, and hold no CONSOLE_RE word.
+ * - `example` (one real message) must have every line match the entry, contain the literal, and hold no CONSOLE_RE word;
+ * - the regex matches no line that puts unrelated text before or after the example's lines or the literal
+ *   (allowWrapProbes: '.*warning X4122.*' and its bounded forms throw).
  * Every new entry is reviewed (tests/harness/README.md). Returns the entries still in force on `today`; an expired
  * entry stops matching.
  */
@@ -181,6 +206,9 @@ export function validateAllowEntry(a, i = 0) {
   if (!lines.length || !lines.every((l) => re.test(l))) throw new Error(`${where}: its example does not match the regex line by line`);
   if (!lines.every((l) => l.includes(lit))) throw new Error(`${where}: its example does not hold the literal '${lit}' on every line`);
   if (CONSOLE_RE.test(a.example)) throw new Error(`${where}: its example holds a W-D030 failure word, which no entry can allow`);
+  // Breadth around the literal: unrelated text before or after the diagnostic must not match (allowWrapProbes).
+  const wrapHit = allowWrapProbes(lit, lines).find((p) => re.test(p));
+  if (wrapHit !== undefined) throw new Error(`${where}: regex /${a.regex}/ is too broad around its literal (it matches ${JSON.stringify(wrapHit.slice(0, 90))}, unrelated text around the diagnostic)`);
   return { ...a, re, allows: (line) => re.test(line) && line.includes(lit) };
 }
 
@@ -190,10 +218,12 @@ export function validateAllowEntry(a, i = 0) {
  */
 export const ERROR_LEVELS = new Set(['error', 'assert']);
 /**
- * The browser's echo of a 4xx/5xx response (Chromium and WebKit word it the same), as the WHOLE message: any other text
- * around it is judged like any other message.
+ * The browser's echo of a 4xx/5xx response (Chromium and WebKit word it the same), built from the response itself: its
+ * status and its own status text (the server's reason phrase, 'Not Found' from serve-dist). Only this exact text, as the
+ * WHOLE message, is the echo; the parentheses hold nothing but that response's status text (round-3 must-fix
+ * console-gate-error-level: free text there was never judged).
  */
-export const RESPONSE_ECHO_RE = /^Failed to load resource: the server responded with a status of (\d{3}) \([^()\r\n]*\)$/;
+export const responseEcho = (status, statusText) => `Failed to load resource: the server responded with a status of ${status} (${statusText})`;
 
 /**
  * Attach the console gate to a page. Collects every console level (with the message's source URL), pageerror,
@@ -225,18 +255,24 @@ export function consoleGate(page, { expectStatus = [], allow = loadAllowlist() }
   page.on('response', (r) => {
     if (r.status() < 400) return;
     const expected = expectStatus.some((e) => e.status === r.status() && e.url.test(r.url()));
-    events.push({ channel: 'response', level: expected ? 'info' : 'error', text: `${r.status()} ${r.url()}`, status: r.status(), url: r.url(), expected });
+    let statusText = '';
+    try {
+      statusText = typeof r.statusText === 'function' ? String(r.statusText() ?? '') : '';
+    } catch {
+      statusText = '';
+    }
+    events.push({ channel: 'response', level: expected ? 'info' : 'error', text: `${r.status()} ${r.url()}`, status: r.status(), statusText, url: r.url(), expected });
   });
   return {
     events,
     verdict() {
       const failures = [];
       const expectedResponses = events.filter((e) => e.channel === 'response' && e.expected);
-      /** The echo of an expected response: the whole message, that status, and that response's URL as its source. */
-      const expectedEcho = (e) => {
-        const m = RESPONSE_ECHO_RE.exec(e.text);
-        return Boolean(m) && e.url !== '' && expectedResponses.some((r) => r.status === Number(m[1]) && r.url === e.url);
-      };
+      /**
+       * The echo of an expected response: exactly responseEcho(that status, that response's own status text) as the
+       * whole message, from that response's URL, and the status text itself holds no W-D030 word (it is judged too).
+       */
+      const expectedEcho = (e) => e.url !== '' && expectedResponses.some((r) => r.url === e.url && e.text === responseEcho(r.status, r.statusText) && !CONSOLE_RE.test(r.statusText));
       const wholly = (text) => {
         const lines = messageLines(text);
         return lines.length > 0 && lines.every((l) => allow.some((a) => a.allows(l)));

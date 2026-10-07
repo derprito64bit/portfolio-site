@@ -32,7 +32,7 @@ function fakePage(messages) {
   return {
     page,
     flush: () => messages.forEach((m) => {
-      if (m.response) return page.emit('response', { status: () => m.response.status, url: () => m.response.url });
+      if (m.response) return page.emit('response', { status: () => m.response.status, statusText: () => m.response.statusText ?? 'Not Found', url: () => m.response.url });
       const [type, text, url = ''] = m;
       return page.emit('console', { type: () => type, text: () => text, location: () => ({ url, lineNumber: 0, columnNumber: 0 }) });
     }),
@@ -228,6 +228,44 @@ test('negative: a line the regex matches but without the literal fails the gate;
   const allow = planted([entry({ regex: 'warning X\\d{4}: planted note' })]);
   assert.equal(verdict([['warning', 'warning X9999: planted note']], { allow }).pass, true);
   assert.equal(verdict([['warning', 'warning X9998: planted note']], { allow }).pass, false);
+});
+
+// ---- round-3 must-fix console-gate-error-level: the echo's parentheses are judged (Breaker 3.1 low note; manager
+// probe console-m3.json echoParens). Each of these fails on 7a2d0df's lib.mjs (ALLOW_LIB), which skipped them.
+const echoParens = {
+  'Uncaught TypeError at error level': ['error', ECHO(404, 'Uncaught TypeError: x is not a function')],
+  'CONTEXT_LOST_WEBGL as a warning': ['warning', ECHO(404, 'CONTEXT_LOST_WEBGL')],
+  'GL_INVALID_OPERATION at error level': ['error', ECHO(404, 'GL_INVALID_OPERATION: glDrawArrays')],
+  'a status text other than the response\'s own': ['error', ECHO(404, 'Gone')],
+  'an empty status text': ['error', ECHO(404, '')],
+};
+for (const [name, [level, text]] of Object.entries(echoParens)) {
+  test(`negative: the echo with ${name} in its parentheses fails, from the expected URL`, () => {
+    assert.equal(verdict([missingResponse, [level, text, MISSING]], EXPECT_404).pass, false);
+  });
+}
+test('control: the real echo, (Not Found) as the response says, still passes; the response\'s own text is judged too', () => {
+  assert.equal(verdict([missingResponse, ['error', ECHO(404, 'Not Found'), MISSING]], EXPECT_404).pass, true);
+  // A server whose own status text holds a W-D030 word: the echo is judged like any message.
+  const bad = { response: { status: 404, url: MISSING, statusText: 'Failed' } };
+  assert.equal(verdict([bad, ['error', ECHO(404, 'Failed'), MISSING]], EXPECT_404).pass, false);
+});
+
+// ---- round-3 must-fix allowlist-breadth: a regex that wraps the literal in unrelated text throws (gate row S3;
+// Breaker 3.1 #4; manager probe console-m3.json breadth). Each uses the shipped X4122 entry with only its regex swapped.
+const shipped = JSON.parse((await import('node:fs')).readFileSync(new URL('../harness/console-allow.json', import.meta.url), 'utf8')).allow.find((a) => /X4122/.test(a.regex));
+// Every one of these still matches the entry's own example (so only the breadth rule can reject it).
+for (const regex of ['.*warning X4122.*', '.{0,400}warning X4122.{0,400}', '[^\\n]*warning X4122[^\\n]*', '.{0,60}warning X4122.{0,100}', 'THREE\\.\\w+: .{0,60}warning X4122.{0,100}', '(?:THREE\\.WebGLProgram: Program Info Log: )?.{0,20}warning X4122: .{0,100}']) {
+  test(`negative: the X4122 entry with regex ${JSON.stringify(regex)} throws (unrelated text around the literal)`, () => {
+    assert.ok(new RegExp(`^(?:${regex})$`).test(shipped.example), 'the regex matches the example');
+    assert.throws(() => planted([{ ...shipped, regex }]), /too broad/);
+  });
+}
+const unrelated = ['THREE.WebGLRenderer: Texture marked for update but no image data found. (see warning X4122)', 'Some library: deprecated option used; see warning X4122 in the docs'];
+test('the shipped X4122 entry loads and passes only its diagnostic (not two unrelated warnings that name the code)', () => {
+  const allow = planted([shipped]);
+  assert.equal(verdict([['warning', X4122]], { allow }).pass, true);
+  for (const line of unrelated) assert.equal(verdict([['warning', line]], { allow }).pass, false, line);
 });
 
 test('the shipped file loads (every entry well formed) on today and on its last day', () => {

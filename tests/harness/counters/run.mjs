@@ -3,17 +3,21 @@
 //     matching __stage.stats (ticks, drawCalls) over the same window;
 //  2. idle after a scroll: the last input is a scroll (a wheel step on mouse and WebKit, a real touch fling over CDP on
 //     Chromium touch); 0 rAF and 0 draws in the motion-end window.
-// The motion-end window (Orchestrator ruling on #11, 5992928262; budgets.md Idle): the motion ends at the later of the
-// last input event (scroll, wheel, pointer or key) and the last frame the stage presented, every presented frame
-// counted, tail and clear-only frames included (clearTimes: every stage render clears first). The window runs from the
-// motion end + windowStartS + 2 frame intervals (the detach frame) to the motion end + windowEndS, from the json budgets
-// block. Bound: the motion must end within windowEndS of the user's last input; one that still presents frames then
-// fails the row (a loop that never goes idle cannot pass by never ending). The window counted from the input is
-// reported too, for information.
+// The motion-end window (Orchestrator rulings on #11, 5992928262 and 6030949628; budgets.md Idle): the motion ends at the
+// later of the last input event (scroll, wheel, pointer or key), the last arrival (a full load, a history traversal that
+// loads, a bfcache restore, a Swup visit's end) and the last frame the stage presented, every presented frame counted,
+// tail and clear-only frames included (clearTimes: every stage render clears first). The window runs from the motion end
+// + windowStartS + max(2 frame intervals, 34 ms) to the motion end + windowEndS, from the json budgets block. Bound: the
+// motion must end within windowEndS of the last input or arrival; one that still presents frames then fails the row (a
+// loop that never goes idle cannot pass by never ending). The window counted from the input is reported too.
 //  3. match: over an active window (a scroll with GL drawing) the gate's counts equal __stage.stats exactly, and a page
 //     with nothing to draw renders at most once (the canvas stays clear; review item 5);
-//  4. scroll: 0 getBoundingClientRect calls inside rAF over a 10 s scroll.
-// Usage: npm run h:counters -- [--profiles D2,P2,WK-P2] [--routes /,/bench/] [--out counters.json]
+//  4. scroll: 0 getBoundingClientRect calls inside rAF over a 10 s scroll, and 0 other forced layout reads (offset*,
+//     client*, scroll size, getClientRects, getComputedStyle) inside rAF (round-3 should-fix S9);
+//  5. arrivals (ruling 6030949628 item 1): the same window after an arrival with no input: a full load of /#contact
+//     (a hash: no opening), a history Back to it (a fresh load), a Swup visit's end and, in Chromium with the back/forward
+//     cache on, a bfcache restore. A wake after the arrival that presents nothing falls in the window and fails it.
+// Usage: npm run h:counters -- [--profiles D2,P2,WK-P2] [--routes /,/bench/] [--no-arrivals] [--out counters.json]
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { PROFILES, ROOT, budget, cliMain, newContext, serve, sleep, waitSettled } from '../lib.mjs';
@@ -22,17 +26,36 @@ export const INIT = readFileSync(join(ROOT, 'tests/harness/counters/init.js'), '
 /** budgets.md Idle: the window's start (the idle detach) and end, in ms after the motion end. */
 const WINDOW_START_MS = budget('site.idle.windowStartS') * 1000;
 const WINDOW_END_MS = budget('site.idle.windowEndS') * 1000;
+/**
+ * The window opens at the motion end + windowStartS + max(2 frame intervals, the floor), so its tolerance does not
+ * depend on the display's refresh rate (Orchestrator ruling on #11, 6030949628 item 2: at 238 Hz 2 frames are 8.4 ms,
+ * inside ordinary timer and frame jitter). The floor is site.idle.windowToleranceMinMs once the orchestrator's docs PR
+ * carries it in the json budgets block; until then the ruling's own number binds, as the ruling says.
+ */
+const RULING_6030949628_FLOOR_MS = 34; // '34 ms is 2 frames at 60 Hz' (ruling 6030949628 item 2), until the key lands
+export const TOLERANCE_FLOOR_MS = (() => {
+  try {
+    return budget('site.idle.windowToleranceMinMs');
+  } catch {
+    return RULING_6030949628_FLOOR_MS;
+  }
+})();
+export const windowTolerance = (frameMs) => Math.max(2 * frameMs, TOLERANCE_FLOOR_MS);
 const snap = (page) => page.evaluate(() => {
   const g = window.__gateCounters;
   return {
-    gate: { raf: g.raf, draws: g.draws, clears: g.clears, rectReadsInRaf: g.rectReadsInRaf, deps: Object.values(g.rafByDependency).reduce((x, y) => x + y, 0) },
+    gate: { raf: g.raf, draws: g.draws, clears: g.clears, rectReadsInRaf: g.rectReadsInRaf, layoutReadsInRaf: g.layoutReadsInRaf ?? 0, layoutReadsInRafBy: { ...(g.layoutReadsInRafBy ?? {}) }, deps: Object.values(g.rafByDependency).reduce((x, y) => x + y, 0) },
     stage: { ticks: window.__stage.stats.ticks, drawCalls: window.__stage.stats.drawCalls, draws: window.__stage.stats.draws, renderSkips: window.__stage.stats.renderSkips },
     now: performance.now(),
   };
 });
 // Polling by interval (motionWindow), never by rAF: the harness must not add frames to the counts it reads.
 const diff = (a, b) => ({
-  gate: { raf: b.gate.raf - a.gate.raf, rafFromDependencies: b.gate.deps - a.gate.deps, draws: b.gate.draws - a.gate.draws, clears: b.gate.clears - a.gate.clears, rectReadsInRaf: b.gate.rectReadsInRaf - a.gate.rectReadsInRaf },
+  gate: {
+    raf: b.gate.raf - a.gate.raf, rafFromDependencies: b.gate.deps - a.gate.deps, draws: b.gate.draws - a.gate.draws, clears: b.gate.clears - a.gate.clears, rectReadsInRaf: b.gate.rectReadsInRaf - a.gate.rectReadsInRaf,
+    layoutReadsInRaf: b.gate.layoutReadsInRaf - a.gate.layoutReadsInRaf,
+    layoutReadsInRafBy: Object.fromEntries(Object.entries(b.gate.layoutReadsInRafBy).map(([k, v]) => [k, v - (a.gate.layoutReadsInRafBy[k] ?? 0)]).filter(([, v]) => v > 0)),
+  },
   stage: { ticks: b.stage.ticks - a.stage.ticks, drawCalls: b.stage.drawCalls - a.stage.drawCalls, renders: b.stage.draws - a.stage.draws, renderSkips: b.stage.renderSkips - a.stage.renderSkips },
   ms: Math.round(b.now - a.now),
 });
@@ -65,12 +88,14 @@ async function scrollInput(page, cdp, dy) {
  * moved the motion end.
  */
 export async function motionWindow(page, since) {
+  // An arrival (a full load, a bfcache restore, a Swup visit's end) counts as an input (ruling 6030949628 item 1).
   const live = () => page.evaluate((since) => {
     const g = window.__gateCounters;
     const last = (l) => { for (let i = l.length - 1; i >= 0; i--) if (l[i] > since) return l[i]; return 0; };
-    const lastUser = g.lastUserInputAt > since ? g.lastUserInputAt : since;
+    const arrival = (g.lastArrivalAt ?? 0) > since ? g.lastArrivalAt : 0;
+    const lastUser = Math.max(g.lastUserInputAt > since ? g.lastUserInputAt : since, arrival);
     const lastPresent = Math.max(last(g.drawTimes), last(g.clearTimes));
-    return { now: performance.now(), lastUser, lastScroll: g.lastScrollAt > since ? g.lastScrollAt : 0, lastPresent, end: Math.max(lastUser, g.lastScrollAt > since ? g.lastScrollAt : 0, lastPresent) };
+    return { now: performance.now(), lastUser, arrival, lastScroll: g.lastScrollAt > since ? g.lastScrollAt : 0, lastPresent, end: Math.max(lastUser, g.lastScrollAt > since ? g.lastScrollAt : 0, lastPresent) };
   }, since);
   const frameMsOf = () => page.evaluate((since) => {
     const r = window.__gateCounters.rafTimes.filter((t) => t > since);
@@ -92,7 +117,7 @@ export async function motionWindow(page, since) {
     // Phase 1: the window's start, measured from the latest motion end seen live.
     while (true) {
       frameMs = await frameMsOf();
-      const from = WINDOW_START_MS + 2 * frameMs;
+      const from = WINDOW_START_MS + windowTolerance(frameMs);
       if (s.now - s.end >= from || s.now >= hardStop(s)) break;
       await sleep(Math.min(50, Math.max(5, s.end + from - s.now)));
       s = await live();
@@ -112,14 +137,14 @@ export async function motionWindow(page, since) {
     break;
   }
   const b = await stage();
-  return page.evaluate(({ since, end, endNow, from, frameMs, a, b, WINDOW_START_MS, WINDOW_END_MS, lastUser, restarts }) => {
+  return page.evaluate(({ since, end, endNow, from, toleranceMs, frameMs, a, b, WINDOW_START_MS, WINDOW_END_MS, lastUser, arrival, restarts }) => {
     const g = window.__gateCounters;
     const inWin = (list, x, y) => list.filter((t) => t > x && t <= y).length;
     const rafs = g.rafTimes.filter((t) => t > since);
     const lastRaf = rafs.length ? rafs[rafs.length - 1] : null;
     const lastDraw = g.drawTimes.filter((t) => t > since).pop() ?? 0;
     const lastClear = g.clearTimes.filter((t) => t > since).pop() ?? 0;
-    const win = { fromMs: Math.round(from), toMs: WINDOW_END_MS, raf: inWin(g.rafTimes, end + from, end + WINDOW_END_MS), draws: inWin(g.drawTimes, end + from, end + WINDOW_END_MS), clears: inWin(g.clearTimes, end + from, end + WINDOW_END_MS) };
+    const win = { fromMs: Math.round(from), toleranceMs: Math.round(toleranceMs * 10) / 10, toMs: WINDOW_END_MS, raf: inWin(g.rafTimes, end + from, end + WINDOW_END_MS), draws: inWin(g.drawTimes, end + from, end + WINDOW_END_MS), clears: inWin(g.clearTimes, end + from, end + WINDOW_END_MS) };
     // The stamp lists keep the newest stamps only: they cover the window when their oldest kept stamp is before it (or
     // none was ever dropped). The uncapped counts, read at the window's start and end, cover it whatever the lists hold.
     const covers = (name) => g.stampsDropped?.[name] === 0 || (g[name].length > 0 && g[name][0] <= end + from);
@@ -128,7 +153,7 @@ export async function motionWindow(page, since) {
     const stageWin = { ticks: b.ticks - a.ticks, drawCalls: b.drawCalls - a.drawCalls, renders: b.draws - a.draws, tailFrames: b.tailFrames - a.tailFrames };
     const boundOk = end - lastUser <= WINDOW_END_MS && endNow === end;
     return {
-      motionEndsMs: Math.round(end - lastUser), motionEndsBy: end === lastDraw ? 'draw' : end === lastClear ? 'presented clear' : end === g.lastScrollAt ? 'scroll' : 'input',
+      motionEndsMs: Math.round(end - lastUser), motionEndsBy: end === lastDraw ? 'draw' : end === lastClear ? 'presented clear' : end === g.lastScrollAt ? 'scroll' : arrival > 0 && end === arrival ? `arrival (${g.arrivals.at(-1)?.kind ?? '?'})` : 'input',
       frameMs: Math.round(frameMs * 10) / 10, lastRafAfterMotionMs: lastRaf === null ? null : Math.round(lastRaf - end),
       bound: { maxMs: WINDOW_END_MS, motionEndsMs: Math.round(endNow - lastUser), movedDuringWindow: endNow !== end, pass: boundOk },
       windowRestarts: restarts, afterMotion: win, uncappedInWindow: uncapped, stageInWindow: stageWin, stampsDropped: { ...g.stampsDropped },
@@ -137,9 +162,11 @@ export async function motionWindow(page, since) {
       ifClearsIgnored: (() => { const e2 = Math.max(lastUser, g.lastScrollAt > since ? g.lastScrollAt : 0, lastDraw); return { raf: inWin(g.rafTimes, e2 + from, e2 + WINDOW_END_MS) }; })(),
       // For information: counted from the user's last input (the budget's old wording, gate F1).
       afterInput: { fromMs: WINDOW_START_MS, toMs: WINDOW_END_MS, raf: inWin(g.rafTimes, lastUser + WINDOW_START_MS, lastUser + WINDOW_END_MS), draws: inWin(g.drawTimes, lastUser + WINDOW_START_MS, lastUser + WINDOW_END_MS) },
-      pass: boundOk && win.raf === 0 && win.draws === 0 && uncapped.raf === 0 && uncapped.draws === 0 && stageWin.ticks === 0 && stageWin.drawCalls === 0,
+      // Any frame the gate sees in the window fails it: a rAF callback, a draw through any entry point, a clear (clear or
+      // clearBuffer*, round-3 must-fix counters-draw-cap), by the stamps and by the uncapped counts.
+      pass: boundOk && win.raf === 0 && win.draws === 0 && win.clears === 0 && uncapped.raf === 0 && uncapped.draws === 0 && uncapped.clears === 0 && stageWin.ticks === 0 && stageWin.drawCalls === 0,
     };
-  }, { since, end: endAtStart, endNow: s.end, from: WINDOW_START_MS + 2 * frameMs, frameMs, a, b, WINDOW_START_MS, WINDOW_END_MS, lastUser: s.lastUser, restarts });
+  }, { since, end: endAtStart, endNow: s.end, from: WINDOW_START_MS + windowTolerance(frameMs), toleranceMs: windowTolerance(frameMs), frameMs, a, b, WINDOW_START_MS, WINDOW_END_MS, lastUser: s.lastUser, arrival: s.arrival, restarts });
 }
 
 /** The after-scroll idle window (step 2); negatives.mjs reuses it with planted defects. */
@@ -152,11 +179,75 @@ export async function idleAfterScroll(page, cdp) {
   return { input, ...r, scrolledTo: await page.evaluate(() => Math.round(scrollY)) };
 }
 
+/**
+ * Step 5 (ruling 6030949628 item 1): the motion-end window after an arrival with no input. The gate stamps every arrival
+ * itself (init.js: the load event, pageshow from the bfcache, a Swup visit replacing #swup and its classes coming off);
+ * the window is anchored at the latest, so a wake after it that presents nothing lands in the window and fails it.
+ */
+export async function arrivalWindow(page, kind) {
+  await page.waitForFunction((k) => window.__gateCounters.arrivals.some((a) => a.kind === k), kind, { polling: 50, timeout: 10000 }).catch(() => {});
+  await sleep(100); // a Swup visit's classes come off a little after its content replace: anchor at the latest
+  const at = await page.evaluate(() => window.__gateCounters.lastArrivalAt);
+  const r = await motionWindow(page, Math.max(0, at - 1));
+  const after = await page.evaluate(() => ({ arrivals: window.__gateCounters.arrivals.map((a) => `${a.kind}@${Math.round(a.at)}`), sleeps: window.__stage.stats.sleeps, quietFrames: window.__stage.stats.quietFrames ?? null, glState: window.__stage.glState, tier: window.__stage.tier, url: location.pathname + location.hash }));
+  return { kind, ...after, ...r, pass: r.pass && after.arrivals.some((a) => a.startsWith(kind)) };
+}
+
+/** The arrival rows: a full load, a history Back (a fresh load), a Swup visit and, in Chromium, a bfcache restore. */
+export async function arrivals(base, profiles, opts = {}) {
+  const rows = [];
+  const target = opts.route ?? '/#contact';
+  for (const profile of profiles) {
+    const cases = ['load', 'back', 'swup', ...(PROFILES[profile].browser === 'chromium' && profile === 'D2' ? ['bfcache'] : [])];
+    for (const kind of cases) {
+      const ctx = await newContext(profile, 'auto', kind === 'bfcache' ? { browser: 'chromium-bfcache' } : {});
+      await ctx.addInitScript({ content: INIT });
+      if (opts.plant) await ctx.addInitScript({ content: opts.plant });
+      const page = await ctx.newPage();
+      let r;
+      try {
+        if (kind === 'load') {
+          await page.goto(base + target, { waitUntil: 'load' });
+          r = await arrivalWindow(page, 'load');
+        } else if (kind === 'back') {
+          await page.goto(base + target, { waitUntil: 'load' });
+          await waitSettled(page, 15000);
+          await page.goto(`${base}/work/project-02/`, { waitUntil: 'load' });
+          await waitSettled(page, 15000);
+          await page.goBack({ waitUntil: 'load' });
+          r = await arrivalWindow(page, 'load');
+        } else if (kind === 'bfcache') {
+          await page.goto(base + target, { waitUntil: 'load' });
+          await waitSettled(page, 15000);
+          await page.goto(`${base}/work/project-02/`, { waitUntil: 'load' });
+          await waitSettled(page, 15000);
+          await page.goBack({ waitUntil: 'load' });
+          r = await arrivalWindow(page, 'bfcache');
+        } else {
+          // A Swup visit by keyboard (no pointer move after it): the nav's Work link (/#work) from a project page.
+          await page.goto(`${base}/work/project-01/`, { waitUntil: 'load' });
+          await waitSettled(page, 15000);
+          await page.focus('a[data-nav="work"]');
+          await page.keyboard.press('Enter');
+          await page.waitForFunction(() => location.pathname === '/' && document.documentElement.dataset.page === 'home', null, { polling: 50, timeout: 10000 });
+          r = await arrivalWindow(page, 'swup');
+        }
+      } catch (e) {
+        r = { kind, pass: false, error: String(e?.message || e).slice(0, 300) };
+      }
+      await ctx.close();
+      rows.push({ profile, ...r });
+    }
+  }
+  return { rows, pass: rows.length > 0 && rows.every((x) => x.pass) };
+}
+
 export async function run(opts = {}) {
   const profiles = String(opts.profiles || 'D2,P2,WK-P2').split(',');
   const routes = String(opts.routes || '/,/bench/').split(',');
   const srv = await serve();
   const rows = [];
+  let arrivalStep = null;
   try {
     for (const profile of profiles) {
       for (const route of routes) {
@@ -214,7 +305,7 @@ export async function run(opts = {}) {
         await waitSettled(page, 8000);
         const f = await snap(page);
         const scroll = diff(e, f);
-        const scrollPass = scroll.gate.rectReadsInRaf === 0;
+        const scrollPass = scroll.gate.rectReadsInRaf === 0 && scroll.gate.layoutReadsInRaf === 0;
 
         rows.push({
           profile, route, tier: await page.evaluate(() => window.__stage.tier), gl, empty,
@@ -224,14 +315,16 @@ export async function run(opts = {}) {
         await ctx.close();
       }
     }
+    if (!opts['no-arrivals']) arrivalStep = await arrivals(srv.base, profiles);
   } finally {
     await srv.close();
   }
-  const pass = rows.every((r) => r.pass);
+  const pass = rows.every((r) => r.pass) && (arrivalStep ? arrivalStep.pass : true);
   return {
-    schema: 3, instrument: 'counters',
-    motionEndWindow: `${WINDOW_START_MS / 1000} s + 2 frames to ${WINDOW_END_MS / 1000} s after the motion end: the later of the last input event (scroll, wheel, pointer, key) and the last presented frame (draws and clears, tail and clear-only frames included); the motion must end within ${WINDOW_END_MS / 1000} s of the last user input (Orchestrator ruling on #11, 5992928262)`,
-    pass, rows,
+    schema: 4, instrument: 'counters',
+    motionEndWindow: `${WINDOW_START_MS / 1000} s + max(2 frames, ${TOLERANCE_FLOOR_MS} ms) to ${WINDOW_END_MS / 1000} s after the motion end: the later of the last input event (scroll, wheel, pointer, key), the last arrival (load, bfcache restore, Swup visit end) and the last presented frame (draws through any entry point and clears, tail and clear-only frames included); the motion must end within ${WINDOW_END_MS / 1000} s of the last input or arrival (Orchestrator rulings on #11, 5992928262 and 6030949628)`,
+    pass, rows, arrivals: arrivalStep,
+    arrivalSummary: arrivalStep?.rows.map((r) => `${r.profile} ${r.kind}: ${r.pass ? 'pass' : 'FAIL'} (motion ends by ${r.motionEndsBy} +${r.motionEndsMs} ms, last rAF +${r.lastRafAfterMotionMs} ms, window raf ${r.afterMotion?.raf} draws ${r.afterMotion?.draws}${r.error ? `, ${r.error}` : ''})`).join(' | ') ?? null,
     summary: rows.map((r) => `${r.profile} ${r.route}: idle raf ${r.idle.afterMotion.raf} draws ${r.idle.afterMotion.draws} (ends +${r.idle.motionEndsMs} ms); after ${r.afterScroll.input} (motion ends +${r.afterScroll.motionEndsMs} ms by ${r.afterScroll.motionEndsBy}, last rAF +${r.afterScroll.lastRafAfterMotionMs} ms after it) raf ${r.afterScroll.afterMotion.raf} draws ${r.afterScroll.afterMotion.draws} bound ${r.afterScroll.bound.pass ? 'ok' : 'FAIL'} [from input: raf ${r.afterScroll.afterInput.raf}]; active raf ${r.active.gate.raf - r.active.gate.rafFromDependencies}=${r.active.stage.ticks} draws ${r.active.gate.draws}=${r.active.stage.drawCalls}${r.empty ? `, empty page renders ${r.active.stage.renders} clears ${r.active.gate.clears} skips ${r.active.stage.renderSkips}` : ''}; scroll rect-in-raf ${r.scroll.gate.rectReadsInRaf}`).join(' | '),
   };
 }
