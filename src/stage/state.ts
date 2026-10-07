@@ -30,6 +30,10 @@ export const stats = {
   motionLogInvalid: 0,
   /** Errors thrown by a crew's hook inside a frame (reported as uncaught; the ticker keeps running). */
   hookErrors: 0,
+  /** GL boots that stood down because the page under them opted out of GL (W-D029). */
+  standDowns: 0,
+  /** Frames the ticker ran that neither presented nor reported motion (they never hold it awake). */
+  quietFrames: 0,
   /** Gauges. */
   dpr: 0,
   canvasPx: 0,
@@ -66,7 +70,8 @@ export function setManualNow(ms: number): void {
 
 /**
  * One crew's code that throws must not stop the stage (self-break: a thrown error mid-animation). Every call the stage
- * makes into code it does not own (a hook, a listener, a timeline, an entity) runs through here, one item at a time:
+ * makes into code it does not own (a hook, a listener, a timeline, an entity, a factory's match, a registered effect's
+ * impl) runs through here, one item at a time:
  * the error is reported as uncaught (the console gate sees it), counted in stats.hookErrors, and `fallback` stands in
  * for that item's result, so the loop goes on with the next item.
  */
@@ -74,11 +79,15 @@ export function guard<T>(fn: () => T, fallback: T): T {
   try {
     return fn();
   } catch (e) {
-    stats.hookErrors++;
-    if (typeof window.reportError === 'function') window.reportError(e);
-    else window.setTimeout(() => { throw e; }, 0);
+    hookError(e);
     return fallback;
   }
+}
+/** Report a throw from code the stage does not own as uncaught, and count it (guard, and the async effect chain). */
+export function hookError(e: unknown): void {
+  stats.hookErrors++;
+  if (typeof window.reportError === 'function') window.reportError(e);
+  else window.setTimeout(() => { throw e; }, 0);
 }
 
 /** A user-timing mark with detail, plus a 'name=value' twin that Lighthouse's user-timings audit can show. */

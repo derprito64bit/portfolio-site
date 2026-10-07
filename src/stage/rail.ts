@@ -134,6 +134,12 @@ export function reanchor(): void {
   anchored = false;
   lastSy = Number.NaN;
 }
+/** A GL boot that stood down (gl/index.ts abandon): forget the geometry, so the next boot measures and allocates afresh. */
+export function resetView(): void {
+  Object.assign(view, { W: 0, H: 0, lvh: 0, Hc: 0, O: 0, dpr: 1, anchor: 0, side: 1 });
+  rawHc = 0;
+  reanchor();
+}
 
 /** The handoff drip is the only moment GL paints above content (z 41, W-D013). */
 export function raise(kind: 'drip'): void {

@@ -5,10 +5,11 @@
 //   idle callback. GL also boots when the camera or its strip is touched ([data-gl=object], [data-gl-boot]; the boot
 //   runs after the next paint), or 5 s after load at idle.
 // - static, or a page that opts out (the 404): never. A Swup arrival carries the arriving page's opt-out (router.ts),
-//   and start() checks it again, so a trigger armed on another page never boots GL on the 404.
+//   and start() checks it again, so a trigger armed on another page never boots GL on the 404; a boot already in
+//   flight reads it after every await and stands down (W-D029).
 // Every step after module evaluation runs in its own task.
-import { mark } from './state.ts';
-import { getTier } from './tier.ts';
+import { mark, stats } from './state.ts';
+import { getTier, onTier } from './tier.ts';
 import { afterNextFrame } from './ticker.ts';
 
 export type GLState = 'off' | 'deferred' | 'scheduled' | 'booting' | 'ready' | 'failed';
@@ -58,12 +59,32 @@ function afterFirstPaint(fn: () => void): void {
 }
 
 // ---------------------------------------------------------------- the boot
+/** W-D029: the page under the stage opts out of GL (the 404). Swup arrivals write the arriving page's value (router.ts). */
+const optedOut = (): boolean => document.documentElement.dataset.glPage === 'off';
+
+/**
+ * A boot that found its page opted out stands down: GL off, not started, so the next arrival on a page with GL
+ * schedules the boot again (rescanGLIntent). `gl` undoes what the GL chunk had made, when it got that far.
+ */
+function standDown(gl?: { abandon(): void }): void {
+  gl?.abandon();
+  started = false;
+  state = 'off';
+  stats.standDowns++;
+  mark('stage:gl-stand-down');
+}
+
 async function start(why: string): Promise<void> {
-  if (started || getTier() === 'static') return;
+  if (started) return;
+  // A drop to static before the boot ran (Breaker 3.2 #3): GL is off for this visit, and the page can settle.
+  if (getTier() === 'static') {
+    state = 'off';
+    return;
+  }
   // W-D029: never on a page that opts out. A trigger armed on a page with GL (the lite timer, an idle callback) can
   // fire after a Swup visit has landed on the 404: it stands down, and the next arrival on a page with GL schedules
   // the boot again (rescanGLIntent).
-  if (document.documentElement.dataset.glPage === 'off') {
+  if (optedOut()) {
     state = 'off';
     return;
   }
@@ -72,9 +93,14 @@ async function start(why: string): Promise<void> {
   mark('stage:gl-start', why);
   try {
     const gl = await import('./gl/index.ts');
-    const api = await gl.boot();
+    // ...and never while it runs (round-3 must-fix s2-404-gl-boot): a Swup visit can land on the 404 during any await
+    // of the boot. The page is read again after the import, after every await inside gl.boot(), and once more here.
+    if (optedOut()) return standDown();
+    const api = await gl.boot(optedOut);
+    if (api === 'stood-down') return standDown(); // gl.boot() has already abandoned what it made
+    if (optedOut()) return standDown(gl);
     if (!api) {
-      state = 'failed';
+      state = getTier() === 'static' ? 'off' : 'failed';
       return;
     }
     state = 'ready';
@@ -85,9 +111,22 @@ async function start(why: string): Promise<void> {
   }
 }
 
+// A drop to static while GL is only scheduled or deferred (the governor, two context losses, Breaker 3.2 #3): no boot
+// will run, so GL is off and the page can settle.
+onTier((t) => {
+  if (t !== 'static' || started) return;
+  nearIO?.disconnect();
+  nearIO = null;
+  state = 'off';
+});
+
 /** Every trigger comes through here: after first paint, then in an idle callback (or at once when idleMs is 0). */
 function request(why: string, idleMs: number): void {
   if (started) return;
+  if (getTier() === 'static') {
+    state = 'off';
+    return;
+  }
   if (state === 'deferred') state = 'scheduled'; // a boot is on its way: the page is not settled yet
   afterFirstPaint(() => {
     if (idleMs > 0) idle(() => void start(why), idleMs);

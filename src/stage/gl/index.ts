@@ -9,7 +9,7 @@ import { PerspectiveCamera, Scene, WebGLRenderer, MathUtils } from 'three';
 import { engine } from 'animejs/engine';
 import { stage as stageTokens } from '../../lib/tokens.js';
 import { containRect } from '../../../scripts/build/posters/stage.js';
-import { canvas, collapsed, measureViewport, place, view } from '../rail.ts';
+import { canvas, collapsed, measureViewport, place, resetView, view } from '../rail.ts';
 import { demote, getTier, onTier, tierReason } from '../tier.ts';
 import { flags, mark, stats } from '../state.ts';
 import { guard, invalidate, isInFrame, markDirty, onActive, onBefore, onStep, presentTail, setRender, wake } from '../ticker.ts';
@@ -134,6 +134,18 @@ function rendererName(gl: WebGL2RenderingContext): string {
 
 const nextTask = () => new Promise<void>((r) => setTimeout(r, 0));
 
+/**
+ * GL commands issued between frames (three's compileAsync from a timer, a texture upload from a decode) wait in
+ * Chromium's WebGL command buffer until something flushes it, and a frame that draws nothing does not. Measured for #11
+ * (perf row 26, round 4): the camera's kept print program, linked from a timer, reported COMPLETION_STATUS_KHR only about
+ * 90 ms after the ticker detached, 1.0 s late, and its first-frame confirm then woke the stage a second time after an
+ * arrival. One flush at the start of every ticker frame (a no-op when nothing is pending) sends such work on within a
+ * frame.
+ */
+function flushPending(): void {
+  if (renderer && !lost && !dead) renderer.getContext().flush();
+}
+
 // ---------------------------------------------------------------- sizing and the page camera
 function resize(): void {
   if (!renderer) return;
@@ -142,6 +154,9 @@ function resize(): void {
     renderer.setPixelRatio(view.dpr);
     renderer.setSize(view.W, view.Hc, false);
     presentedClear = false;
+    // A collapse (0 px wide or tall) has nothing to measure or draw: no frame for it. The resize that gives the canvas
+    // an area back reallocates again and re-measures then.
+    if (collapsed()) return;
     markDirty();
   } else if (kind === 'height') {
     // On a coarse pointer a height-only change is the toolbar: layouts use svh and lvh, so slots stay put and are
@@ -331,8 +346,8 @@ function wireAnime(): void {
     wake();
     return engine;
   };
-  onBefore(() => engine.update());
-  onActive(() => Boolean(animeHead()));
+  wired.push(onBefore(() => engine.update()));
+  wired.push(onActive(() => Boolean(animeHead())));
 }
 /** Reduced motion: every anime timeline jumps to its end. */
 function completeAnime(): void {
@@ -366,7 +381,9 @@ const api: GLApi = {
   },
   registerEntityFactory(f) {
     factories.push(f);
-    for (const s of allSlots()) if (!entities.has(s.id) && f.match(s)) bindSlot(s);
+    // match() is crew code: under guard() per slot (Breaker 3.1 #3), so one that throws is counted in hookErrors and
+    // the other slots are still offered to the factory.
+    for (const s of allSlots()) if (!entities.has(s.id) && guard(() => f.match(s), false)) bindSlot(s);
   },
   entity: (id) => entities.get(id),
   info: () => ({
@@ -380,7 +397,53 @@ const api: GLApi = {
   forceContextRestore: () => renderer?.forceContextRestore(),
 };
 
-export async function boot(): Promise<GLApi | null> {
+/** Undo functions for everything boot() wired (hooks, listeners): abandon() runs them. */
+const wired: (() => void)[] = [];
+/** Bumped by abandon(): a DPR watcher armed by an abandoned boot does nothing. */
+let dprWatch = 0;
+
+/**
+ * A boot that finds its page opted out of GL (W-D029: the 404, reached by a Swup visit while the boot was in flight)
+ * stands down: the renderer, the canvas listeners and any wiring go, the view is reset so the next boot measures the
+ * canvas afresh, and nothing is bound. The context the canvas may already hold is left as it is (it draws nothing),
+ * and the next boot on a page with GL reuses it. boot.ts also calls this when the page changed after boot() resolved.
+ */
+export function abandon(): void {
+  for (const off of wired.splice(0)) guard(off, undefined);
+  dprWatch++;
+  setRender(null);
+  giveAll();
+  for (const e of entities.values()) guard(() => e.dispose(), undefined);
+  entities.clear();
+  views.clear();
+  factories.length = 0;
+  canvas.removeEventListener('webglcontextlost', onLost);
+  canvas.removeEventListener('webglcontextrestored', onRestored);
+  const st = (window as unknown as { __stage?: Record<string, unknown> }).__stage;
+  if (st) st.fixtures = undefined;
+  renderer?.dispose();
+  renderer = null;
+  probeResult = null;
+  name = '';
+  lost = false;
+  dead = false;
+  represent = 0;
+  presentedClear = false;
+  resetView();
+}
+
+/**
+ * The GL boot. `stop` is read after every await (W-D029, round-2 and round-3 must-fix s2-404-gl-boot): a Swup visit can
+ * land on a page that opts out of GL during any of them (the chunk import is boot.ts's), so the boot stands down there
+ * (abandon) and resolves 'stood-down'. Everything that wires the stage into the page runs after the last await, so a
+ * stand-down only ever has the renderer and the canvas listeners to undo.
+ */
+export async function boot(stop: () => boolean = () => false): Promise<GLApi | null | 'stood-down'> {
+  const standDown = (): 'stood-down' => {
+    abandon();
+    return 'stood-down';
+  };
+  if (stop()) return standDown();
   const tier = getTier();
   // The context first, with the attributes three would ask for: where WebGL2 exists but no context can be made
   // (Chromium --disable-3d-apis, a blocklisted GPU), three's constructor logs console errors before it throws, so it
@@ -424,58 +487,73 @@ export async function boot(): Promise<GLApi | null> {
   canvas.addEventListener('webglcontextrestored', onRestored);
   resize();
   await nextTask();
+  if (stop()) return standDown();
 
   // The boot probe (W-D017): full needs 3 wet hero-size prints at <= 8 ms median, else lite.
   if (tier === 'full' && !new URLSearchParams(location.search).has('tier')) {
     probeResult = await runProbe(renderer, view);
+    if (stop()) return standDown();
     if (!probeResult.pass) demote('lite', 'probe');
     resize();
     await nextTask();
+    if (stop()) return standDown();
   }
   if (getTier() === 'static') {
     teardown();
     return null;
   }
 
+  // Test fixtures and the GPU bench load only on the pages that ask for them (/bench/). They are imported before
+  // anything is wired, so this is the boot's last await.
+  const fixtures = document.querySelector('[data-gl-fixture]') || flags.debug ? await import('./fixtures.ts') : null;
+  const bench = document.querySelector('[data-bench]') ? await import('./bench.ts') : null;
+  if (stop()) return standDown();
+  // A drop to static while those chunks loaded: bind nothing, and say so.
+  if (dead || getTier() === 'static') {
+    teardown();
+    return null;
+  }
+
+  // From here to the return nothing awaits: the stage is wired into the page in one task.
+  wired.push(onBefore(flushPending));
   wireAnime();
-  onScan((found) => found.forEach(bindSlot));
-  onUnscan(unbindSlots);
-  onStep(() => scrollState.moved && hasContent());
-  onStep((dt, time) => {
+  wired.push(onScan((found) => found.forEach(bindSlot)));
+  wired.push(onUnscan(unbindSlots));
+  wired.push(onStep(() => scrollState.moved && hasContent()));
+  wired.push(onStep((dt, time) => {
     let moving = false;
     for (const e of entities.values()) if (guard(() => Boolean(e.step?.(dt, time)), false)) moving = true;
     return moving;
-  });
-  onTier((t) => {
+  }));
+  wired.push(onTier((t) => {
     if (t === 'static') teardown();
     else resize();
-  });
-  onMotion((m) => {
+  }));
+  wired.push(onMotion((m) => {
     if (m !== 'reduced') return;
     completeAnime();
     for (const e of entities.values()) guard(() => e.snap?.(), undefined);
-  });
+  }));
   addEventListener('resize', resize, { passive: true });
+  wired.push(() => removeEventListener('resize', resize));
+  const token = dprWatch;
   const watchDpr = () => {
     matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`).addEventListener('change', () => {
+      if (token !== dprWatch) return;
       resize();
       watchDpr();
     }, { once: true });
   };
   watchDpr();
-  addEventListener('scroll', () => {
+  const onScroll = () => {
     if (hasContent()) wake();
-  }, { passive: true });
+  };
+  addEventListener('scroll', onScroll, { passive: true });
+  wired.push(() => removeEventListener('scroll', onScroll));
   setRender(render);
 
-  // Test fixtures and the GPU bench load only on the pages that ask for them (/bench/).
-  if (document.querySelector('[data-gl-fixture]') || flags.debug) (await import('./fixtures.ts')).install(api);
-  if (document.querySelector('[data-bench]')) (await import('./bench.ts')).install(api);
-  // A drop to static while those chunks loaded has already torn the stage down (onTier): bind nothing, and say so.
-  if (dead || getTier() === 'static') {
-    teardown();
-    return null;
-  }
+  fixtures?.install(api);
+  bench?.install(api);
   for (const s of allSlots()) bindSlot(s);
 
   mark('stage:tier', `${getTier()}:${tierReason()}`);

@@ -3,6 +3,7 @@
 // after stage:gl-start through window.__stage.registerEffect, #14 ruling 2; W-C2 may re-register it with the looks);
 // callers never change. A no-op develop still exercises the handback (take, then give) and never touches focus.
 import { give, take } from './slots.ts';
+import { hookError } from './state.ts';
 
 export interface DevelopResult { id: string; d: 1; developed: true }
 export interface LookResult { id: string; look: string }
@@ -63,7 +64,16 @@ export function registerEffect<K extends keyof Effects>(name: K, impl: EffectImp
   const next = current[name] as (...a: unknown[]) => Promise<unknown>;
   const run = impl as unknown as (...a: unknown[]) => unknown;
   (current as unknown as Record<string, unknown>)[name] = async (...args: unknown[]) => {
-    const r = await run(...args, next);
+    let r: unknown;
+    try {
+      r = await run(...args, next);
+    } catch (e) {
+      // A registered impl is crew code (state.ts guard; Breaker 3.1 #3): a throw or a rejection is reported and counted
+      // in stats.hookErrors, and the call falls through to `next`, so a develop that took its slot and then threw still
+      // hands it back (the no-op: take, then give) instead of leaving the print blank.
+      hookError(e);
+      return next(...args);
+    }
     return r === undefined ? next(...args) : r;
   };
 }

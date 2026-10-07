@@ -62,8 +62,29 @@ function arrivingGlPage(visit: Visit, main: HTMLElement | null): 'on' | 'off' {
 
 export let swup: Swup | null = null;
 
+/**
+ * Scroll restoration (Breaker 3.3 #3; #11 'Back restores scroll to +-1 px'). An entry no Swup visit has touched keeps
+ * the browser's own restoration ('auto'), so a full-load Back or a reload lands where the reader was. The first Swup
+ * visit turns it to 'manual' on the entry it leaves (the entries Swup pushes copy that mode), and from then on the
+ * router restores: Swup's popstate visits from ionScroll (below), and a full-load Back, Forward or reload into such an
+ * entry here, once the page has loaded, unless the reader has scrolled by then. Focus follows as for a popstate visit.
+ */
+function restoreFullLoad(): void {
+  const nav = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined;
+  if (history.scrollRestoration !== 'manual' || !nav || (nav.type !== 'back_forward' && nav.type !== 'reload')) return;
+  const y = Number(entry().ionScroll);
+  const id = entry().ionFocus;
+  const go = () => {
+    if (window.scrollY === 0 && y > 0) scrollToY(y);
+    if (nav.type === 'back_forward' && id) focusEl(document.querySelector<HTMLElement>(`[data-gl-id="${CSS.escape(id)}"]`));
+    markDirty();
+  };
+  if (document.readyState === 'complete') go();
+  else addEventListener('load', go, { once: true });
+}
+
 export function bootRouter(): Swup {
-  history.scrollRestoration = 'manual';
+  restoreFullLoad();
   swup = new Swup({
     containers: ['#swup'],
     animationSelector: '[data-swup-fade]',
@@ -86,6 +107,8 @@ export function bootRouter(): Swup {
   swup.hooks.on('visit:start', (visit) => {
     stats.swaps++;
     navigating = true;
+    // From the first Swup visit the router restores scroll itself (restoreFullLoad above).
+    history.scrollRestoration = 'manual';
     clearTimeout(saveTimer);
     // A forward visit: this entry (the page we leave) remembers where it was and which print link started it.
     // Swup pushes the new entry after visit:start, so history.state is still ours here.

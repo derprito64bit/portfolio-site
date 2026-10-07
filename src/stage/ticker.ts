@@ -121,6 +121,23 @@ export function renderNow(): void {
 }
 bindWake(invalidate);
 
+/**
+ * A gap is not a busy frame (W-D017; Breaker 3.3 #2, perf row 29): a page frozen in the back/forward cache or a hidden
+ * tab stops rAF mid-motion, and the first frame after it would otherwise feed the governor one interval of seconds (a
+ * 3 s stay stepped full to lite every time) and step the springs by the gap. Leaving and coming back start the frame
+ * clock afresh: the next frame steps 1/60 s and samples nothing.
+ */
+function resumeClock(): void {
+  lastTime = 0;
+  prevActive = false;
+  governorReset();
+}
+addEventListener('pageshow', (e) => {
+  if (e.persisted) resumeClock();
+});
+addEventListener('pagehide', resumeClock);
+document.addEventListener('visibilitychange', resumeClock);
+
 function schedule(): void {
   requestAnimationFrame(onFrame);
 }
@@ -163,21 +180,29 @@ export function frame(time: number): void {
       stats.measuresInTick++;
       need = true;
     }
-    let active = need;
+    // Motion someone reports: a step, a timeline or an active check (Lenis inertia, anime).
+    let moving = false;
+    for (const fn of steps) if (guard(() => fn(dt, time, sy), false)) moving = true;
+    if (anyActive()) moving = true;
+    for (const fn of activeChecks) if (guard(() => fn(), false)) moving = true;
+    const active = need || moving;
     need = false;
-    for (const fn of steps) if (guard(() => fn(dt, time, sy), false)) active = true;
-    if (anyActive()) active = true;
-    for (const fn of activeChecks) if (guard(() => fn(), false)) active = true;
 
     // A frame with nothing new still renders while a present tail is owed (presentTail).
     const tailFrame = !active && tail > 0 && render !== null;
     if (tailFrame) tail--;
     if (active || tailFrame) {
-      lastActive = time;
       if (flags.busyMs) spin(flags.busyMs);
+      const drawn = stats.draws;
       const r = render;
       if (r) guard(() => r(sy, tailFrame), undefined);
       if (tailFrame) stats.tailFrames++;
+      // Activity is what reaches the screen (round-4 must-fix zero-width-grid): motion someone reports, or a frame the
+      // render presented. A frame that ran only because something asked for a render that then presented nothing (a
+      // collapsed canvas, a tail on it, nothing to draw on a canvas already clear) leaves lastActive where it was, so
+      // it never holds the ticker past the idle window that the gate counts from the last presented frame.
+      if (moving || stats.draws > drawn) lastActive = time;
+      else stats.quietFrames++;
       if (prevActive) governorSample(interval);
     } else {
       governorReset();
