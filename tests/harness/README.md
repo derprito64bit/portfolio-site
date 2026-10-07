@@ -95,11 +95,15 @@ flash     self-test: { rows: [{case, expectPass, analyserPass, generalPerSecond,
 keyboard  { rows: [{profile, walks: [{route, stops, failing[], minCoverage, detail[]}], roundtrip{started,
             afterBack{id,tag}, nextTab, pass}, hash{focus, pass}, anchor{samples, first, last, monotonic, focus,
             pass}, pass}] }
-counters  schema 3: { motionEndWindow, rows: [{profile, route, tier, gl{entities, views, ...}, empty,
+counters  schema 5: { motionEndWindow, rows: [{profile, route, tier, gl{entities, views, ...}, empty,
             idle{motionWindow}, idlePass, afterScroll{input, motionWindow, scrolledTo, counts{...}}, afterScrollPass,
-            active{...}, matchPass, emptyPass, scroll{...}, scrollPass, pass}] }
-            motionWindow = {motionEndsMs, motionEndsBy: draw|presented clear|scroll|input, frameMs, lastRafAfterMotionMs,
-            bound{maxMs, motionEndsMs, movedDuringWindow, pass}, windowRestarts, afterMotion{fromMs, toMs, raf, draws,
+            active{...}, matchPass, emptyPass, scroll{...}, scrollPass, pass}], arrivals{rows: [{profile, case:
+            load|load-home|back|swup|bfcache, kind, arrivals[], sleeps, quietFrames, glState, tier, url, ...motionWindow}],
+            pass}, arrivalSummary, summary }
+            motionWindow = {anchor: input|arrival, motionEndsMs, motionEndsBy: draw|presented clear|scroll|arrival|input,
+            frameMs, lastRafAfterMotionMs, bound{anchor, maxMs (windowEndS after an input, the hard stop after an
+            arrival), hardStopMs (2 x windowEndS + 1 s), motionEndsMs, movedDuringWindow, windowRanMs, complete, pass},
+            windowRestarts, afterMotion{fromMs, toMs, raf, draws,
             clears, stampsCover{raf, draws, clears}}, uncappedInWindow{fromMs, toMs, raf, draws, clears},
             stageInWindow{ticks, drawCalls, renders, tailFrames}, stampsDropped{rafTimes, drawTimes, clearTimes},
             ifClearsIgnored{raf}, afterInput{fromMs, toMs, raf, draws}, pass}

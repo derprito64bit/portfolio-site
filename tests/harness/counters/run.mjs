@@ -7,16 +7,22 @@
 // later of the last input event (scroll, wheel, pointer or key), the last arrival (a full load, a history traversal that
 // loads, a bfcache restore, a Swup visit's end) and the last frame the stage presented, every presented frame counted,
 // tail and clear-only frames included (clearTimes: every stage render clears first). The window runs from the motion end
-// + windowStartS + max(2 frame intervals, 34 ms) to the motion end + windowEndS, from the json budgets block. Bound: the
-// motion must end within windowEndS of the last input or arrival; one that still presents frames then fails the row (a
-// loop that never goes idle cannot pass by never ending). The window counted from the input is reported too.
+// + windowStartS + max(2 frame intervals, 34 ms) to the motion end + windowEndS, from the json budgets block. Bound
+// (ruling 6031879782 item 2): after an input the motion must end within windowEndS of it; after an arrival there is no
+// windowEndS bound (a designed motion, such as W-S1's opening on a plain load of /, is a motion, not idle cost). Either
+// way a motion still presenting frames at the hard stop, 2 x windowEndS + 1 s after the anchor (the later of the input
+// and the arrival), fails the row: a loop that never goes idle cannot pass by never ending. The window counted from the
+// input is reported too.
 //  3. match: over an active window (a scroll with GL drawing) the gate's counts equal __stage.stats exactly, and a page
 //     with nothing to draw renders at most once (the canvas stays clear; review item 5);
 //  4. scroll: 0 getBoundingClientRect calls inside rAF over a 10 s scroll, and 0 other forced layout reads (offset*,
 //     client*, scroll size, getClientRects, getComputedStyle) inside rAF (round-3 should-fix S9);
-//  5. arrivals (ruling 6030949628 item 1): the same window after an arrival with no input: a full load of /#contact
-//     (a hash: no opening), a history Back to it (a fresh load), a Swup visit's end and, in Chromium with the back/forward
-//     cache on, a bfcache restore. A wake after the arrival that presents nothing falls in the window and fails it.
+//  5. arrivals (rulings 6030949628 item 1 and 6031879782 item 2): the same window after an arrival with no input: a
+//     full load of /#contact (a hash: no opening) and of / (W-S1's opening plays, about 5.4 s), a history Back to
+//     /#contact (a fresh load), a Swup visit's end and, in Chromium with the back/forward cache on, a bfcache restore. A
+//     wake after the arrival that presents nothing falls in the window and fails it. swup-404 (ruling 6031879782 item
+//     3): GL up on /, a Swup visit to the 404: the window passes with no restart (0 draws after it settles), no WebGL
+//     context is made there, and the same live context draws / again on the way back.
 // Usage: npm run h:counters -- [--profiles D2,P2,WK-P2] [--routes /,/bench/] [--no-arrivals] [--out counters.json]
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -79,23 +85,31 @@ async function scrollInput(page, cdp, dy) {
   return 'wheel';
 }
 
+/** The hard stop, after the anchor (ruling 6031879782 item 2): 2 x windowEndS + 1 s, 9 s at the budgets' 4 s. */
+export const HARD_STOP_MS = WINDOW_END_MS * 2 + 1000;
+
 /**
- * The motion-end window after an input the caller has just given (input given at or after `since`). Waits, polling by
- * interval, until the motion has ended and WINDOW_END_MS has passed after it, or until the bound is spent (the motion
- * still running WINDOW_END_MS after the user's last input, plus the window). Takes __stage.stats at the window's start
- * and end, so the stage's own counts cover the same window as the gate's. Returns { pass, ... }: 0 rAF and 0 draws in
- * the window, by the gate and by the stage, the motion ended within the bound, and nothing presented inside the window
- * moved the motion end.
+ * The motion-end window after an input the caller has just given (input given at or after `since`), or after an
+ * arrival. Waits, polling by interval, until the motion has ended and WINDOW_END_MS has passed after it, or until the
+ * hard stop (a frame still presented HARD_STOP_MS after the anchor). Takes __stage.stats at the window's start and end,
+ * so the stage's own counts cover the same window as the gate's. Returns { pass, ... }: 0 rAF and 0 draws in the
+ * window, by the gate and by the stage; the motion ended within the bound (WINDOW_END_MS after an input, the hard stop
+ * after an arrival); the window ran in full; and nothing presented inside the window moved the motion end.
  */
 export async function motionWindow(page, since) {
-  // An arrival (a full load, a bfcache restore, a Swup visit's end) counts as an input (ruling 6030949628 item 1).
+  // An arrival (a full load, a bfcache restore, a Swup visit's end) anchors the window as an input does (ruling
+  // 6030949628 item 1); the windowEndS bound counts from an input only (ruling 6031879782 item 2). The anchor is the
+  // later of the two: an input after an arrival brings the bound back.
   const live = () => page.evaluate((since) => {
     const g = window.__gateCounters;
     const last = (l) => { for (let i = l.length - 1; i >= 0; i--) if (l[i] > since) return l[i]; return 0; };
     const arrival = (g.lastArrivalAt ?? 0) > since ? g.lastArrivalAt : 0;
-    const lastUser = Math.max(g.lastUserInputAt > since ? g.lastUserInputAt : since, arrival);
+    const input = g.lastUserInputAt > since ? g.lastUserInputAt : 0;
+    // No input or arrival after `since`: the caller's input is at `since` (it was given just after it).
+    const anchor = Math.max(input || since, arrival);
+    const anchorKind = arrival > 0 && arrival >= input ? 'arrival' : 'input';
     const lastPresent = Math.max(last(g.drawTimes), last(g.clearTimes));
-    return { now: performance.now(), lastUser, arrival, lastScroll: g.lastScrollAt > since ? g.lastScrollAt : 0, lastPresent, end: Math.max(lastUser, g.lastScrollAt > since ? g.lastScrollAt : 0, lastPresent) };
+    return { now: performance.now(), anchor, anchorKind, arrival, lastScroll: g.lastScrollAt > since ? g.lastScrollAt : 0, lastPresent, end: Math.max(anchor, g.lastScrollAt > since ? g.lastScrollAt : 0, lastPresent) };
   }, since);
   const frameMsOf = () => page.evaluate((since) => {
     const r = window.__gateCounters.rafTimes.filter((t) => t > since);
@@ -107,7 +121,8 @@ export async function motionWindow(page, since) {
     const g = window.__gateCounters;
     return { ticks: window.__stage.stats.ticks, drawCalls: window.__stage.stats.drawCalls, draws: window.__stage.stats.draws, tailFrames: window.__stage.stats.tailFrames ?? 0, gateRaf: g.raf, gateDraws: g.draws, gateClears: g.clears, at: performance.now() };
   });
-  const hardStop = (s) => s.lastUser + WINDOW_END_MS * 2 + 1000; // the bound plus a whole window after it
+  // A motion end after the hard stop is a motion that never ended: the harness stops waiting for it there.
+  const pastHardStop = (s) => s.end - s.anchor > HARD_STOP_MS;
   let s = await live();
   let frameMs = 1000 / 60;
   let a;
@@ -118,32 +133,32 @@ export async function motionWindow(page, since) {
     while (true) {
       frameMs = await frameMsOf();
       const from = WINDOW_START_MS + windowTolerance(frameMs);
-      if (s.now - s.end >= from || s.now >= hardStop(s)) break;
+      if (s.now - s.end >= from || pastHardStop(s)) break;
       await sleep(Math.min(50, Math.max(5, s.end + from - s.now)));
       s = await live();
     }
     a = await stage();
     endAtStart = s.end;
     // Phase 2: the window's end. A frame presented (or an input) inside it is a new motion end: the window restarts
-    // from it, inside the bound.
-    while (s.now - endAtStart < WINDOW_END_MS && s.now < hardStop(s) && s.end === endAtStart) {
+    // from it, up to the hard stop. A window that started before the hard stop runs in full.
+    while (s.now - endAtStart < WINDOW_END_MS && s.end === endAtStart) {
       await sleep(Math.min(50, Math.max(5, endAtStart + WINDOW_END_MS - s.now)));
       s = await live();
     }
-    if (s.end !== endAtStart && s.now < hardStop(s)) {
+    if (s.end !== endAtStart && !pastHardStop(s)) {
       restarts++;
       continue;
     }
     break;
   }
+  const ranMs = s.now - endAtStart;
   const b = await stage();
-  return page.evaluate(({ since, end, endNow, from, toleranceMs, frameMs, a, b, WINDOW_START_MS, WINDOW_END_MS, lastUser, arrival, restarts }) => {
+  return page.evaluate(({ since, end, endNow, ranMs, from, toleranceMs, frameMs, a, b, WINDOW_START_MS, WINDOW_END_MS, HARD_STOP_MS, anchor, anchorKind, arrival, restarts }) => {
     const g = window.__gateCounters;
     const inWin = (list, x, y) => list.filter((t) => t > x && t <= y).length;
     const rafs = g.rafTimes.filter((t) => t > since);
     const lastRaf = rafs.length ? rafs[rafs.length - 1] : null;
     const lastDraw = g.drawTimes.filter((t) => t > since).pop() ?? 0;
-    const lastClear = g.clearTimes.filter((t) => t > since).pop() ?? 0;
     const win = { fromMs: Math.round(from), toleranceMs: Math.round(toleranceMs * 10) / 10, toMs: WINDOW_END_MS, raf: inWin(g.rafTimes, end + from, end + WINDOW_END_MS), draws: inWin(g.drawTimes, end + from, end + WINDOW_END_MS), clears: inWin(g.clearTimes, end + from, end + WINDOW_END_MS) };
     // The stamp lists keep the newest stamps only: they cover the window when their oldest kept stamp is before it (or
     // none was ever dropped). The uncapped counts, read at the window's start and end, cover it whatever the lists hold.
@@ -151,22 +166,27 @@ export async function motionWindow(page, since) {
     win.stampsCover = { raf: covers('rafTimes'), draws: covers('drawTimes'), clears: covers('clearTimes') };
     const uncapped = { fromMs: Math.round(a.at - end), toMs: Math.round(b.at - end), raf: b.gateRaf - a.gateRaf, draws: b.gateDraws - a.gateDraws, clears: b.gateClears - a.gateClears };
     const stageWin = { ticks: b.ticks - a.ticks, drawCalls: b.drawCalls - a.drawCalls, renders: b.draws - a.draws, tailFrames: b.tailFrames - a.tailFrames };
-    const boundOk = end - lastUser <= WINDOW_END_MS && endNow === end;
+    // The bound (ruling 6031879782 item 2): windowEndS after an input; after an arrival, only the hard stop. Either way
+    // the motion end did not move inside the window, and the window ran in full.
+    const maxMs = anchorKind === 'input' ? WINDOW_END_MS : HARD_STOP_MS;
+    const complete = ranMs >= WINDOW_END_MS;
+    const boundOk = end - anchor <= maxMs && endNow === end && complete;
     return {
-      motionEndsMs: Math.round(end - lastUser), motionEndsBy: end === lastDraw ? 'draw' : end === lastClear ? 'presented clear' : end === g.lastScrollAt ? 'scroll' : arrival > 0 && end === arrival ? `arrival (${g.arrivals.at(-1)?.kind ?? '?'})` : 'input',
+      // What made the motion end the window was measured from (a frame presented after it does not relabel it).
+      anchor: anchorKind, motionEndsMs: Math.round(end - anchor), motionEndsBy: g.drawTimes.includes(end) ? 'draw' : g.clearTimes.includes(end) ? 'presented clear' : end === g.lastScrollAt ? 'scroll' : arrival > 0 && end === arrival ? `arrival (${g.arrivals.at(-1)?.kind ?? '?'})` : 'input',
       frameMs: Math.round(frameMs * 10) / 10, lastRafAfterMotionMs: lastRaf === null ? null : Math.round(lastRaf - end),
-      bound: { maxMs: WINDOW_END_MS, motionEndsMs: Math.round(endNow - lastUser), movedDuringWindow: endNow !== end, pass: boundOk },
+      bound: { anchor: anchorKind, maxMs, hardStopMs: HARD_STOP_MS, motionEndsMs: Math.round(endNow - anchor), movedDuringWindow: endNow !== end, windowRanMs: Math.round(ranMs), complete, pass: boundOk },
       windowRestarts: restarts, afterMotion: win, uncappedInWindow: uncapped, stageInWindow: stageWin, stampsDropped: { ...g.stampsDropped },
       // For the negative control: the same window if presented clears were left out of the motion end (the rule before
       // the ruling counted only scrolls and draws).
-      ifClearsIgnored: (() => { const e2 = Math.max(lastUser, g.lastScrollAt > since ? g.lastScrollAt : 0, lastDraw); return { raf: inWin(g.rafTimes, e2 + from, e2 + WINDOW_END_MS) }; })(),
-      // For information: counted from the user's last input (the budget's old wording, gate F1).
-      afterInput: { fromMs: WINDOW_START_MS, toMs: WINDOW_END_MS, raf: inWin(g.rafTimes, lastUser + WINDOW_START_MS, lastUser + WINDOW_END_MS), draws: inWin(g.drawTimes, lastUser + WINDOW_START_MS, lastUser + WINDOW_END_MS) },
+      ifClearsIgnored: (() => { const e2 = Math.max(anchor, g.lastScrollAt > since ? g.lastScrollAt : 0, lastDraw); return { raf: inWin(g.rafTimes, e2 + from, e2 + WINDOW_END_MS) }; })(),
+      // For information: counted from the anchor (the budget's old wording, gate F1).
+      afterInput: { fromMs: WINDOW_START_MS, toMs: WINDOW_END_MS, raf: inWin(g.rafTimes, anchor + WINDOW_START_MS, anchor + WINDOW_END_MS), draws: inWin(g.drawTimes, anchor + WINDOW_START_MS, anchor + WINDOW_END_MS) },
       // Any frame the gate sees in the window fails it: a rAF callback, a draw through any entry point, a clear (clear or
       // clearBuffer*, round-3 must-fix counters-draw-cap), by the stamps and by the uncapped counts.
       pass: boundOk && win.raf === 0 && win.draws === 0 && win.clears === 0 && uncapped.raf === 0 && uncapped.draws === 0 && uncapped.clears === 0 && stageWin.ticks === 0 && stageWin.drawCalls === 0,
     };
-  }, { since, end: endAtStart, endNow: s.end, from: WINDOW_START_MS + windowTolerance(frameMs), toleranceMs: windowTolerance(frameMs), frameMs, a, b, WINDOW_START_MS, WINDOW_END_MS, lastUser: s.lastUser, arrival: s.arrival, restarts });
+  }, { since, end: endAtStart, endNow: s.end, ranMs, from: WINDOW_START_MS + windowTolerance(frameMs), toleranceMs: windowTolerance(frameMs), frameMs, a, b, WINDOW_START_MS, WINDOW_END_MS, HARD_STOP_MS, anchor: s.anchor, anchorKind: s.anchorKind, arrival: s.arrival, restarts });
 }
 
 /** The after-scroll idle window (step 2); negatives.mjs reuses it with planted defects. */
@@ -193,21 +213,90 @@ export async function arrivalWindow(page, kind) {
   return { kind, ...after, ...r, pass: r.pass && after.arrivals.some((a) => a.startsWith(kind)) };
 }
 
-/** The arrival rows: a full load, a history Back (a fresh load), a Swup visit and, in Chromium, a bfcache restore. */
+/** Logs every WebGL context made on any canvas, with the page's opt-out (data-gl-page) at that moment. */
+const GL_CONTEXTS = `(() => {
+  const log = (window.__glContexts = []);
+  const gc = HTMLCanvasElement.prototype.getContext;
+  HTMLCanvasElement.prototype.getContext = function (type, attrs) {
+    const had = this.__hctx ?? null;
+    const c = gc.call(this, type, attrs);
+    if (/webgl/.test(String(type)) && c && !had) log.push({ id: this.id || null, path: location.pathname, glPage: document.documentElement.dataset.glPage ?? null, t: Math.round(performance.now()) });
+    if (c) this.__hctx = c;
+    return c;
+  };
+})();`;
+export const MISSING_URL = '/work/no-such-print/';
+
+/**
+ * Ruling 6031879782 item 3: GL already up may stay alive on a 404 reached by Swup (the one canvas, W-D013), on three
+ * conditions: 0 draws on the 404 after the arrival settles (no frame presented after the motion end's first quiet
+ * second: the arrival window passes with no restart), the Idle window met, and the same context reused, not rebooted,
+ * on the way back (the same context object, no new stage:gl-ready). A new WebGL context made on the 404 fails it.
+ * Starts on / with GL up, goes to a missing URL by a keyboard Swup visit, and comes back by the site mark.
+ */
+async function aliveOn404(page, base) {
+  await page.goto(`${base}/`, { waitUntil: 'load' });
+  await page.waitForFunction(() => window.__stage?.glState === 'ready', null, { polling: 100, timeout: 15000 }).catch(() => {});
+  await waitSettled(page, 15000);
+  const glInfo = () => page.evaluate(() => {
+    const c = window.__stage.gl?.renderer?.getContext() ?? null;
+    return {
+      glState: window.__stage.glState, sameContext: c === (window.__h404ctx ?? undefined), contextLost: c ? c.isContextLost() : null,
+      contexts: window.__glContexts.length, glReady: window.__stage.marks().filter((m) => m.name === 'stage:gl-ready').length, path: location.pathname,
+      draws: window.__gateCounters.draws, planted: window.__planted ?? null,
+    };
+  });
+  await page.evaluate(() => { window.__h404ctx = window.__stage.gl?.renderer?.getContext() ?? null; });
+  const before = await glInfo();
+  await page.evaluate((href) => {
+    const a = document.createElement('a');
+    a.href = href;
+    a.id = 'h-missing';
+    a.textContent = 'a print that is not there';
+    document.querySelector('main').append(a);
+  }, MISSING_URL);
+  await page.focus('#h-missing');
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(() => document.documentElement.dataset.page === 'notfound', null, { polling: 50, timeout: 10000 });
+  const r = await arrivalWindow(page, 'swup');
+  const on404 = { ...(await glInfo()), contextsMade: await page.evaluate(() => window.__glContexts.filter((c) => c.glPage === 'off')) };
+  await page.focus('a.site-mark');
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(() => location.pathname === '/' && document.documentElement.dataset.page === 'home', null, { polling: 50, timeout: 10000 });
+  await page.waitForFunction(() => window.__stage.glState === 'ready', null, { polling: 100, timeout: 15000 }).catch(() => {});
+  await waitSettled(page, 15000);
+  const back = await glInfo();
+  // Reused: the same live context draws / again (a lost context, a new one or a second gl-ready is not reuse).
+  const alive = {
+    before, on404, back, glUp: before.glState === 'ready' && before.contexts >= 1 && before.contextLost === false,
+    settledOn404: r.windowRestarts === 0, noContextOn404: on404.contextsMade.length === 0, drawsBack: back.draws - on404.draws,
+    reused: back.glState === 'ready' && back.sameContext && back.contextLost === false && back.contexts === before.contexts && back.glReady === before.glReady && back.draws > on404.draws,
+  };
+  return { ...r, alive, pass: r.pass && on404.path === MISSING_URL && alive.glUp && alive.settledOn404 && alive.noContextOn404 && alive.reused };
+}
+
+/**
+ * The arrival rows: a full load of /#contact and of / (W-S1's opening plays: no windowEndS bound after an arrival,
+ * ruling 6031879782 item 2), a history Back (a fresh load), a Swup visit, a Swup visit from / with GL up to the 404
+ * (ruling 6031879782 item 3) and, in Chromium, a bfcache restore. opts.cases runs a subset; opts.plant adds an init
+ * script (the negative controls).
+ */
 export async function arrivals(base, profiles, opts = {}) {
   const rows = [];
   const target = opts.route ?? '/#contact';
   for (const profile of profiles) {
-    const cases = ['load', 'back', 'swup', ...(PROFILES[profile].browser === 'chromium' && profile === 'D2' ? ['bfcache'] : [])];
+    const all = ['load', 'load-home', 'back', 'swup', 'swup-404', ...(PROFILES[profile].browser === 'chromium' && profile === 'D2' ? ['bfcache'] : [])];
+    const cases = opts.cases ? all.filter((k) => opts.cases.includes(k)) : all;
     for (const kind of cases) {
       const ctx = await newContext(profile, 'auto', kind === 'bfcache' ? { browser: 'chromium-bfcache' } : {});
       await ctx.addInitScript({ content: INIT });
+      if (kind === 'swup-404') await ctx.addInitScript({ content: GL_CONTEXTS });
       if (opts.plant) await ctx.addInitScript({ content: opts.plant });
       const page = await ctx.newPage();
       let r;
       try {
-        if (kind === 'load') {
-          await page.goto(base + target, { waitUntil: 'load' });
+        if (kind === 'load' || kind === 'load-home') {
+          await page.goto(base + (kind === 'load' ? target : '/'), { waitUntil: 'load' });
           r = await arrivalWindow(page, 'load');
         } else if (kind === 'back') {
           await page.goto(base + target, { waitUntil: 'load' });
@@ -223,6 +312,8 @@ export async function arrivals(base, profiles, opts = {}) {
           await waitSettled(page, 15000);
           await page.goBack({ waitUntil: 'commit' }); // a bfcache restore fires pageshow, not load
           r = await arrivalWindow(page, 'bfcache');
+        } else if (kind === 'swup-404') {
+          r = await aliveOn404(page, base);
         } else {
           // A Swup visit by keyboard (no pointer move after it): the nav's Work link (/#work) from a project page.
           await page.goto(`${base}/work/project-01/`, { waitUntil: 'load' });
@@ -322,10 +413,10 @@ export async function run(opts = {}) {
   }
   const pass = rows.every((r) => r.pass) && (arrivalStep ? arrivalStep.pass : true);
   return {
-    schema: 4, instrument: 'counters',
-    motionEndWindow: `${WINDOW_START_MS / 1000} s + max(2 frames, ${TOLERANCE_FLOOR_MS} ms) to ${WINDOW_END_MS / 1000} s after the motion end: the later of the last input event (scroll, wheel, pointer, key), the last arrival (load, bfcache restore, Swup visit end) and the last presented frame (draws through any entry point and clears, tail and clear-only frames included); the motion must end within ${WINDOW_END_MS / 1000} s of the last input or arrival (Orchestrator rulings on #11, 5992928262 and 6030949628)`,
+    schema: 5, instrument: 'counters',
+    motionEndWindow: `${WINDOW_START_MS / 1000} s + max(2 frames, ${TOLERANCE_FLOOR_MS} ms) to ${WINDOW_END_MS / 1000} s after the motion end: the later of the last input event (scroll, wheel, pointer, key), the last arrival (load, bfcache restore, Swup visit end) and the last presented frame (draws through any entry point and clears, tail and clear-only frames included); after an input the motion must end within ${WINDOW_END_MS / 1000} s of it, after an arrival there is no ${WINDOW_END_MS / 1000} s bound, and a motion still presenting ${HARD_STOP_MS / 1000} s after the anchor fails (Orchestrator rulings on #11, 5992928262, 6030949628 and 6031879782)`,
     pass, rows, arrivals: arrivalStep,
-    arrivalSummary: arrivalStep?.rows.map((r) => `${r.profile} ${r.case}: ${r.pass ? 'pass' : 'FAIL'} (motion ends by ${r.motionEndsBy} +${r.motionEndsMs} ms, last rAF +${r.lastRafAfterMotionMs} ms, window raf ${r.afterMotion?.raf} draws ${r.afterMotion?.draws}${r.error ? `, ${r.error}` : ''})`).join(' | ') ?? null,
+    arrivalSummary: arrivalStep?.rows.map((r) => `${r.profile} ${r.case}: ${r.pass ? 'pass' : 'FAIL'} (motion ends by ${r.motionEndsBy} +${r.motionEndsMs} ms after the ${r.anchor ?? '?'}, last rAF +${r.lastRafAfterMotionMs} ms, window raf ${r.afterMotion?.raf} draws ${r.afterMotion?.draws}${r.error ? `, ${r.error}` : ''})`).join(' | ') ?? null,
     summary: rows.map((r) => `${r.profile} ${r.route}: idle raf ${r.idle.afterMotion.raf} draws ${r.idle.afterMotion.draws} (ends +${r.idle.motionEndsMs} ms); after ${r.afterScroll.input} (motion ends +${r.afterScroll.motionEndsMs} ms by ${r.afterScroll.motionEndsBy}, last rAF +${r.afterScroll.lastRafAfterMotionMs} ms after it) raf ${r.afterScroll.afterMotion.raf} draws ${r.afterScroll.afterMotion.draws} bound ${r.afterScroll.bound.pass ? 'ok' : 'FAIL'} [from input: raf ${r.afterScroll.afterInput.raf}]; active raf ${r.active.gate.raf - r.active.gate.rafFromDependencies}=${r.active.stage.ticks} draws ${r.active.gate.draws}=${r.active.stage.drawCalls}${r.empty ? `, empty page renders ${r.active.stage.renders} clears ${r.active.gate.clears} skips ${r.active.stage.renderSkips}` : ''}; scroll rect-in-raf ${r.scroll.gate.rectReadsInRaf}`).join(' | '),
   };
 }

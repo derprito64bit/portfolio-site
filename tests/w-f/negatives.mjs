@@ -18,6 +18,11 @@
 //             (ruling 6030949628 item 2: max(2 frames, 34 ms)), D2 and WK-P2
 //   arrival   a wake that presents nothing (180 rAF callbacks, no draw) 1.5 s after the load fails h-counters' arrival
 //             window (ruling 6030949628 item 1), D2 and WK-P2; the clean arrivals pass
+//   bound     ruling 6031879782 item 2, D2 and WK-P2: a 5.4 s motion after a load passes and one that never ends fails
+//             (the hard stop, 9 s); a 3 s motion after a key passes and a 4.5 s one fails (windowEndS after an input)
+//   alive404  ruling 6031879782 item 3, D2 and WK-P2: h-counters' swup-404 row (GL up on /, a Swup visit to the 404,
+//             back by the site mark) passes clean and fails with a draw on the 404 after it settled, a new WebGL
+//             context made there, or the stage's context lost there
 //   resize    ResizeObserver callbacks deferred by a task (GL re-measures a frame after the layout moved, the round-2
 //             defect) must fail the drift harness's resize probe at a toolbar collapse and expand
 //   lcp       a wrong or missing Lighthouse LCP element (budgets.md: the h1 on desktop; the h1 or print 1's still on
@@ -32,7 +37,7 @@ import { join, resolve } from 'node:path';
 import { validateContent } from '../../src/lib/content/validate.js';
 import { scanInPage } from '../../scripts/check/stacking.mjs';
 import { ROOT, cliMain, lcpElementOf, lcpElementVerdict, newContext, serve, sleep, waitSettled } from '../harness/lib.mjs';
-import { INIT as COUNTERS_INIT, arrivals, idleAfterScroll, motionWindow } from '../harness/counters/run.mjs';
+import { INIT as COUNTERS_INIT, arrivalWindow, arrivals, idleAfterScroll, motionWindow } from '../harness/counters/run.mjs';
 import { resizeProbeOnly } from '../harness/drift/run.mjs';
 
 function contentControl() {
@@ -355,10 +360,106 @@ const ARRIVAL_PLANT = `addEventListener('load', () => setTimeout(() => {
 async function arrivalControl() {
   const srv = await serve();
   try {
-    const clean = await arrivals(srv.base, ['D2', 'WK-P2']);
-    const planted = await arrivals(srv.base, ['D2', 'WK-P2'], { plant: ARRIVAL_PLANT });
-    const loads = (x) => x.rows.filter((r) => r.kind === 'load' || r.kind === 'back');
-    return { clean: clean.rows, planted: loads(planted), pass: clean.pass && loads(planted).length > 0 && loads(planted).every((r) => !r.pass) };
+    // The plant wakes 1.5 s after the load: on / (load-home) that is inside W-S1's opening, a motion, so the rows that
+    // must fail are the loads of /#contact and the history Back to it.
+    const cases = ['load', 'back', 'swup', 'bfcache'];
+    const clean = await arrivals(srv.base, ['D2', 'WK-P2'], { cases });
+    const planted = await arrivals(srv.base, ['D2', 'WK-P2'], { cases: ['load', 'back'], plant: ARRIVAL_PLANT });
+    return { clean: clean.rows, planted: planted.rows, pass: clean.pass && planted.rows.length > 0 && planted.rows.every((r) => !r.pass) };
+  } finally {
+    await srv.close();
+  }
+}
+
+/**
+ * GL already up on a 404 reached by Swup (ruling 6031879782 item 3): the h-counters swup-404 row passes clean and fails
+ * with each defect the ruling names, planted once the 404 has arrived: a draw on the stage's context 2 s after it (after
+ * the arrival settled), a new WebGL context made there, and the stage's context lost there (not reused on the way back).
+ * D2 and WK-P2.
+ */
+const ON_404 = (delay, body) => `(() => {
+  new MutationObserver((recs, mo) => {
+    if (document.documentElement?.dataset.page !== 'notfound') return;
+    mo.disconnect();
+    setTimeout(() => { ${body} }, ${delay});
+  }).observe(document, { subtree: true, attributes: true, attributeFilter: ['data-page'] });
+})();`;
+const ALIVE_PLANTS = {
+  drawAfterSettle: ON_404(2000, `const gl = window.__stage?.gl?.renderer?.getContext(); if (gl) { gl.drawArrays(gl.POINTS, 0, 0); window.__planted = 'draw'; }`),
+  newContext: ON_404(500, `const c = document.createElement('canvas').getContext('webgl'); window.__planted = c ? 'context' : 'no context';`),
+  contextLost: ON_404(500, `const gl = window.__stage?.gl?.renderer?.getContext(); const ext = gl?.getExtension('WEBGL_lose_context'); if (ext) { ext.loseContext(); window.__planted = 'lost'; }`),
+};
+async function alive404Control() {
+  const srv = await serve();
+  try {
+    const profiles = ['D2', 'WK-P2'];
+    const brief = (r) => ({ profile: r.profile, pass: r.pass, error: r.error, window: r.afterMotion && { raf: r.afterMotion.raf, draws: r.afterMotion.draws, clears: r.afterMotion.clears }, restarts: r.windowRestarts, alive: r.alive && { glUp: r.alive.glUp, settledOn404: r.alive.settledOn404, noContextOn404: r.alive.noContextOn404, reused: r.alive.reused, drawsBack: r.alive.drawsBack, planted: r.alive.back?.planted ?? null, back: r.alive.back } });
+    const clean = (await arrivals(srv.base, profiles, { cases: ['swup-404'] })).rows.map(brief);
+    const planted = {};
+    for (const [name, plant] of Object.entries(ALIVE_PLANTS)) planted[name] = (await arrivals(srv.base, profiles, { cases: ['swup-404'], plant })).rows.map(brief);
+    return { clean, planted, pass: clean.length === profiles.length && clean.every((r) => r.pass) && Object.values(planted).every((rows) => rows.length === profiles.length && rows.every((r) => !r.pass)) };
+  } finally {
+    await srv.close();
+  }
+}
+
+/**
+ * The bound (ruling 6031879782 item 2): windowEndS after an input; after an arrival none, only the hard stop at
+ * 2 x windowEndS + 1 s after the anchor. A plant presents frames (a clear per rAF on its own small WebGL canvas) for a
+ * set time after the anchor, then stops. After a load of /#contact: 5.4 s (about W-S1's opening on /) must pass, and a
+ * motion that never ends must fail. After a key on /bench/: 3 s must pass, and 4.5 s must fail. NEG_COUNTERS_DIR=<dir>
+ * runs it with another counters directory (c0e2e46's applied the input bound to arrivals: its 5.4 s arrival row fails).
+ */
+const MOTION_PLANT = (ms, on) => `(() => {
+  const go = () => {
+    const t0 = performance.now();
+    const gl = document.createElement('canvas').getContext('webgl');
+    if (!gl) return;
+    const f = () => { gl.clear(gl.COLOR_BUFFER_BIT); if (${ms} < 0 || performance.now() - t0 < ${ms}) requestAnimationFrame(f); };
+    requestAnimationFrame(f);
+  };
+  ${on === 'load' ? "addEventListener('load', go, { once: true });" : "addEventListener('keydown', go, { once: true, capture: true });"}
+})();`;
+async function boundControl() {
+  const dir = process.env.NEG_COUNTERS_DIR;
+  const counters = dir ? await import(pathToFileURL(join(dir, 'run.mjs')).href) : { INIT: COUNTERS_INIT, motionWindow, arrivalWindow };
+  const srv = await serve();
+  try {
+    const rows = [];
+    const cases = [
+      { on: 'load', ms: 5400, expect: true },
+      { on: 'load', ms: -1, expect: false },
+      { on: 'key', ms: 3000, expect: true },
+      { on: 'key', ms: 4500, expect: false },
+    ];
+    for (const profile of ['D2', 'WK-P2']) {
+      for (const c of cases) {
+        const ctx = await newContext(profile);
+        await ctx.addInitScript({ content: counters.INIT });
+        await ctx.addInitScript({ content: MOTION_PLANT(c.ms, c.on) });
+        const page = await ctx.newPage();
+        let r;
+        try {
+          if (c.on === 'load') {
+            await page.goto(`${srv.base}/#contact`, { waitUntil: 'load' });
+            r = await counters.arrivalWindow(page, 'load');
+          } else {
+            await page.goto(`${srv.base}/bench/`, { waitUntil: 'load' });
+            await waitSettled(page, 15000);
+            await sleep(300);
+            const since = await page.evaluate(() => performance.now());
+            await page.keyboard.press('Shift');
+            r = await counters.motionWindow(page, since);
+          }
+        } catch (e) {
+          r = { pass: false, error: String(e?.message || e).slice(0, 200) };
+        }
+        const planted = await page.evaluate(() => window.__gateCounters.clears).catch(() => null);
+        await ctx.close();
+        rows.push({ profile, on: c.on, motionMs: c.ms < 0 ? 'never ends' : c.ms, expect: c.expect, pass: r.pass, correct: r.pass === c.expect, clears: planted, anchor: r.anchor ?? null, motionEndsMs: r.motionEndsMs, motionEndsBy: r.motionEndsBy, bound: r.bound, window: r.afterMotion, error: r.error });
+      }
+    }
+    return { instrument: dir ?? 'tests/harness/counters', rows, pass: rows.every((r) => r.correct) };
   } finally {
     await srv.close();
   }
@@ -419,6 +520,8 @@ export async function run(opts = {}) {
   if (want('draws')) out.draws = await drawsControl();
   if (want('tolerance')) out.tolerance = await toleranceControl();
   if (want('arrival')) out.arrival = await arrivalControl();
+  if (want('bound')) out.bound = await boundControl();
+  if (want('alive404')) out.alive404 = await alive404Control();
   if (want('resize')) out.resize = await resizeControl();
   if (want('lcp')) out.lcp = lcpControl();
   const parts = Object.entries(out);
