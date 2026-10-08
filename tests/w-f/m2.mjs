@@ -526,34 +526,33 @@ async function grid(base) {
   }
   // A fractional layout width (round-5 must-fix canvas-grid-fractional-width; Breaker 4.2 #6): a real display at 125% or
   // 175% scaling, or browser zoom, lays #rail out at a fractional CSS width while view.W (#rail's clientWidth) is a whole
-  // number. Emulated DSF keeps whole CSS widths, so the page runs in an iframe of fractional CSS width instead, in
-  // Chromium and WebKit; the canvas must still be laid out at exactly W.
+  // number. Playwright's emulated DSF keeps every CSS width whole (an iframe 801.3 px wide too: its frame is snapped to a
+  // whole CSS width), so the rows are: real Chrome with a forced device scale factor of 1.25 and 1.75 and a 1366 x 768
+  // window (viewport null: 1092.8 and 780.57 CSS px wide), and, in Chromium and WebKit, a page whose #rail containing
+  // block (body, position: relative) is 801.3 px wide (a style added before the stage first measures). The canvas must be
+  // laid out at exactly W; each row asserts its #rail width really was fractional.
   const frac = [];
-  for (const [profile, engine, fw] of [['D2', 'chromium', 801.3], ['D2', 'chromium', 1351.43], ['D3', 'webkit', 801.3], ['D3', 'webkit', 1235.57]]) {
-    const ctx = await newContext(profile, 'auto', { browser: engine });
+  const FRACTIONAL_BODY = "document.addEventListener('DOMContentLoaded', () => { const s = document.createElement('style'); s.textContent = 'body{inline-size:801.3px}'; document.head.append(s); });";
+  for (const [label, make] of [
+    ['Chrome DSF 1.25, window 1366x768', async () => (await browser('chromium-dsf-1.25')).newContext({ viewport: null, serviceWorkers: 'block' })],
+    ['Chrome DSF 1.75, window 1366x768', async () => (await browser('chromium-dsf-1.75')).newContext({ viewport: null, serviceWorkers: 'block' })],
+    ['D2 chromium, body 801.3px', async () => newContext('D2')],
+    ['D3 webkit, body 801.3px', async () => newContext('D3', 'auto', { browser: 'webkit' })],
+  ]) {
+    const ctx = await make();
+    if (label.includes('body 801.3px')) await ctx.addInitScript({ content: FRACTIONAL_BODY });
     const page = await ctx.newPage();
     let s;
     try {
-      await page.goto(`${base}/404.html`, { waitUntil: 'load' });
-      await page.evaluate(({ src, fw }) => {
-        document.body.innerHTML = '';
-        const f = document.createElement('iframe');
-        f.id = 'frac';
-        f.src = src;
-        f.style.cssText = `display:block;border:0;margin:0;inline-size:${fw}px;block-size:700px`;
-        document.body.append(f);
-      }, { src: `${base}/bench/`, fw });
-      await page.waitForFunction(() => {
-        const w = document.getElementById('frac')?.contentWindow;
-        return w?.__stage?.glState === 'ready' && w.__stage.settled === true;
-      }, null, { polling: 100, timeout: 20000 });
-      const frame = page.frames().find((fr) => fr.url().includes('/bench/'));
-      s = { ...(await frame.evaluate(GRID_READ)), frameWidth: await page.evaluate(() => document.getElementById('frac').getBoundingClientRect().width) };
+      await page.goto(`${base}/bench/`, { waitUntil: 'load' });
+      await page.waitForFunction(() => window.__stage?.glState === 'ready', null, { polling: 100, timeout: 20000 });
+      await waitSettled(page, 10000);
+      s = await page.evaluate(GRID_READ);
     } catch (e) {
       s = { error: String(e?.message || e).slice(0, 200) };
     }
     await ctx.close();
-    frac.push({ ...gridRow(`${profile}@${engine} iframe ${fw}px`, s, b), fractional: s.railW !== undefined && s.railW !== Math.round(s.railW) });
+    frac.push({ ...gridRow(label, s, b), fractional: s.railW !== undefined && Math.abs(s.railW - Math.round(s.railW)) > 1 / 64 });
   }
   return { rows, fractional: frac, pass: rows.every((r) => r.pass) && frac.length > 0 && frac.every((r) => r.pass && r.fractional) };
 }

@@ -60,10 +60,15 @@ const launched = new Map();
 export async function browser(name = 'chromium') {
   if (launched.has(name)) return launched.get(name);
   const chrome = (extra = {}) => chromium.launch({ headless: true, args: [...ARGS, ...(extra.args ?? [])], ...(extra.ignoreDefaultArgs ? { ignoreDefaultArgs: extra.ignoreDefaultArgs } : {}), ...(CI || process.env.PW_BUNDLED ? {} : { channel: 'chrome' }) });
+  // 'chromium-dsf-<n>' (#59 item 3 at a fractional layout width): Chrome with a forced device scale factor and a 1366 x
+  // 768 window; its contexts use viewport: null, so the CSS width is 1366 / n, fractional as on a real display at 125%.
+  const dsf = /^chromium-dsf-(\d+(?:\.\d+)?)$/.exec(name)?.[1];
   const b = name === 'webkit'
     ? await webkit.launch({ headless: true })
-    : name === 'chromium-no3d'
-      ? await chrome({ args: ['--disable-3d-apis'] })
+    : dsf
+      ? await chrome({ args: [`--force-device-scale-factor=${dsf}`, '--window-size=1366,768'] })
+      : name === 'chromium-no3d'
+        ? await chrome({ args: ['--disable-3d-apis'] })
       : name === 'chromium-scrollbars'
         ? await chrome({ ignoreDefaultArgs: ['--hide-scrollbars'] })
         : name === 'chromium-bfcache'
