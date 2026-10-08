@@ -23,7 +23,13 @@
 //     wake after the arrival that presents nothing falls in the window and fails it. swup-404 (ruling 6031879782 item
 //     3): GL up on /, a Swup visit to the 404: the window passes with no restart (0 draws after it settles), no WebGL
 //     context is made there, and the same live context draws / again on the way back.
-// Usage: npm run h:counters -- [--profiles D2,P2,WK-P2] [--routes /,/bench/] [--no-arrivals] [--out counters.json]
+//  6. touch tail (round-5 must-fix lenis-native-velocity): on the full tier, a finger on the lens ring 250 to 550 ms
+//     into a 120 px wheel glide (Chromium D2 over CDP, WebKit D3 by the page's TouchEvents): the motion ends within
+//     windowEndS of the touch, the window reads 0 rAF and 0 draws, and the stage renders next to nothing after the touch
+//     (not every frame until a governor step); no-touch and touch-at-rest
+//     controls. Any window fails on a page that used a frame source the counters cannot see (init.js (d)).
+// Usage: npm run h:counters -- [--profiles D2,P2,WK-P2] [--routes /,/bench/] [--no-arrivals] [--arrivals-only]
+//        [--no-touch-tail] [--touch-tail-only] [--touch-tail-cases tail-250,no-touch] [--dist <dir>] [--out counters.json]
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { PROFILES, ROOT, budget, cliMain, newContext, serve, sleep, waitSettled } from '../lib.mjs';
@@ -338,13 +344,163 @@ export async function arrivals(base, profiles, opts = {}) {
   return { rows, pass: rows.length > 0 && rows.every((x) => x.pass) };
 }
 
+/**
+ * Step 6 (round-5 must-fix lenis-native-velocity; Breaker 4.1 #1, perf rows 28 and 29): on the full tier (Lenis on), a
+ * finger on the lens ring 250 to 550 ms into a 120 px wheel glide. Lenis (syncTouch off) turns 'native' and stops its
+ * glide without a reset, so no scroll event follows to clear it: the motion must still end within windowEndS of the
+ * touch, and the window must read 0 rAF and 0 draws, with at most TOUCH_TAIL_MAX_RENDERS stage renders after the touch
+ * (a stage that renders every frame until the governor demotes it would otherwise settle for the wrong reason, as
+ * WebKit did on 8a9e8e8: 28 to 32 renders, then lite).
+ * Chromium D2 with real touches over CDP in a mouse context (a touchscreen laptop: the head script picks full); WebKit
+ * D3 (1280x800, mouse: full) with the page's own TouchEvent sequence on the ring, which Lenis reads as it reads a real
+ * one. Controls: the same glide with no touch, and a touch at rest (no glide).
+ */
+export const TOUCH_TAIL_PROFILES = [['D2', 'chromium'], ['D3', 'webkit']];
+export const TOUCH_TAIL_CASES = [['tail-250', 250], ['tail-400', 400], ['tail-550', 550], ['no-touch', null], ['touch-at-rest', 0]];
+/**
+ * Stage renders allowed after the touch: the glide's last step that was in flight and its present tail (PRESENT_TAIL
+ * 2, REANCHOR_TAIL 3) with room to spare; a stage held awake renders every frame (about 45 or more before a governor
+ * step at 60 Hz, hundreds at 240 Hz).
+ */
+const TOUCH_TAIL_MAX_RENDERS = 12;
+/**
+ * A finger dragging the ring sideways (8 moves of +10 px x and +1 px y, as on the lens ring). Chromium: real touches
+ * over CDP, sent when the caller says. WebKit has no trusted touch input: the page dispatches its own TouchEvent
+ * sequence, in the task after a frame (the frame's rAF callbacks, where the ticker steps Lenis's glide, then the touch),
+ * at the first frame from `atPage` on where the glide is still running (html.lenis-smooth) and its last step did not
+ * move the page's integer scroll position (the glide's sub-pixel tail at DPR 1: no scroll event follows such a step,
+ * which is what leaves Lenis 'native' for good; a step that moves the page fires a scroll event that clears it, so a
+ * touch timed blind lands on a clearing step at random). At `latestPage` (550 ms into the glide), or once the glide
+ * ended, it fires anyway and says it was not aligned.
+ */
+async function dragRing(page, cdp, pt, atPage = 0, latestPage = atPage) {
+  if (cdp) {
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: pt.x, y: pt.y }] });
+    for (let i = 1; i <= 8; i++) {
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: pt.x + i * 10, y: pt.y + i }] });
+      await sleep(16);
+    }
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    return { input: 'CDP touch', at: null };
+  }
+  return page.evaluate(({ pt, atPage, latestPage }) => new Promise((resolve) => {
+    const fire = (aligned) => {
+      const el = document.elementFromPoint(pt.x, pt.y) || document.body;
+      const mk = (type, x, y, ended) => {
+        let t = null;
+        try {
+          t = new Touch({ identifier: 7, target: el, clientX: x, clientY: y, pageX: x, pageY: y + scrollY, screenX: x, screenY: y });
+        } catch {
+          t = null;
+        }
+        const init = { bubbles: true, cancelable: true, composed: true, touches: ended || !t ? [] : [t], targetTouches: ended || !t ? [] : [t], changedTouches: t ? [t] : [] };
+        let ev;
+        try {
+          ev = new TouchEvent(type, init);
+        } catch {
+          ev = new Event(type, init);
+        }
+        if (!t) Object.defineProperty(ev, 'targetTouches', { value: ended ? [] : [{ clientX: x, clientY: y }] });
+        return ev;
+      };
+      const at = performance.now();
+      el.dispatchEvent(mk('touchstart', pt.x, pt.y));
+      for (let i = 1; i <= 8; i++) el.dispatchEvent(mk('touchmove', pt.x + i * 10, pt.y + i));
+      el.dispatchEvent(mk('touchend', pt.x + 80, pt.y + 8, true));
+      resolve({ input: `page TouchEvent (${typeof Touch === 'function' ? 'Touch' : 'plain'})${aligned ? ', at a sub-pixel glide step' : ', not aligned'}`, at, aligned });
+    };
+    let prevY = scrollY;
+    const tick = () => {
+      const now = performance.now();
+      const gliding = document.documentElement.classList.contains('lenis-smooth');
+      const still = scrollY === prevY;
+      prevY = scrollY;
+      if (now >= atPage && gliding && still) setTimeout(() => fire(true), 0);
+      else if (now >= atPage && (!gliding || now >= latestPage)) setTimeout(() => fire(false), 0);
+      else requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  }), { pt, atPage, latestPage });
+}
+export async function touchTail(base, opts = {}) {
+  const rows = [];
+  const cases = opts.cases ? TOUCH_TAIL_CASES.filter(([k]) => opts.cases.includes(k)) : TOUCH_TAIL_CASES;
+  for (const [profile, engine] of TOUCH_TAIL_PROFILES) {
+    for (const [kase, at] of cases) {
+      const ctx = await newContext(profile, 'auto', { browser: engine });
+      await ctx.addInitScript({ content: INIT });
+      const page = await ctx.newPage();
+      let r;
+      try {
+        await page.goto(`${base}/`, { waitUntil: 'load' });
+        await page.waitForFunction(() => window.__stage?.glState === 'ready', null, { polling: 100, timeout: 20000 }).catch(() => {});
+        await waitSettled(page, 20000);
+        await sleep(500);
+        const state = () => page.evaluate(() => ({ tier: window.__stage.tier, lenis: document.documentElement.classList.contains('lenis'), lenisScrolling: document.documentElement.classList.contains('lenis-scrolling'), governorSteps: window.__stage.stats.governorSteps, sleeps: window.__stage.stats.sleeps, draws: window.__stage.stats.draws, settled: window.__stage.settled, y: Math.round(scrollY) }));
+        const before = await state();
+        const ring = await page.evaluate(() => {
+          const el = document.querySelector(".hero-hit[data-drag='lens']");
+          if (!el || getComputedStyle(el).display === 'none') return null;
+          const b = el.getBoundingClientRect();
+          return { x: Math.round(b.x + b.width / 2), y: Math.round(b.y + b.height / 2) };
+        });
+        const { width, height } = page.viewportSize();
+        const pt = ring ?? { x: Math.round(width / 2), y: Math.round(height / 2) };
+        const cdp = engine === 'chromium' ? await ctx.newCDPSession(page) : null;
+        const since = await page.evaluate(() => performance.now());
+        let touchMs = null;
+        let input = 'wheel only';
+        let aligned = null;
+        if (at !== 0) {
+          await page.mouse.move(pt.x, pt.y);
+          const wheelAt = await page.evaluate(() => performance.now());
+          const t0 = Date.now();
+          await page.mouse.wheel(0, 120);
+          if (at !== null) {
+            if (!cdp) {
+              const d = await dragRing(page, null, pt, wheelAt + at, wheelAt + Math.max(at, 550));
+              input = d.input;
+              touchMs = Math.round(d.at - wheelAt);
+              aligned = d.aligned;
+            } else {
+              await sleep(Math.max(0, at - (Date.now() - t0)));
+              touchMs = Date.now() - t0;
+              input = (await dragRing(page, cdp, pt)).input;
+            }
+          }
+        } else {
+          touchMs = 0;
+          input = (await dragRing(page, cdp, pt)).input;
+        }
+        const afterTouch = await state();
+        const w = await motionWindow(page, since);
+        const after = await state();
+        // A touch stops the glide, so the stage has next to nothing left to render after it (a frame or two and their
+        // present tail). A stage held awake renders every frame instead, until the governor demotes it and Lenis goes
+        // (WebKit on 8a9e8e8: the motion then ends for the wrong reason, the tier lost), so the renders after the touch
+        // are counted. A governor step with few renders after the touch is WebKit's own slow headless frames (perf row
+        // 30, pre-existing on main): recorded, not failed here.
+        const rendersAfterTouch = at === null ? null : after.draws - afterTouch.draws - (w.stageInWindow?.renders ?? 0);
+        const quiet = at === null || rendersAfterTouch <= TOUCH_TAIL_MAX_RENDERS;
+        r = { case: kase, touchAtMs: touchMs, input, aligned, ring: Boolean(ring), before, afterTouch, after, rendersAfterTouch, quietAfterTouch: quiet, keptFull: after.tier === 'full' && after.lenis, ...w, pass: w.pass && quiet && before.tier === 'full' && before.lenis };
+      } catch (e) {
+        r = { case: kase, pass: false, error: String(e?.message || e).slice(0, 300) };
+      }
+      await ctx.close();
+      rows.push({ profile: `${profile}@${engine}`, ...r });
+    }
+  }
+  return { rows, pass: rows.length > 0 && rows.every((x) => x.pass) };
+}
+
 export async function run(opts = {}) {
   const profiles = String(opts.profiles || 'D2,P2,WK-P2').split(',');
-  // --arrivals-only runs step 5 alone (the other steps keep their own routes).
-  const routes = opts['arrivals-only'] ? [] : String(opts.routes || '/,/bench/').split(',');
+  // --arrivals-only runs step 5 alone, --touch-tail-only step 6 alone (the other steps keep their own routes).
+  const routes = opts['arrivals-only'] || opts['touch-tail-only'] ? [] : String(opts.routes || '/,/bench/').split(',');
   const srv = await serve(opts.dist ? String(opts.dist) : undefined);
   const rows = [];
   let arrivalStep = null;
+  let touchTailStep = null;
   try {
     for (const profile of profiles) {
       for (const route of routes) {
@@ -412,13 +568,15 @@ export async function run(opts = {}) {
         await ctx.close();
       }
     }
-    if (!opts['no-arrivals']) arrivalStep = await arrivals(srv.base, profiles);
+    if (!opts['no-arrivals'] && !opts['touch-tail-only']) arrivalStep = await arrivals(srv.base, profiles);
+    if (!opts['no-touch-tail'] && !opts['arrivals-only']) touchTailStep = await touchTail(srv.base, { cases: opts['touch-tail-cases'] ? String(opts['touch-tail-cases']).split(',') : undefined });
   } finally {
     await srv.close();
   }
-  const pass = rows.every((r) => r.pass) && (arrivalStep ? arrivalStep.pass : true);
+  const pass = rows.every((r) => r.pass) && (arrivalStep ? arrivalStep.pass : true) && (touchTailStep ? touchTailStep.pass : true);
   return {
-    schema: 5, instrument: 'counters',
+    schema: 6, instrument: 'counters', touchTail: touchTailStep,
+    touchTailSummary: touchTailStep?.rows.map((r) => `${r.profile} ${r.case}: ${r.pass ? 'pass' : 'FAIL'} (touch +${r.touchAtMs ?? '-'} ms, motion ends +${r.motionEndsMs} ms by ${r.motionEndsBy}, window raf ${r.afterMotion?.raf} draws ${r.afterMotion?.draws}, tier ${r.after?.tier}${r.error ? `, ${r.error}` : ''})`).join(' | ') ?? null,
     motionEndWindow: `${WINDOW_START_MS / 1000} s + max(2 frames, ${TOLERANCE_FLOOR_MS} ms) to ${WINDOW_END_MS / 1000} s after the motion end: the later of the last input event (scroll, wheel, pointer, key), the last arrival (load, bfcache restore, Swup visit end) and the last presented frame (draws through any entry point and clears, tail and clear-only frames included); after an input the motion must end within ${WINDOW_END_MS / 1000} s of it, after an arrival there is no ${WINDOW_END_MS / 1000} s bound, and a motion still presenting ${HARD_STOP_MS / 1000} s after the anchor fails (Orchestrator rulings on #11, 5992928262, 6030949628 and 6031879782)`,
     pass, rows, arrivals: arrivalStep,
     arrivalSummary: arrivalStep?.rows.map((r) => `${r.profile} ${r.case}: ${r.pass ? 'pass' : 'FAIL'} (motion ends by ${r.motionEndsBy} +${r.motionEndsMs} ms after the ${r.anchor ?? '?'}, last rAF +${r.lastRafAfterMotionMs} ms, window raf ${r.afterMotion?.raf} draws ${r.afterMotion?.draws}${r.error ? `, ${r.error}` : ''})`).join(' | ') ?? null,
