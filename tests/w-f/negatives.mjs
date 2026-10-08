@@ -111,6 +111,14 @@ const LINT_PLANTS = {
   readComputed: "export const n = (navigator as any)['hardware' + 'Concurrency'];",
   readDestructured: "const { ['max' + 'TouchPoints']: m } = navigator as any;\nexport { m };",
   readAlias: "const nav: any = navigator;\nconst key = 'hardware' + 'Concurrency';\nexport const n = nav[key];",
+  // Round-5 should-fix S9 (Breaker 4.2 #5, gate row S9): the 7 forms that passed 8a9e8e8's lint.
+  rafWebkit: '(window as any).webkitRequestAnimationFrame(() => {});',
+  rafSplitOther: "const r = (window as any)['request' + 'AnimationFrame'];\nr(() => {});",
+  rafAfterStringSlashes: "const sep = '//'; requestAnimationFrame(() => {}); export { sep };",
+  clientInfoCores: "export const n = (window as any).clientInformation['hardware' + 'Concurrency'];",
+  clientInfoTouch: "const ci: any = (window as any).clientInformation;\nexport const m = ci['maxTouch' + 'Points'];",
+  globalThisNavigator: "export const n = (globalThis as any)['navi' + 'gator']['hardware' + 'Concurrency'];",
+  readAfterStringSlashes: "const u = 'a//b'; export const n = navigator.hardwareConcurrency; export { u };",
 };
 function lintControl() {
   const lint = process.env.NEG_LINT ? resolve(process.env.NEG_LINT) : join(ROOT, 'scripts/check/lint.mjs');
