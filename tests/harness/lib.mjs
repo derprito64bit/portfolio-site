@@ -254,7 +254,9 @@ export function consoleGate(page, { expectStatus = [], allow = loadAllowlist() }
   page.on('pageerror', (e) => events.push({ channel: 'pageerror', level: 'error', text: String(e?.stack || e) }));
   page.on('requestfailed', (r) => {
     const why = r.failure()?.errorText ?? '';
-    if (/ERR_ABORTED/.test(why) && r.resourceType() !== 'document') return; // navigation cancels in-flight fetches by design
+    // A navigation cancels in-flight fetches by design: Chromium reports net::ERR_ABORTED, WebKit 'Load request
+    // cancelled' (round 5: a reload while the GL chunk loads, m2 importCancel). A document's own load still counts.
+    if (/ERR_ABORTED|^Load request cancelled$/.test(why) && r.resourceType() !== 'document') return;
     events.push({ channel: 'requestfailed', level: 'error', text: `${r.method()} ${r.url()} ${why}` });
   });
   page.on('response', (r) => {

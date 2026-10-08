@@ -10,6 +10,8 @@
 //   withGl     the same probe leaves real GL alone: mouse profiles full (or a logged probe demotion), touch lite; a
 //              session that starts on the 404 boots GL after a Swup visit to /, and never after a Swup visit that lands
 //              on the 404 again (W-D029: GL off, no script fetched; Chromium and WebKit)
+//   importCancel  a reload or a full navigation while the GL chunk is still loading: no console failure on either
+//              page (WebKit rejects the import before pagehide), and the arriving page boots GL (D2, D3@webkit, WK-P2)
 //   present    #61 item 1: a recoloured fixture, then the stage sleeps; the presented canvas shows the new colour, and
 //              after an erase (every fixture hidden) the bare page (Chromium and WebKit); ?notail and ?notail=erase
 //              turn the tails off for the controls
@@ -345,25 +347,42 @@ async function withGl(base) {
 
 /**
  * A proxy in front of the dist that holds the responses whose path matches `re` for `ms` (a slow network for one chunk;
- * no Playwright routing, so WebKit's console stays the page's own). Returns { base, close }.
+ * no Playwright routing, so WebKit's console stays the page's own), the first `times` of them. Returns { base, close }.
  */
-export async function holdingProxy(target, re, ms) {
+export async function holdingProxy(target, re, ms, times = Infinity) {
   const { createServer, request } = await import('node:http');
   const t = new URL(target);
+  let held = 0;
   const server = createServer((req, res) => {
+    // A request the page gave up on (a navigation cancelled it while held) is never forwarded, and an upstream request
+    // ends with its client: a forwarded request left piping into a closed socket kept the dist server's connection
+    // busy, so serve()'s close never returned (importCancel, then any later check in the same run).
+    let up = null;
+    let gone = false;
+    res.on('close', () => {
+      gone = true;
+      up?.destroy();
+    });
     const go = () => {
-      const up = request({ host: t.hostname, port: t.port, path: req.url, method: req.method, headers: { ...req.headers, host: t.host } }, (r) => {
+      if (gone) return;
+      up = request({ host: t.hostname, port: t.port, path: req.url, method: req.method, headers: { ...req.headers, host: t.host }, agent: false }, (r) => {
         res.writeHead(r.statusCode ?? 502, r.headers);
         r.pipe(res);
       });
       up.on('error', () => res.destroy());
       req.pipe(up);
     };
-    if (re.test(req.url ?? '')) setTimeout(go, ms);
+    if (re.test(req.url ?? '') && held++ < times) setTimeout(go, ms);
     else go();
   });
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
-  return { base: `http://127.0.0.1:${server.address().port}`, close: () => new Promise((r) => server.close(r)) };
+  return {
+    base: `http://127.0.0.1:${server.address().port}`,
+    close: () => new Promise((r) => {
+      server.close(r);
+      server.closeAllConnections?.();
+    }),
+  };
 }
 
 /** Records every WebGL context the page creates on the stage canvas, with the page's path and opt-out at that moment. */
@@ -450,6 +469,47 @@ async function inFlight404(base) {
     await proxy.close();
   }
   return rows;
+}
+
+// ---------------------------------------------------------------- importCancel (round-4 S10's class, found in round 5)
+/**
+ * A navigation away while the GL chunk is still loading cancels its import, and that is not a failure: the page is
+ * leaving (round-4 should-fix S10). WebKit rejects the import as soon as the navigation starts, before pagehide, so the
+ * old `leaving` flag missed a reload (round 5: selfbreak history's bfcache leg, WK-P2, which reloads right after load).
+ * The gl chunk's first request is held CANCEL_HOLD_MS by the proxy; once glState is 'booting', the page reloads or goes
+ * to another page with a full navigation. The console gate covers both documents (a request the navigation cancelled is
+ * not a failure, as in Chromium: lib.mjs), and the arriving page boots GL. D2, D3@webkit and WK-P2.
+ */
+const CANCEL_HOLD_MS = 4000;
+async function importCancel(base) {
+  const rows = [];
+  for (const [profile, engine] of [['D2', null], ['D3', 'webkit'], ['WK-P2', null]]) {
+    for (const how of ['reload', 'goto']) {
+      const proxy = await holdingProxy(base, /^\/_astro\/gl\.[^/]*\.js/, CANCEL_HOLD_MS, 1);
+      const ctx = await newContext(profile, 'auto', engine ? { browser: engine } : {});
+      const page = await ctx.newPage();
+      const gate = consoleGate(page);
+      let r = {};
+      try {
+        await page.goto(`${proxy.base}/`, { waitUntil: 'load' });
+        const booting = await page.waitForFunction(() => window.__stage?.glState === 'booting', null, { polling: 20, timeout: 12000 }).then(() => true, () => false);
+        await sleep(200);
+        if (how === 'reload') await page.reload({ waitUntil: 'load' });
+        else await page.goto(`${proxy.base}/work/project-01/`, { waitUntil: 'load' });
+        const ready = await page.waitForFunction(() => window.__stage?.glState === 'ready', null, { polling: 100, timeout: 15000 }).then(() => true, () => false);
+        await sleep(1000);
+        const after = await page.evaluate(() => ({ path: location.pathname, glState: window.__stage.glState, tier: window.__stage.tier }));
+        const v = gate.verdict();
+        r = { booting, ready, after, consoleFailures: v.failures.map((f) => `${f.channel}/${f.level}: ${f.text.slice(0, 160)}`), pass: booting && ready && v.pass };
+      } catch (e) {
+        r = { pass: false, error: String(e?.message || e).slice(0, 300) };
+      }
+      await ctx.close();
+      await proxy.close();
+      rows.push({ profile: engine ? `${profile}@${engine}` : profile, how, ...r });
+    }
+  }
+  return { rows, pass: rows.length > 0 && rows.every((r) => r.pass) };
 }
 
 // ---------------------------------------------------------------- present (#61 item 1)
@@ -892,7 +952,7 @@ async function flush(base) {
   return { rows, pass: rows.length > 0 && rows.every((r) => r.pass) };
 }
 
-const CHECKS = { door, noWebgl, withGl, present, grid, aspect, gutter, zero, hooks, flush };
+const CHECKS = { door, noWebgl, withGl, importCancel, present, grid, aspect, gutter, zero, hooks, flush };
 
 export async function run(opts = {}) {
   const only = opts.only ? new Set(String(opts.only).split(',')) : null;

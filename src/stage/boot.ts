@@ -91,8 +91,27 @@ async function start(why: string): Promise<void> {
   started = true;
   state = 'booting';
   mark('stage:gl-start', why);
+  let gl: typeof import('./gl/index.ts');
   try {
-    const gl = await import('./gl/index.ts');
+    gl = await import('./gl/index.ts');
+  } catch (e) {
+    // A navigation away cancels the chunk import: the page is leaving, so that is not a failure to report. WebKit
+    // rejects the import as soon as a navigation starts, before pagehide (a reload while the chunk loads), so a failed
+    // import is reported only if the page is still here IMPORT_GRACE_MS later and was not hidden meanwhile. A page that
+    // unloads never runs the timer; one kept in the bfcache runs it after its restore and stands down then, and the
+    // boot is scheduled again (pageshow's own rescan found it still started).
+    const hidesAtFailure = hides;
+    if (!leaving) await new Promise((r) => setTimeout(r, IMPORT_GRACE_MS));
+    if (leaving || hides !== hidesAtFailure) {
+      standDown();
+      if (!leaving) rescanGLIntent();
+      return;
+    }
+    state = 'failed';
+    console.error('[stage] GL boot failed; the page stays on its stills', e);
+    return;
+  }
+  try {
     // ...and never while it runs (round-3 must-fix s2-404-gl-boot): a Swup visit can land on the 404 during any await
     // of the boot. The page is read again after the import, after every await inside gl.boot(), and once more here.
     if (optedOut()) return standDown();
@@ -106,17 +125,21 @@ async function start(why: string): Promise<void> {
     state = 'ready';
     resolveReady(api);
   } catch (e) {
-    // A navigation away cancels the chunk import (WebKit rejects it: 'Importing a module script failed'): the page is
-    // leaving, so that is not a failure to report. GL is off, and a bfcache restore schedules the boot again.
+    // A boot cut short by the page leaving (pagehide came first) is not a failure either. GL is off, and a bfcache
+    // restore schedules the boot again.
     if (leaving) return standDown();
     state = 'failed';
     console.error('[stage] GL boot failed; the page stays on its stills', e);
   }
 }
 
+/** How long a failed GL chunk import waits for the navigation that may have cancelled it (see start()). */
+const IMPORT_GRACE_MS = 5000;
 let leaving = false;
+let hides = 0;
 addEventListener('pagehide', () => {
   leaving = true;
+  hides++;
 });
 addEventListener('pageshow', (e) => {
   leaving = false;
