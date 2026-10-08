@@ -1,11 +1,23 @@
 ---
 // The one page frame (W-F). Every route renders through it: skip link, the riding canvas outside #swup, a header
 // that scrolls away, #swup > main, the footer, one polite status region and the one stage module.
-// The head script's WebGL2 cache (ion.webgl2) keeps only a failure ('0'): a working answer is never trusted later,
-// since context creation can fail in a session where it once worked (a GPU process blocked after crashes, tabs restored
-// with hardware acceleration off), and a cached '1' that skipped the probe painted full and the line drawing first
-// (round-5 must-fix n1-cached-webgl2). Every fresh session already pays for the probe. (Comments in the inline script
-// ship with every page, so the reasons live here.)
+//
+// The inline head script sets the render tier, motion and the scrollbar gutter before first paint (W-D017). It never
+// reads core or touch-point counts. Its comments ship with every page, so its reasons live here:
+// - The gutter (#59): only where a scrollbar takes room (a 100 px overflow:scroll probe). The page keeps its first width
+//   when the bar appears mid-parse; a gutter without a bar (hidden scrollbars) would narrow the canvas.
+// - WebGL2 means a context, not only its constructor (#61, W-D017): where none can be made (a blocklisted GPU, Chromium
+//   --disable-3d-apis) the tier is static from first paint. Probed on every load whose tier is not static: under a
+//   ?tier= override too (it cannot make WebGL2 exist), and on pages without GL (the 404), so a Swup visit from them
+//   starts on the right tier. The probe context is released at once.
+// - The cache (ion.webgl2) keeps only a failure ('0'), which skips the probe where it fails: a working answer is never
+//   trusted later, since context creation can fail in a session where it once worked (a GPU process blocked after
+//   crashes, tabs restored with hardware acceleration off), and a cached '1' that skipped the probe painted full and
+//   the line drawing first (round-5 must-fix n1-cached-webgl2). Every fresh session already pays for the probe.
+// - Size: the home page's HTML has to stay inside TCP's first congestion window (10 x 1,460 B = 14,600 B with the
+//   response headers, compressed), or the document costs one more round trip before anything paints: on Lighthouse's
+//   mobile model that is +150 ms on FCP and LCP (round 5: 14,766 B at 30b6b8d against 14,596 B at 8a9e8e8). Keep
+//   inline text out of it.
 import '../styles/tokens.css';
 import '../styles/base.css';
 import '../styles/motion.css';
@@ -49,14 +61,7 @@ const docTitle = `${title} · derprito64bit`;
     <link rel="preload" href="/fonts/bricolage-mark.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="preload" href="/fonts/bricolage-text.woff2" as="font" type="font/woff2" crossorigin />
     <script is:inline>
-      // Render tier, motion and the scrollbar gutter before first paint (W-D017). Never reads core or touch-point counts.
-      // - The gutter (#59): only where a scrollbar takes room (a 100 px overflow:scroll probe). The page keeps its first
-      //   width when the bar appears mid-parse; a gutter without a bar (hidden scrollbars) would narrow the canvas.
-      // - WebGL2 means a context, not only its constructor (#61, W-D017): where none can be made (a blocklisted GPU,
-      //   Chromium --disable-3d-apis) the tier is static from first paint. Probed on every load whose tier is not static:
-      //   under a ?tier= override too (it cannot make WebGL2 exist), and on pages without GL (the 404), so a Swup visit
-      //   from them starts on the right tier. The probe context is released at once; only a failure is kept for the
-      //   session (ion.webgl2 = '0'), never a working answer (see the note at the top of this file).
+      // Tier, motion and gutter before first paint (W-D017). Reasons: this file's frontmatter.
       (function (d, w) {
         var h = d.documentElement, q = new URLSearchParams(location.search), t = q.get('tier'), m, c = navigator.connection, p = d.createElement('div'), g, x, k;
         try { m = localStorage.getItem('ion.motion'); } catch (e) {}
