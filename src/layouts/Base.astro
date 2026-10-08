@@ -50,8 +50,11 @@ const docTitle = `${title} · derprito64bit`;
       // - WebGL2 means a context, not only its constructor (#61, W-D017): where none can be made (a blocklisted GPU,
       //   Chromium --disable-3d-apis) the tier is static from first paint. Probed on every load whose tier is not static:
       //   under a ?tier= override too (it cannot make WebGL2 exist), and on pages without GL (the 404), so a Swup visit
-      //   from them starts on the right tier. The probe context is released at once, and the answer is kept for the
-      //   session (ion.webgl2), so later full loads skip the probe.
+      //   from them starts on the right tier. The probe context is released at once. Only a failure is kept for the
+      //   session (ion.webgl2 = '0', which skips the probe where it fails): a working answer is never trusted later, since
+      //   context creation can fail in a session where it once worked (a GPU process blocked after crashes, tabs restored
+      //   with hardware acceleration off), and a cached '1' painted full and the line drawing first (round-5 must-fix
+      //   n1-cached-webgl2). Every fresh session already pays for the probe.
       (function (d, w) {
         var h = d.documentElement, q = new URLSearchParams(location.search), t = q.get('tier'), m, c = navigator.connection, p = d.createElement('div'), g, x, k;
         try { m = localStorage.getItem('ion.motion'); } catch (e) {}
@@ -66,12 +69,8 @@ const docTitle = `${title} · derprito64bit`;
         }
         if (t !== 'static') {
           try { k = sessionStorage.getItem('ion.webgl2'); } catch (e) {}
-          if (k !== '1') {
-            g = null;
-            if (k !== '0' && w.WebGL2RenderingContext) try { g = d.createElement('canvas').getContext('webgl2'); x = g && g.getExtension('WEBGL_lose_context'); x && x.loseContext(); } catch (e) { g = null; }
-            try { sessionStorage.setItem('ion.webgl2', g ? '1' : '0'); } catch (e) {}
-            if (!g) { t = 'static'; h.dataset.tierReason = 'no-webgl2'; }
-          }
+          if (k !== '0' && w.WebGL2RenderingContext) try { g = d.createElement('canvas').getContext('webgl2'); x = g && g.getExtension('WEBGL_lose_context'); x && x.loseContext(); } catch (e) { g = null; }
+          if (!g) { try { sessionStorage.setItem('ion.webgl2', '0'); } catch (e) {} t = 'static'; h.dataset.tierReason = 'no-webgl2'; }
         }
         h.dataset.tier = t;
         h.classList.add('js');

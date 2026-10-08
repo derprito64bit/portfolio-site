@@ -157,9 +157,10 @@ const ATTR_INIT = `(() => {
 /**
  * Every way into the site with no WebGL2 context (#61 item 3 as amended by the Orchestrator, 5982885690; Breakers 1.1
  * #2 and 1.3 #1): / at eight profiles, a project page, ?tier=lite and ?tier=full (an override cannot make WebGL2
- * exist), the 404 (a page without GL), a Swup visit from the 404 to /, and a second full load in the same session (the
- * probe's answer is kept, ion.webgl2). Static with reason no-webgl2 before first paint, never anything else, GL off,
- * and 0 console failures; on / by a full load, data-cam camera and print 1's still too.
+ * exist), the 404 (a page without GL), a Swup visit from the 404 to /, a second full load in the same session (the
+ * probe's failure is kept, ion.webgl2 = '0') and, at D2 and S1, a first load in a session that cached a working answer
+ * (ion.webgl2 = '1': round-5 must-fix n1-cached-webgl2). Static with reason no-webgl2 before first paint, never anything
+ * else, GL off, and 0 console failures; on / by a full load, data-cam camera and print 1's still too.
  */
 async function noWebgl(base, only = null) {
   const rows = [];
@@ -170,10 +171,17 @@ async function noWebgl(base, only = null) {
     ['D2', '/404.html', 'load'], ['P2', '/404.html', 'load'],
     ['D2', '/404.html', 'swup-home'], ['P2', '/404.html', 'swup-home'],
     ['D2', '/work/project-01/', 'second-load'],
+    // A session that cached a working answer earlier (ion.webgl2 = '1') and can no longer make a context: a GPU process
+    // blocked after crashes, tabs restored with hardware acceleration off (round-5 must-fix n1-cached-webgl2).
+    ['D2', '/', 'cached-1'], ['S1', '/', 'cached-1'],
   ];
   for (const [profile, route, kind] of cases) {
     const ctx = await newContext(profile, 'auto', { browser: 'chromium-no3d' });
     await ctx.addInitScript({ content: ATTR_INIT });
+    if (kind === 'cached-1') {
+      // Seeded once, before the head script of the first load runs.
+      await ctx.addInitScript({ content: "try { if (!sessionStorage.getItem('m2.seeded')) { sessionStorage.setItem('ion.webgl2', '1'); sessionStorage.setItem('m2.seeded', '1'); } } catch (e) {}" });
+    }
     const page = await ctx.newPage();
     const gate = consoleGate(page);
     if (kind === 'second-load') {
@@ -209,7 +217,7 @@ async function noWebgl(base, only = null) {
     const tiers = s.log.filter((e) => e.attr === 'data-tier').map((e) => e.value);
     // The hero's first-paint attributes on a full load of / (a Swup arrival on / leaves the hero unlaid on main too:
     // W-S1's, recorded only).
-    const hero = kind === 'load' && route.startsWith('/') && route.split('?')[0] === '/';
+    const hero = (kind === 'load' || kind === 'cached-1') && route.startsWith('/') && route.split('?')[0] === '/';
     rows.push({
       profile, route, kind, ...s, consoleFailures: v.failures.map((f) => `${f.channel}/${f.level}: ${f.text.slice(0, 160)}`), changesAfterFcp: after,
       pass: s.constructorExists && !s.contextNow && s.fcp !== null && s.tier === 'static' && tiers.every((t) => t === 'static') && (kind === 'swup-home' || after.length === 0)
@@ -512,21 +520,67 @@ async function grid(base) {
     await page.goto(`${base}/bench/`, { waitUntil: 'load' });
     await page.waitForFunction(() => window.__stage?.glState === 'ready', null, { polling: 100, timeout: 20000 });
     await waitSettled(page, 10000);
-    const s = await page.evaluate(() => {
-      const c = document.getElementById('gl');
-      const v = window.__stage.view;
-      return { tier: window.__stage.tier, W: v.W, Hc: v.Hc, dpr: v.dpr, width: c.width, height: c.height, cssH: c.getBoundingClientRect().height, stats: { canvasW: window.__stage.stats.canvasW, canvasH: window.__stage.stats.canvasH, canvasPx: window.__stage.stats.canvasPx } };
-    });
+    const s = await page.evaluate(GRID_READ);
     await ctx.close();
-    const kx = s.width / s.W;
-    const ky = s.height / s.Hc;
-    const capPx = budget(`site.canvasMpx.${s.tier}`, b) * 1e6;
-    rows.push({
-      profile, ...s, kx, ky, xErr: Math.abs(kx - s.dpr), yErr: Math.abs(ky - s.dpr), capPx,
-      pass: Math.abs(kx - s.dpr) < 1e-6 && Math.abs(ky - s.dpr) < 1e-6 && Math.abs(s.cssH - s.Hc) <= 1 / 64 + 1e-6 /* boxes lay out in 1/64 px units */ && s.width * s.height <= capPx && s.stats.canvasW === s.width && s.stats.canvasH === s.height,
-    });
+    rows.push(gridRow(profile, s, b));
   }
-  return { rows, pass: rows.every((r) => r.pass) };
+  // A fractional layout width (round-5 must-fix canvas-grid-fractional-width; Breaker 4.2 #6): a real display at 125% or
+  // 175% scaling, or browser zoom, lays #rail out at a fractional CSS width while view.W (#rail's clientWidth) is a whole
+  // number. Emulated DSF keeps whole CSS widths, so the page runs in an iframe of fractional CSS width instead, in
+  // Chromium and WebKit; the canvas must still be laid out at exactly W.
+  const frac = [];
+  for (const [profile, engine, fw] of [['D2', 'chromium', 801.3], ['D2', 'chromium', 1351.43], ['D3', 'webkit', 801.3], ['D3', 'webkit', 1235.57]]) {
+    const ctx = await newContext(profile, 'auto', { browser: engine });
+    const page = await ctx.newPage();
+    let s;
+    try {
+      await page.goto(`${base}/404.html`, { waitUntil: 'load' });
+      await page.evaluate(({ src, fw }) => {
+        document.body.innerHTML = '';
+        const f = document.createElement('iframe');
+        f.id = 'frac';
+        f.src = src;
+        f.style.cssText = `display:block;border:0;margin:0;inline-size:${fw}px;block-size:700px`;
+        document.body.append(f);
+      }, { src: `${base}/bench/`, fw });
+      await page.waitForFunction(() => {
+        const w = document.getElementById('frac')?.contentWindow;
+        return w?.__stage?.glState === 'ready' && w.__stage.settled === true;
+      }, null, { polling: 100, timeout: 20000 });
+      const frame = page.frames().find((fr) => fr.url().includes('/bench/'));
+      s = { ...(await frame.evaluate(GRID_READ)), frameWidth: await page.evaluate(() => document.getElementById('frac').getBoundingClientRect().width) };
+    } catch (e) {
+      s = { error: String(e?.message || e).slice(0, 200) };
+    }
+    await ctx.close();
+    frac.push({ ...gridRow(`${profile}@${engine} iframe ${fw}px`, s, b), fractional: s.railW !== undefined && s.railW !== Math.round(s.railW) });
+  }
+  return { rows, fractional: frac, pass: rows.every((r) => r.pass) && frac.length > 0 && frac.every((r) => r.pass && r.fractional) };
+}
+/** The canvas grid as laid out: view.W, #rail's fractional width, the canvas's laid-out box and its buffer. */
+const GRID_READ = () => {
+  const c = document.getElementById('gl');
+  const v = window.__stage.view;
+  const r = c.getBoundingClientRect();
+  return { tier: window.__stage.tier, W: v.W, Hc: v.Hc, dpr: v.dpr, width: c.width, height: c.height, cssW: r.width, cssH: r.height, railW: c.parentElement.getBoundingClientRect().width, stats: { canvasW: window.__stage.stats.canvasW, canvasH: window.__stage.stats.canvasH, canvasPx: window.__stage.stats.canvasPx } };
+};
+/**
+ * One buffer pixel is exactly 1 / view.dpr CSS px both ways (#59 item 3 as delivered, 5987181829): the buffer over W
+ * and over Hc is view.dpr, and the canvas is laid out at exactly W x Hc (boxes lay out in 1/64 px units), so the buffer
+ * over the laid-out box is view.dpr too. Within the tier's pixel cap; the stage's stats match the buffer.
+ */
+function gridRow(profile, s, b) {
+  if (s.error) return { profile, ...s, pass: false };
+  const kx = s.width / s.W;
+  const ky = s.height / s.Hc;
+  const kxBox = s.width / s.cssW;
+  const capPx = budget(`site.canvasMpx.${s.tier}`, b) * 1e6;
+  const LAYOUT_UNIT = 1 / 64 + 1e-6;
+  return {
+    profile, ...s, kx, ky, kxBox, xErr: Math.abs(kx - s.dpr), yErr: Math.abs(ky - s.dpr), boxErr: Math.abs(kxBox - s.dpr), capPx,
+    pass: Math.abs(kx - s.dpr) < 1e-6 && Math.abs(ky - s.dpr) < 1e-6 && Math.abs(s.cssW - s.W) <= LAYOUT_UNIT && Math.abs(kxBox - s.dpr) < 1e-6
+      && Math.abs(s.cssH - s.Hc) <= LAYOUT_UNIT && s.width * s.height <= capPx && s.stats.canvasW === s.width && s.stats.canvasH === s.height,
+  };
 }
 
 // ---------------------------------------------------------------- aspect (#31)

@@ -4,6 +4,7 @@
 // block, #rail's clientWidth, which equals body.clientWidth. html.clientWidth ignores a reserved scrollbar gutter on a
 // page that does not scroll (Chrome, classic scrollbars: 1440 against a 1425 px layout), so it is only the fallback
 // when #rail has no box (display: none). A 0 px box is kept finite by gridDpr and gridHeight. Height is 100lvh x 1.25.
+// The canvas is laid out at exactly W x Hc CSS px (inline styles written on each reallocation).
 // On a coarse pointer the buffer changes only with width or DPR, never height alone.
 import { effectiveDpr, getTier } from './tier.ts';
 import { stats } from './state.ts';
@@ -86,6 +87,11 @@ export function measureViewport(): 'realloc' | 'height' | 'none' {
   // The CSS height follows the buffer, measured once here: if lvh moved later without a reallocation (a height-only
   // change on a coarse pointer), a CSS-driven height would stretch the old buffer and slide GL off its slots.
   canvas.style.blockSize = `${Hc}px`;
+  // So does the CSS width (round-5 must-fix canvas-grid-fractional-width; W-D013 as amended: the canvas width is #rail's
+  // clientWidth, word for word). clientWidth is a whole number, while 100% of #rail is its fractional laid-out width at
+  // a fractional DSF or zoom (1351.43 against 1351 at 1.75), which stretched the W-gridded buffer by up to 0.43 CSS px
+  // and broke 'one buffer pixel is 1 / view.dpr CSS px' (#59 item 3). #rail clips the sub-pixel remainder.
+  canvas.style.inlineSize = `${W}px`;
   anchored = false;
   stats.reallocs++;
   stats.dpr = dpr;
