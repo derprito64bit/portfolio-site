@@ -4,7 +4,9 @@
 // cache). Plants A to F are the breakers' plant-sb.mjs and plant-sb3.mjs; G is Breaker 1.1's bfcache plant; H is
 // Breaker 2.3 #3's plant, a patch of the built GL chunk (onRestored without its markDirty: the prints stay blank after
 // a context restore until the next input). P is Breaker 3.2 #2's plant P (round-3 should-fix S4): a drop from full to
-// lite that keeps the full tier's canvas. A bundle patch must apply exactly once, or the plant fails as not applied.
+// lite that keeps the full tier's canvas. L is Breaker 4.2's plant L (round-5 should-fix S4): the stage chunk without
+// its onTier(() => void syncLenis()), so Lenis survives a step-down. A bundle patch must apply exactly once, or the plant
+// fails as not applied.
 // Usage: node tests/w-f/selfbreak-plants.mjs [--out selfbreak-plants.json] [--only A,G]
 import { cpSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
@@ -22,7 +24,8 @@ export const PLANTS = {
   F: { case: 'rest', pages: ['bench/index.html'], why: 'the first press or scroll after a 2 s rest throws', code: "(() => { let asleepSince = null; setInterval(() => { const s = window.__stage; if (!s) return; if (s.settled) { if (asleepSince === null) asleepSince = performance.now(); } else asleepSince = null; }, 50); const act = () => { if (asleepSince !== null && performance.now() - asleepSince >= 2000) throw new Error('planted: the first press or scroll after a rest breaks the stage'); }; addEventListener('scroll', act, { passive: true }); addEventListener('pointerdown', act, true); })();" },
   G: { case: 'history', pages: ['bench/index.html'], why: 'a bfcache restore throws (pageshow persisted)', code: "addEventListener('pageshow', (e) => { if (e.persisted) setTimeout(() => { throw new Error('planted: a bfcache restore breaks the page'); }, 0); });", chromiumOnly: true },
   P: { case: 'tierDrop', pages: ['bench/index.html'], why: "a drop from full to lite keeps the full tier's canvas (Breaker 3.2's plant P: the renderer is put back to the full DPR and size after the stage reallocates)", code: "(() => { const h = document.documentElement; let full = null; setInterval(() => { const s = window.__stage; if (s && s.tier === 'full' && s.gl) full = s.view.dpr; }, 50); new MutationObserver(() => { const s = window.__stage; if (h.dataset.tier !== 'lite' || !full || !s || !s.gl) return; setTimeout(() => { s.gl.renderer.setPixelRatio(full); s.gl.renderer.setSize(s.view.W, s.view.Hc, false); }, 50); }).observe(h, { attributes: true, attributeFilter: ['data-tier'] }); })();" },
-  H: { case: 'ctxLoss', bundle: { file: /^gl\.[\w-]+\.js$/, find: /(restores\+\+;[^}]*?restore\?\.\(\)[^;]*;[\w$]+\(\)),[\w$]+\(\)\}/, replace: '$1}' }, why: "onRestored re-takes every slot but never marks the stage dirty (markDirty() removed): the prints stay blank after a restore until the next input" },
+  L: { case: 'tierDrop', bundle: { file: /^Base\.astro_astro_type_script_index_0_lang\.[\w-]+\.js$/, find: /(`reduced`&&[\w$]+\(\),([\w$]+)\(\),[\w$]+\(\)\}\)),[\w$]+\(\(\)=>void \2\(\)\)/, replace: '$1' }, why: "Breaker 4.2's plant L (round-5 should-fix S4): the stage's onTier(() => void syncLenis()) is gone, so Lenis outlives every step-down (W-D014: destroyed on a governor step-down)" },
+  H: { case: 'ctxLoss', bundle: { file: /^gl\.[\w-]+\.js$/, find: /(restores\+\+[,;][^}]*?restore\?\.\(\)[^}]*?[;,][\w$]+\(\)),[\w$]+\(\)\}/, replace: '$1}' }, why: "onRestored re-takes every slot but never marks the stage dirty (markDirty() removed): the prints stay blank after a restore until the next input" },
 };
 
 /** Apply a bundle plant to dist/_astro; returns how many places it changed (it must be exactly 1). */

@@ -33,6 +33,10 @@
 //   scrollRestore a full-load Back and a reload land where the reader was (+-1 px), also after a Swup visit touched
 //               the entry (round-3 should-fix S8, Breaker 3.3 #3), and a reload of a Swup-touched hash entry (/#work)
 //               the reader scrolled past (round-5 should-fix S8: WebKit scrolls it to the fragment first)
+//   staticSwap  a Swup visit after a drop to static, or while the context is lost, binds nothing; the restore binds the
+//               page that arrived (round-5 should-fix S5, Breaker 4.3 #1)
+//   glideCut    reduced motion (the switch or the OS) or a step-down during a Lenis anchor glide lands on the anchor
+//               within 1 px, Lenis gone (round-5 should-fix S6, Breaker 4.3 #2; WebKit runs D3 for the full tier)
 //   gapGovernor a 3 s bfcache stay during the opening or a Lenis glide does not step the tier (round-3 should-fix S7,
 //               Breaker 3.3 #2; Chromium with the back/forward cache on)
 //   history     Swup to a project and Back (focus on the print link; settles; one chain; grid), a real bfcache restore
@@ -197,6 +201,8 @@ const CASES = {
     const caps = { dpr: budget('site.dprCap.lite'), px: budget('site.canvasMpx.lite') * 1e6 };
     const { ctx, page, gate } = await bench(base, profile, '', 'full');
     const startTier = await page.evaluate(() => window.__stage.tier);
+    // W-D014: Lenis is on at full and destroyed on a step-down (round-5 should-fix S4, Breaker 4.2 #4; plant L keeps it).
+    const lenisBefore = await page.waitForFunction(() => document.documentElement.classList.contains('lenis'), null, { polling: 100, timeout: 8000 }).then(() => true, () => false);
     await page.evaluate(async () => {
       const s = window.__stage;
       s.fixtures.tint('fx-1', 250, 30, 30);
@@ -207,7 +213,7 @@ const CASES = {
     const atLite = await page.evaluate(() => {
       const s = window.__stage;
       const c = document.getElementById('gl');
-      return { tier: s.tier, dpr: s.view.dpr, W: s.view.W, Hc: s.view.Hc, width: c.width, height: c.height, px: c.width * c.height, statPx: s.stats.canvasPx };
+      return { tier: s.tier, dpr: s.view.dpr, W: s.view.W, Hc: s.view.Hc, width: c.width, height: c.height, px: c.width * c.height, statPx: s.stats.canvasPx, lenis: document.documentElement.classList.contains('lenis') };
     });
     const liteGrid = await gridOf(page);
     const liteColour = await colourOf(page, 'fx-1');
@@ -218,7 +224,7 @@ const CASES = {
       s.demote('static', 'self-break');
       const draws = s.stats.draws;
       await new Promise((res) => setTimeout(res, 300));
-      return { tier: s.tier, isGl: document.querySelectorAll('.is-gl').length, railShown: getComputedStyle(document.getElementById('rail')).display !== 'none', drawsAfter: s.stats.draws - draws };
+      return { tier: s.tier, isGl: document.querySelectorAll('.is-gl').length, railShown: getComputedStyle(document.getElementById('rail')).display !== 'none', drawsAfter: s.stats.draws - draws, lenisAtStatic: document.documentElement.classList.contains('lenis'), glStateAtStatic: s.glState };
     });
     const after = await settles(page);
     const c = verdict(gate);
@@ -229,9 +235,10 @@ const CASES = {
     const capsOk = atLite.tier === 'lite' && atLite.width <= Math.ceil(atLite.W * caps.dpr - 1e-6) && atLite.height <= Math.ceil(atLite.Hc * caps.dpr - 1e-6) && atLite.px <= caps.px && atLite.statPx === atLite.px;
     // WebKit shows no GL after a buffer reallocation (#88, pre-existing): there the colour is recorded, not asserted.
     const presents = PROFILES[profile].browser === 'chromium';
+    const lenisOk = lenisBefore && !atLite.lenis && !r.lenisAtStatic;
     return {
-      startTier, atLite, caps, capsOk, liteGrid, liteColour, colourAsserted: presents, ...r, after, ...c,
-      pass: startTier === 'full' && capsOk && liteGrid.ok && (!presents || near(liteColour, [250, 30, 30])) && r.tier === 'static' && r.isGl === 0 && !r.railShown && r.drawsAfter <= 1 && after.ok && c.ok,
+      startTier, lenisBefore, lenisOk, atLite, caps, capsOk, liteGrid, liteColour, colourAsserted: presents, ...r, after, ...c,
+      pass: startTier === 'full' && lenisOk && capsOk && liteGrid.ok && (!presents || near(liteColour, [250, 30, 30])) && r.tier === 'static' && r.isGl === 0 && !r.railShown && r.drawsAfter <= 1 && r.glStateAtStatic === 'off' && after.ok && c.ok,
     };
   },
   async staticScheduled(base, profile) {
@@ -699,6 +706,101 @@ const CASES = {
       rows.push({ kind, modeBefore: mode, want, got, nav, fragmentY, ...c, ok: want > 0 && Math.abs(got - want) <= 1 && c.ok && (kind !== 'hashReload' || mode === 'manual') });
     }
     return { rows, pass: rows.every((r) => r.ok) };
+  },
+  async staticSwap(base, profile) {
+    // Round-5 should-fix S5 (Breaker 4.3 #1): after a drop to static, or while the context is lost, a Swup visit binds
+    // nothing (an entity that took its slot hid the arriving page's print with nothing drawing it). /bench/ (lite), then
+    // a Swup visit to /bench/swap/ (fixtures fx-7 to fx-9): (a) after demote('static'): no .is-gl, no entity, glState
+    // off, and the page settles; (b) during a context loss: no .is-gl and no entity while lost, and after the restore
+    // the arrived page's slots are bound and drawn.
+    const rows = [];
+    for (const variant of ['static', 'lost']) {
+      const { ctx, page, gate } = await bench(base, profile);
+      const visit = async () => {
+        await page.evaluate(() => {
+          const a = document.createElement('a');
+          a.href = '/bench/swap/';
+          a.id = 'sb-swap';
+          a.textContent = 'swap';
+          document.getElementById('main')?.prepend(a);
+        });
+        await page.focus('#sb-swap');
+        await page.keyboard.press('Enter');
+        await page.waitForFunction(() => location.pathname === '/bench/swap/' && !document.documentElement.hasAttribute('aria-busy'), null, { timeout: 10000 });
+        await sleep(400);
+      };
+      // entities: the GL entities on the slots the visit brought (a persistent entity whose slot id was already on the
+      // page before the visit is not one).
+      const beforeIds = await page.evaluate(() => window.__stage.slots().map((s) => s.id));
+      const read = () => page.evaluate((before) => ({ isGl: document.querySelectorAll('.is-gl').length, entities: window.__stage.slots().filter((s) => !before.includes(s.id) && window.__stage.gl?.entity(s.id)).length, glState: window.__stage.glState, tier: window.__stage.tier, lost: window.__stage.gl?.renderer?.getContext().isContextLost() ?? null }), beforeIds);
+      let r;
+      if (variant === 'static') {
+        await page.evaluate(() => window.__stage.demote('static', 'self-break'));
+        await sleep(300);
+        await visit();
+        const at = await read();
+        const after = await settles(page);
+        r = { at, after, ok: at.tier === 'static' && at.isGl === 0 && (at.entities ?? 0) === 0 && at.glState === 'off' && after.ok };
+      } else {
+        await page.evaluate(() => new Promise((res) => {
+          const c = document.getElementById('gl');
+          c.addEventListener('webglcontextlost', () => setTimeout(res, 50), { once: true });
+          window.__stage.gl.forceContextLoss();
+        }));
+        await visit();
+        const whileLost = await read();
+        await page.evaluate(() => new Promise((res) => {
+          const c = document.getElementById('gl');
+          c.addEventListener('webglcontextrestored', res, { once: true });
+          window.__stage.gl.forceContextRestore();
+          setTimeout(res, 3000);
+        }));
+        const after = await settles(page);
+        const restored = await read();
+        r = { whileLost, restored, after, ok: whileLost.lost === true && whileLost.isGl === 0 && whileLost.entities === 0 && restored.lost === false && restored.isGl > 0 && restored.entities > 0 && after.ok };
+      }
+      const c = verdict(gate);
+      await ctx.close();
+      rows.push({ variant, ...r, ...c, ok: r.ok && c.ok });
+    }
+    return { rows, pass: rows.every((x) => x.ok) };
+  },
+  async glideCut(base, profile) {
+    // Round-5 should-fix S6 (Breaker 4.3 #2): reduced motion or a step-down during a Lenis anchor glide lands the page
+    // on the anchor (W-D017: what was moving jumps to its end), not where the glide was cut. Full tier with Lenis: the
+    // mouse profile itself in Chromium, WebKit D3 (1280x800, mouse) for a WebKit profile; a Chromium touch profile has no
+    // Lenis (lite) and does not apply. The nav's Work link on / (a same-page anchor: one Lenis glide), cut 120 ms in by
+    // the Motion switch, the OS setting and a governor step; the page lands on #work within 1 px and Lenis is gone.
+    const p = PROFILES[profile];
+    if (p.browser === 'chromium' && p.input === 'touch') return { applies: false, why: 'a touch profile runs lite: no Lenis', pass: true };
+    const [ctxProfile, extra] = p.browser === 'webkit' ? ['D3', { browser: 'webkit' }] : [profile, {}];
+    const rows = [];
+    for (const cut of ['motion switch', 'os setting', 'step-down']) {
+      const { ctx, page, gate } = await open(base, ctxProfile, '/', extra);
+      await page.waitForFunction(() => window.__stage?.glState === 'ready', null, { polling: 100, timeout: 20000 }).catch(() => {});
+      await waitSettled(page, 20000);
+      const lenisOn = await page.waitForFunction(() => document.documentElement.classList.contains('lenis'), null, { polling: 100, timeout: 8000 }).then(() => true, () => false);
+      const before = await page.evaluate(() => ({ tier: window.__stage.tier, glState: window.__stage.glState, motion: window.__stage.motion, cls: document.documentElement.className, y: Math.round(scrollY) }));
+      await page.focus('a[data-nav="work"]');
+      await page.keyboard.press('Enter');
+      await sleep(120);
+      const cutAt = await page.evaluate(() => Math.round(window.scrollY));
+      if (cut === 'motion switch') await page.evaluate(() => window.__stage.setMotion('reduced'));
+      else if (cut === 'os setting') await page.emulateMedia({ reducedMotion: 'reduce' });
+      else await page.evaluate(() => window.__stage.demote('lite', 'governor'));
+      await sleep(2500);
+      const r = await page.evaluate(() => {
+        const el = document.getElementById('work');
+        const m = parseFloat(getComputedStyle(el).scrollMarginBlockStart) || 0;
+        const max = document.documentElement.scrollHeight - window.innerHeight;
+        const want = Math.min(Math.max(0, el.getBoundingClientRect().top + window.scrollY - m), max);
+        return { y: window.scrollY, want: Math.round(want * 10) / 10, lenis: document.documentElement.classList.contains('lenis'), hash: location.hash };
+      });
+      const c = verdict(gate);
+      await ctx.close();
+      rows.push({ cut, lenisOn, before, cutAt, ...r, ...c, ok: lenisOn && cutAt < r.want - 1 && Math.abs(r.y - r.want) <= 1 && !r.lenis && c.ok });
+    }
+    return { profile: `${ctxProfile}${extra.browser ? `@${extra.browser}` : ''}`, rows, pass: rows.every((x) => x.ok) };
   },
   async gapGovernor(base, profile) {
     // A stay in the back/forward cache mid-motion is a gap, not a busy frame (Breaker 3.3 #2, perf row 29, W-D017): the

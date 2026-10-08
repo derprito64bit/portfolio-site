@@ -126,7 +126,12 @@ addEventListener('pageshow', (e) => {
 // A drop to static while GL is only scheduled or deferred (the governor, two context losses, Breaker 3.2 #3): no boot
 // will run, so GL is off and the page can settle.
 onTier((t) => {
-  if (t !== 'static' || started) return;
+  if (t !== 'static') return;
+  // GL that was up is torn down for the visit (gl/index.ts teardown): it reads off from now on (round-5 should-fix S5).
+  if (started) {
+    if (state === 'ready') state = 'off';
+    return;
+  }
   nearIO?.disconnect();
   nearIO = null;
   state = 'off';

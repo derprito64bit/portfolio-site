@@ -12,7 +12,7 @@ import { containRect } from '../../../scripts/build/posters/stage.js';
 import { canvas, collapsed, measureViewport, place, resetView, view } from '../rail.ts';
 import { demote, getTier, onTier, tierReason } from '../tier.ts';
 import { flags, mark, stats } from '../state.ts';
-import { guard, invalidate, isInFrame, markDirty, onActive, onBefore, onStep, presentTail, setRender, wake } from '../ticker.ts';
+import { guard, invalidate, isInFrame, markDirty, onActive, onBefore, onStep, presentTail, restartClock, setRender, wake } from '../ticker.ts';
 import { allSlots, getSlot, giveAll, onScan, onUnscan, type Slot } from '../slots.ts';
 import { scrollState } from '../scroll.ts';
 import { onMotion } from '../motion.ts';
@@ -274,6 +274,10 @@ function render(sy: number, tailFrame = false): void {
 // throws is reported and counted in stats.hookErrors, and the stage goes on with the others (bind the rest of the
 // slots, unbind and forget the old page's, restore and redraw after a context loss, snap under reduced motion).
 function bindSlot(s: Slot): void {
+  // Nothing binds while GL is gone (a drop to static) or its context is lost (round-5 should-fix S5, Breaker 4.3 #1): an
+  // entity that took its slot then hid the arriving page's print with nothing drawing it. The restore binds what
+  // arrived during the loss.
+  if (dead || lost) return;
   let e = entities.get(s.id);
   if (!e) {
     const f = factories.find((x) => guard(() => x.match(s), false));
@@ -315,14 +319,23 @@ function onRestored(): void {
   lost = false;
   presentedClear = false;
   stats.restores++;
+  // The frames that rebuild the scene after a restore are not steady frames (perf row 33: one restore stepped the
+  // governor in the WebKit opening); a single loss costs the restore and nothing more (W-D017).
+  restartClock();
   for (const e of entities.values()) guard(() => e.restore?.(), undefined);
+  for (const s of allSlots()) if (!entities.has(s.id)) bindSlot(s);
   resize();
   markDirty();
 }
 
+/** A drop to static: GL goes for the visit, and so does its wiring (the scan and step hooks, listeners), as abandon(). */
 function teardown(): void {
   if (dead) return;
   dead = true;
+  for (const off of wired.splice(0)) guard(off, undefined);
+  dprWatch++;
+  canvas.removeEventListener('webglcontextlost', onLost);
+  canvas.removeEventListener('webglcontextrestored', onRestored);
   giveAll();
   setRender(null);
   for (const e of entities.values()) guard(() => e.dispose(), undefined);
@@ -382,8 +395,8 @@ const api: GLApi = {
   registerEntityFactory(f) {
     factories.push(f);
     // match() is crew code: under guard() per slot (Breaker 3.1 #3), so one that throws is counted in hookErrors and
-    // the other slots are still offered to the factory.
-    for (const s of allSlots()) if (!entities.has(s.id) && guard(() => f.match(s), false)) bindSlot(s);
+    // the other slots are still offered to the factory. Nothing binds while GL is gone or lost (bindSlot).
+    for (const s of allSlots()) if (!dead && !lost && !entities.has(s.id) && guard(() => f.match(s), false)) bindSlot(s);
   },
   entity: (id) => entities.get(id),
   info: () => ({

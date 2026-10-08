@@ -11,6 +11,8 @@ export interface ProbeResult {
   width: number;
   height: number;
   aborted: boolean;
+  /** The context was lost at some point during the probe (it then timed nothing). */
+  lost: boolean;
 }
 
 export const WET_VERT = /* glsl */ `
@@ -63,10 +65,19 @@ export async function runProbe(renderer: any, view: { dpr: number }): Promise<Pr
   const times: number[] = [];
   const t0 = performance.now();
   let aborted = false;
+  // A probe that saw its context lost timed nothing (three's render returns at once, the read-back reads nothing: every
+  // sample about 0 ms), so it does not pass (round-5 should-fix S7, Breaker 4.3 #3).
+  const gl = renderer.getContext();
+  const canvas = renderer.domElement;
+  let lost = gl.isContextLost();
+  const onLoss = () => {
+    lost = true;
+  };
+  canvas.addEventListener('webglcontextlost', onLoss);
   try {
     if (renderer.compileAsync) await renderer.compileAsync(scene, cam);
     renderer.setRenderTarget(rt);
-    for (let i = 0; i < 32; i++) {
+    for (let i = 0; i < 32 && !(lost ||= gl.isContextLost()); i++) {
       mats.forEach((m, k) => (m.uniforms.uDev.value = (i + k) / 32));
       const a = performance.now();
       renderer.render(scene, cam);
@@ -84,6 +95,8 @@ export async function runProbe(renderer: any, view: { dpr: number }): Promise<Pr
       }
     }
   } finally {
+    canvas.removeEventListener('webglcontextlost', onLoss);
+    lost ||= gl.isContextLost();
     renderer.setRenderTarget(null);
     rt.dispose();
     geo.dispose();
@@ -92,5 +105,5 @@ export async function runProbe(renderer: any, view: { dpr: number }): Promise<Pr
   times.sort((x, y) => x - y);
   const medianMs = times.length ? times[Math.floor(times.length / 2)] : Infinity;
   void view;
-  return { pass: !aborted && medianMs <= 8, medianMs: Math.round(medianMs * 1000) / 1000, samples: times.length, totalMs: Math.round(performance.now() - t0), width, height, aborted };
+  return { pass: !aborted && !lost && medianMs <= 8, medianMs: Math.round(medianMs * 1000) / 1000, samples: times.length, totalMs: Math.round(performance.now() - t0), width, height, aborted, lost };
 }

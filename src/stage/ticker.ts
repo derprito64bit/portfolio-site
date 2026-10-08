@@ -5,7 +5,7 @@
 // rest costs 0 rAF callbacks and 0 draws. Any module wakes it with invalidate().
 import { durations } from '../lib/tokens.js';
 import { flags, guard, mark, now, stats } from './state.ts';
-import { governorReset, governorSample } from './tier.ts';
+import { governorAfterRestore, governorReset, governorSample } from './tier.ts';
 import { anyActive, bindWake } from './timelines.ts';
 import { readScroll } from './scroll.ts';
 
@@ -131,6 +131,11 @@ function resumeClock(): void {
   lastTime = 0;
   prevActive = false;
   governorReset();
+}
+/** A WebGL context restore starts the frame clock afresh too (perf row 33; the governor's rebuild grace: tier.ts). */
+export function restartClock(): void {
+  resumeClock();
+  governorAfterRestore();
 }
 addEventListener('pageshow', (e) => {
   if (e.persisted) resumeClock();

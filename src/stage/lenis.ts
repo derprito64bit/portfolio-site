@@ -3,7 +3,7 @@
 // motion turns on. Scroll velocity drives no visual effect. Loaded after the GL chunk starts, so it is not pre-GL JS.
 import Lenis from 'lenis';
 import { onActive, onBefore, wake } from './ticker.ts';
-import { scrollState, setLenis } from './scroll.ts';
+import { scrollState, scrollToY, setLenis } from './scroll.ts';
 import { getTier } from './tier.ts';
 import { isReduced } from './motion.ts';
 
@@ -53,14 +53,17 @@ export function enableLenis(): void {
 
 export function disableLenis(): void {
   if (!lenis) return;
-  // A glide still running lands where it was going first (round-5 should-fix S6, Breaker 4.3 #2): reduced motion, a
-  // step-down or a drop to static cut the nav's Work link 180 to 290 px short of #work. W-D017: what was moving jumps to
-  // its end.
-  if (lenis.isScrolling === 'smooth') lenis.scrollTo(lenis.targetScroll, { immediate: true, force: true });
+  // A glide still running lands where it was going (round-5 should-fix S6, Breaker 4.3 #2): reduced motion, a step-down
+  // or a drop to static cut the nav's Work link 180 to 290 px short of #work. W-D017: what was moving jumps to its end.
+  // Where the glide goes is its animation's end (a programmatic scrollTo, the anchor scroller's, leaves targetScroll
+  // where it was), and the page jumps there natively once Lenis is gone, through the one scroller's instant path.
+  const anim = (lenis as unknown as { animate?: { isRunning?: boolean; to?: number } }).animate;
+  const target = lenis.isScrolling === 'smooth' && anim?.isRunning && Number.isFinite(anim.to) ? (anim.to as number) : null;
   lenis.destroy();
   lenis = null;
   offBefore?.();
   offActive?.();
   for (const t of INPUTS) removeEventListener(t, wake, { capture: true });
   setLenis(null);
+  if (target !== null) scrollToY(target);
 }

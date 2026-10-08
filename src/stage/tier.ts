@@ -66,10 +66,31 @@ export function effectiveDpr(cssW: number, cssH: number, tier: Tier = current): 
 // ---------------------------------------------------------------- governor
 const WINDOW = 45;
 const BUSY_MS = 22;
+/** A frame this long is a stall (a rebuild, a blocked main thread), not a steady busy frame. */
+const STALL_MS = 100;
+/** How long after a WebGL context restore a stall counts as the restore's rebuild. */
+const RESTORE_GRACE_MS = 3000;
+let restoredAt = Number.NEGATIVE_INFINITY;
 const frames: number[] = [];
+/**
+ * A WebGL context restore (W-D017 prices one loss and restore at the restore itself; two in 60 s go static). The
+ * window restarts, and for RESTORE_GRACE_MS a stall restarts it again instead of entering it: after a restore three
+ * rebuilds every program and texture on first use, and in WebKit (no parallel compile) that rebuild blocks one frame for
+ * 720 to 1,080 ms, about 0.75 s after the restore in the opening of /. One such interval in a 45-frame window averages
+ * over 22 ms on its own, so a single loss stepped full to lite (perf row 33, round 4). Steady slow frames (anything up
+ * to STALL_MS) still count from the restore on, so a page that is really busy after a restore still steps.
+ */
+export function governorAfterRestore(): void {
+  frames.length = 0;
+  restoredAt = performance.now();
+}
 /** Feed the interval of every frame that rendered. 45 frames averaging over 22 ms step down one tier. */
 export function governorSample(frameMs: number): void {
   if (current === 'static') return;
+  if (frameMs > STALL_MS && performance.now() - restoredAt < RESTORE_GRACE_MS) {
+    frames.length = 0;
+    return;
+  }
   frames.push(frameMs);
   if (frames.length > WINDOW) frames.shift();
   if (frames.length < WINDOW) return;

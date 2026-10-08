@@ -25,17 +25,22 @@ async function tiers(base) {
   return { rows, pass: rows.every((r) => r.pass) };
 }
 
-/** Forced 30 ms frames: one step down after 45 busy frames, never back up. */
+/**
+ * Forced 30 ms frames: one step down after 45 busy frames, never back up; and W-D014: Lenis, on at full, is destroyed by
+ * the step (round-5 should-fix S4, Breaker 4.2 #4).
+ */
 async function governor(base) {
   const ctx = await newContext('D2');
   const page = await ctx.newPage();
   await page.goto(`${base}/bench/?busy=30&tier=full`, { waitUntil: 'load' });
   await waitSettled(page, 20000);
   await page.waitForFunction(() => window.__stage.fixtures, null, { polling: 100, timeout: 15000 });
+  const lenisBefore = await page.waitForFunction(() => document.documentElement.classList.contains('lenis'), null, { polling: 100, timeout: 8000 }).then(() => true, () => false);
   const t0 = await page.evaluate(() => ({ ticks: window.__stage.stats.ticks, draws: window.__stage.stats.draws, now: performance.now() }));
   await page.evaluate(() => window.__stage.fixtures.spin(4000));
   await page.waitForFunction(() => window.__stage.tier !== 'full', null, { polling: 20, timeout: 15000 });
-  const first = await page.evaluate(() => ({ tier: window.__stage.tier, log: window.__stage.tierLog, draws: window.__stage.stats.draws, now: performance.now() }));
+  await sleep(100); // the step's listeners (W-D014's Lenis teardown) run in the same task; read after it
+  const first = await page.evaluate(() => ({ tier: window.__stage.tier, log: window.__stage.tierLog, draws: window.__stage.stats.draws, now: performance.now(), lenis: document.documentElement.classList.contains('lenis') }));
   const busyFramesBeforeStep = first.draws - t0.draws;
   // Keep watching: the tier never comes back up (a second busy run may only step down again).
   const seen = [];
@@ -46,7 +51,7 @@ async function governor(base) {
   await ctx.close();
   const rank = { static: 0, lite: 1, full: 2 };
   const neverUp = seen.every((t, i) => rank[t] <= rank[i ? seen[i - 1] : first.tier]);
-  return { busyMs: 30, busyFramesBeforeStep, firstStep: first.log[first.log.length - 1], afterwards: seen, neverUp, pass: first.tier === 'lite' && busyFramesBeforeStep >= 45 && busyFramesBeforeStep <= 50 && neverUp };
+  return { busyMs: 30, busyFramesBeforeStep, firstStep: first.log[first.log.length - 1], afterwards: seen, neverUp, lenisBefore, lenisAfterStep: first.lenis, pass: first.tier === 'lite' && busyFramesBeforeStep >= 45 && busyFramesBeforeStep <= 50 && neverUp && lenisBefore && !first.lenis };
 }
 
 /**
@@ -217,6 +222,115 @@ async function contextLoss(base) {
   return { isGlBefore: before, framesToDrop: frames, isGlAfterLoss: lost, restored, second, pass: before > 0 && frames <= 1 && lost === 0 && second.tier === 'static' && second.isGl === 0 && second.railHidden };
 }
 
+/**
+ * One context loss and its restore in the WebKit opening of / (perf row 33; ruling 6049539219 item 2: W-D017 prices a
+ * single loss at the restore itself): the tier stays full, three times over (8a9e8e8 stepped full to lite every time:
+ * the restore's rebuild blocks one frame for about 0.75 s in WebKit, and one such interval fills the governor's
+ * 45-frame average on its own). Controls: two losses within 60 s still end static (W-D017), and genuinely slow frames
+ * after a restore (30 ms frames forced through __stage.flags.busyMs from 0.8 s after it, on /bench/ with the fixtures
+ * spinning) still step the governor after 45 to 50 of them, so the governor is not switched off.
+ */
+async function restoreGovernor(base) {
+  const open = async (path) => {
+    const ctx = await newContext('D3', 'auto', { browser: 'webkit' });
+    const page = await ctx.newPage();
+    await page.goto(`${base}${path}`, { waitUntil: 'load' });
+    await page.waitForFunction(() => window.__stage?.glState === 'ready', null, { polling: 50, timeout: 20000 });
+    return { ctx, page };
+  };
+  const loseRestore = (page) => page.evaluate(async () => {
+    const c = document.getElementById('gl');
+    const lost = new Promise((res) => c.addEventListener('webglcontextlost', res, { once: true }));
+    const restored = new Promise((res) => c.addEventListener('webglcontextrestored', () => res(true), { once: true }));
+    window.__stage.gl.forceContextLoss();
+    await lost;
+    await new Promise((res) => setTimeout(res, 50));
+    window.__stage.gl.forceContextRestore();
+    return Promise.race([restored, new Promise((res) => setTimeout(() => res(false), 3000))]);
+  });
+  const state = (page) => page.evaluate(() => ({ tier: window.__stage.tier, reason: window.__stage.tierReason, log: window.__stage.tierLog, restores: window.__stage.stats.restores, governorSteps: window.__stage.stats.governorSteps }));
+  const rows = [];
+  for (let i = 0; i < 3; i++) {
+    const { ctx, page } = await open('/');
+    await sleep(600); // inside the opening
+    const restored = await loseRestore(page);
+    await sleep(3500);
+    await waitSettled(page, 10000);
+    const s = await state(page);
+    await ctx.close();
+    rows.push({ kind: 'one loss in the opening', restored, ...s, pass: restored && s.tier === 'full' && s.restores === 1 && s.governorSteps === 0 });
+  }
+  {
+    const { ctx, page } = await open('/');
+    await sleep(600);
+    await loseRestore(page);
+    await sleep(500);
+    await page.evaluate(() => window.__stage.gl.forceContextLoss());
+    await sleep(400);
+    const s = await state(page);
+    await ctx.close();
+    rows.push({ kind: 'control: two losses within 60 s', ...s, pass: s.tier === 'static' && s.reason === 'context-loss' });
+  }
+  {
+    const { ctx, page } = await open('/bench/?tier=full');
+    await waitSettled(page, 20000);
+    await page.waitForFunction(() => window.__stage.fixtures, null, { polling: 100, timeout: 15000 });
+    const restored = await loseRestore(page);
+    await sleep(800);
+    const flagsExposed = await page.evaluate(() => Boolean(window.__stage.flags));
+    const t0 = await page.evaluate(() => {
+      window.__stage.flags.busyMs = 30;
+      window.__stage.fixtures.spin(6000);
+      return { draws: window.__stage.stats.draws };
+    }).catch(() => null);
+    const stepped = t0 ? await page.waitForFunction(() => window.__stage.tier !== 'full', null, { polling: 20, timeout: 15000 }).then(() => true, () => false) : false;
+    const first = await page.evaluate(() => ({ tier: window.__stage.tier, log: window.__stage.tierLog, draws: window.__stage.stats.draws }));
+    await ctx.close();
+    const busyFramesBeforeStep = t0 ? first.draws - t0.draws : null;
+    rows.push({ kind: 'control: forced 30 ms frames after a restore', restored, flagsExposed, stepped, busyFramesBeforeStep, firstStep: first.log.at(-1), pass: restored && stepped && first.tier === 'lite' && busyFramesBeforeStep >= 45 && busyFramesBeforeStep <= 50 });
+  }
+  return { rows, pass: rows.every((r) => r.pass) };
+}
+
+/**
+ * The W-D017 boot probe does not pass on a lost context (round-5 should-fix S7, Breaker 4.3 #3): the stage context is
+ * lost in the task after its first program link (the probe's compileAsync) and restored 300 ms later, at D2 on /bench/
+ * (full). A probe that timed nothing (three's render returns at once on a lost context: median about 0 ms) must report
+ * lost and fail, so the tier goes to lite ('probe'). Control: with no loss the probe passes and the tier stays full (or
+ * a logged probe demotion on a slow GPU, as tiers allows), and is not reported lost.
+ */
+async function probeLoss(base) {
+  const LOSE = `(() => {
+    const P = WebGL2RenderingContext.prototype;
+    const link = P.linkProgram;
+    P.linkProgram = function (p) {
+      const r = link.call(this, p);
+      if (this.canvas && this.canvas.id === 'gl' && !window.__lostOnce) {
+        window.__lostOnce = true;
+        const ext = this.getExtension('WEBGL_lose_context');
+        setTimeout(() => { ext.loseContext(); setTimeout(() => ext.restoreContext(), 300); }, 0);
+      }
+      return r;
+    };
+  })();`;
+  const rows = [];
+  for (const variant of ['loss', 'control']) {
+    const ctx = await newContext('D2');
+    if (variant === 'loss') await ctx.addInitScript({ content: LOSE });
+    const page = await ctx.newPage();
+    await page.goto(`${base}/bench/`, { waitUntil: 'load' });
+    await page.waitForFunction(() => ['ready', 'failed', 'off'].includes(window.__stage?.glState), null, { polling: 100, timeout: 20000 }).catch(() => {});
+    await waitSettled(page, 15000);
+    const s = await page.evaluate(() => ({ glState: window.__stage.glState, tier: window.__stage.tier, reason: window.__stage.tierReason, probe: window.__stage.gl?.probe ?? null, lostOnce: Boolean(window.__lostOnce) }));
+    await ctx.close();
+    const pass = variant === 'loss'
+      ? s.lostOnce && s.probe?.lost === true && s.probe.pass === false && s.tier === 'lite' && s.reason === 'probe'
+      : s.probe?.lost === false && (s.probe.pass ? s.tier === 'full' : s.tier === 'lite' && s.reason === 'probe');
+    rows.push({ variant, ...s, pass });
+  }
+  return { rows, pass: rows.every((r) => r.pass) };
+}
+
 /** activeElement survives a full no-op develop. */
 async function developKeepsFocus(base) {
   const ctx = await newContext('D2');
@@ -282,7 +396,7 @@ async function cubeProjection(base) {
 export async function run(opts = {}) {
   const srv = await serve(opts.dist ? String(opts.dist) : undefined);
   const only = opts.only ? new Set(String(opts.only).split(',')) : null;
-  const checks = { tiers, governor, caps, reducedMidTimeline, motionSwitch, railSlack, contextLoss, developKeepsFocus, cubeProjection };
+  const checks = { tiers, governor, caps, reducedMidTimeline, motionSwitch, railSlack, contextLoss, restoreGovernor, probeLoss, developKeepsFocus, cubeProjection };
   const out = {};
   try {
     for (const [name, fn] of Object.entries(checks)) if (!only || only.has(name)) out[name] = await fn(srv.base);

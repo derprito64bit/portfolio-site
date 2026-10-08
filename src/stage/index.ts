@@ -110,6 +110,8 @@ const hooks = {
     return s ? { id, kind: s.kind, slot: slotRect(id), gl: gl?.entity(id)?.bounds?.() ?? null } : null;
   },
   seek: flags.manualClock ? seek : undefined,
+  /** The test-only switches (state.ts flags); a check may set busyMs mid-visit (the governor after a restore). */
+  flags,
   slots: () =>
     allSlots().map((s) => ({ id: s.id, kind: s.kind, fixture: s.fixture, cx: s.cx, cy: s.cy, w: s.w, h: s.h, near: s.near, isGl: s.el.classList.contains('is-gl') })),
   marks: () =>
