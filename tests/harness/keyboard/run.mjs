@@ -8,7 +8,7 @@
 //             The nav's Contact is a same-page link on every page (the footer is in the layout), so the check clicks a
 //             link to /#contact placed in the project page's main: a Swup visit with a hash, as any cross-page link is.
 //  anchor     an anchor scroll (the nav's Contact on /) moves one way only (no double scroll) and focuses #contact.
-// Usage: npm run h:keyboard -- [--profiles D2,P2] [--routes /,/bench/?debug=ring] [--out keyboard.json]
+// Usage: npm run h:keyboard -- [--profiles D2,P2] [--routes /,/bench/?debug=ring] [--dist <dir>] [--out keyboard.json]
 import sharp from 'sharp';
 import { budget, cliMain, newContext, serve, sleep, waitSettled } from '../lib.mjs';
 
@@ -125,21 +125,41 @@ async function roundtrip(page, base) {
   return { started: id, afterBack: back, nextTab: next, pass: id === 'project-03' && back.id === 'project-03' && next === 'project-04' };
 }
 
+/**
+ * A cross-page hash visit focuses the target and brings it into view (round-5 should-fix S3, Breaker 4.2 #2: on the
+ * full tier the page stayed at y 0 with focus on an off-screen target): /#contact by a link, and the nav's Work link
+ * (/#work) by the keyboard, both from a project page. In view: the target's top is inside the viewport once the page
+ * settles (the anchor scroll may glide).
+ */
 async function hashVisit(page, base) {
-  await page.goto(`${base}/work/project-01/`, { waitUntil: 'load' });
-  await waitSettled(page, 12000);
-  await page.evaluate(() => {
-    const a = document.createElement('a');
-    a.href = '/#contact';
-    a.id = 'kb-hash-visit';
-    a.textContent = 'Contact (cross-page)';
-    document.getElementById('main')?.prepend(a);
-  });
-  await page.click('#kb-hash-visit');
-  await visitEnd(page, '/');
-  await sleep(300);
-  const focus = await page.evaluate(() => ({ id: document.activeElement?.id ?? null, tag: document.activeElement?.tagName, hash: location.hash }));
-  return { focus, pass: focus.id === 'contact' && focus.hash === '#contact' };
+  const rows = [];
+  for (const [hash, how] of [['#contact', 'click'], ['#work', 'nav key']]) {
+    await page.goto(`${base}/work/project-01/`, { waitUntil: 'load' });
+    await waitSettled(page, 12000);
+    if (how === 'click') {
+      await page.evaluate(() => {
+        const a = document.createElement('a');
+        a.href = '/#contact';
+        a.id = 'kb-hash-visit';
+        a.textContent = 'Contact (cross-page)';
+        document.getElementById('main')?.prepend(a);
+      });
+      await page.click('#kb-hash-visit');
+    } else {
+      await page.focus('a[data-nav="work"]');
+      await page.keyboard.press('Enter');
+    }
+    await visitEnd(page, '/');
+    await sleep(300);
+    await waitSettled(page, 8000);
+    const r = await page.evaluate((id) => {
+      const el = document.getElementById(id);
+      const top = el ? el.getBoundingClientRect().top : null;
+      return { id: document.activeElement?.id ?? null, tag: document.activeElement?.tagName, hash: location.hash, y: Math.round(scrollY), targetTop: top === null ? null : Math.round(top), inView: top !== null && top >= -1 && top < innerHeight };
+    }, hash.slice(1));
+    rows.push({ hash, how, ...r, pass: r.id === hash.slice(1) && r.hash === hash && r.inView });
+  }
+  return { rows, focus: rows[0], pass: rows.every((r) => r.pass) };
 }
 
 async function anchorMonotonic(page, base) {
@@ -161,7 +181,7 @@ async function anchorMonotonic(page, base) {
 export async function run(opts = {}) {
   const profiles = String(opts.profiles || 'D2,P2').split(',');
   const routes = String(opts.routes || '/,/bench/?debug=ring').split(',');
-  const srv = await serve();
+  const srv = await serve(opts.dist ? String(opts.dist) : undefined);
   const rows = [];
   try {
     for (const profile of profiles) {

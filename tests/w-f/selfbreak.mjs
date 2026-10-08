@@ -31,7 +31,8 @@
 //               caller) and a registered develop impl that takes its slot and throws (the call resolves through next,
 //               the slot is handed back); both counted (round-3 should-fix S1, Breaker 3.1 #3)
 //   scrollRestore a full-load Back and a reload land where the reader was (+-1 px), also after a Swup visit touched
-//               the entry (round-3 should-fix S8, Breaker 3.3 #3)
+//               the entry (round-3 should-fix S8, Breaker 3.3 #3), and a reload of a Swup-touched hash entry (/#work)
+//               the reader scrolled past (round-5 should-fix S8: WebKit scrolls it to the fragment first)
 //   gapGovernor a 3 s bfcache stay during the opening or a Lenis glide does not step the tier (round-3 should-fix S7,
 //               Breaker 3.3 #2; Chromium with the back/forward cache on)
 //   history     Swup to a project and Back (focus on the print link; settles; one chain; grid), a real bfcache restore
@@ -656,9 +657,18 @@ const CASES = {
       return page.evaluate(() => Math.round(window.scrollY));
     };
     const yNow = (page) => page.evaluate(() => Math.round(window.scrollY));
-    for (const kind of ['back', 'reload', 'swupBack']) {
-      const { ctx, page, gate } = await open(base, profile, '/');
+    // hashReload (round-4 Breaker 4.2 #3, round-5 should-fix S8): a Swup visit to /#work by the nav's Work link from a
+    // project page, the reader scrolls 600 px past #work, then reloads: WebKit scrolls the reload to the fragment first,
+    // and the router must still land where the reader was.
+    for (const kind of ['back', 'reload', 'swupBack', 'hashReload']) {
+      const { ctx, page, gate } = await open(base, profile, kind === 'hashReload' ? '/work/project-01/' : '/');
       await waitSettled(page, 15000);
+      if (kind === 'hashReload') {
+        await page.focus('a[data-nav="work"]');
+        await page.keyboard.press('Enter');
+        await page.waitForFunction(() => location.pathname === '/' && location.hash === '#work' && !document.documentElement.hasAttribute('aria-busy'), null, { timeout: 10000 });
+        await waitSettled(page, 10000);
+      }
       if (kind === 'swupBack') {
         // A Swup visit to a project and Back first: from here the entry's scroll restoration is the router's.
         const link = page.locator('#sheet ~ ol [data-gl-id="project-02"]');
@@ -671,9 +681,10 @@ const CASES = {
         await page.waitForFunction(() => location.pathname === '/' && !document.documentElement.hasAttribute('aria-busy'), null, { timeout: 10000 });
         await waitSettled(page, 10000);
       }
-      const want = await scrollTo(page, 1200);
+      const fragmentY = kind === 'hashReload' ? await page.evaluate(() => Math.round(document.getElementById('work').getBoundingClientRect().top + window.scrollY)) : null;
+      const want = await scrollTo(page, kind === 'hashReload' ? fragmentY + 600 : 1200);
       const mode = await page.evaluate(() => history.scrollRestoration);
-      if (kind === 'reload') await page.reload({ waitUntil: 'load' });
+      if (kind === 'reload' || kind === 'hashReload') await page.reload({ waitUntil: 'load' });
       else {
         await page.goto(`${base}/work/project-01/`, { waitUntil: 'load' });
         await waitSettled(page, 10000);
@@ -685,7 +696,7 @@ const CASES = {
       const nav = await page.evaluate(() => performance.getEntriesByType('navigation')[0]?.type ?? null);
       const c = verdict(gate);
       await ctx.close();
-      rows.push({ kind, modeBefore: mode, want, got, nav, ...c, ok: want > 0 && Math.abs(got - want) <= 1 && c.ok });
+      rows.push({ kind, modeBefore: mode, want, got, nav, fragmentY, ...c, ok: want > 0 && Math.abs(got - want) <= 1 && c.ok && (kind !== 'hashReload' || mode === 'manual') });
     }
     return { rows, pass: rows.every((r) => r.ok) };
   },

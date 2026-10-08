@@ -68,14 +68,52 @@ export let swup: Swup | null = null;
  * visit turns it to 'manual' on the entry it leaves (the entries Swup pushes copy that mode), and from then on the
  * router restores: Swup's popstate visits from ionScroll (below), and a full-load Back, Forward or reload into such an
  * entry here, once the page has loaded, unless the reader has scrolled by then. Focus follows as for a popstate visit.
+ * The browser may scroll too: WebKit scrolls a reload of a hash entry (/#work) to its fragment even under manual
+ * restoration, and it does so after the load event (measured: the page restored at load, then landed on #work's 765
+ * within the same frame; round-4 Breaker 4.2 #3). That is the browser's scroll, not the reader's: the page restores
+ * when it is at the top or at the fragment's own position, and for FRAGMENT_WINDOW_MS after the load a scroll that lands
+ * it back on the fragment is restored over once more. The reader is known to have scrolled only by their own input
+ * (wheel, touch, key, pointer) since this module ran, and then nothing is restored.
  */
+const FRAGMENT_WINDOW_MS = 1000;
+function atFragment(): boolean {
+  const el = location.hash ? byId(location.hash) : null;
+  if (!el) return false;
+  const margin = parseFloat(getComputedStyle(el).scrollMarginBlockStart) || 0;
+  const max = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+  const at = Math.min(Math.max(0, el.getBoundingClientRect().top + window.scrollY - margin), max);
+  return Math.abs(window.scrollY - at) <= 1;
+}
 function restoreFullLoad(): void {
   const nav = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined;
   if (history.scrollRestoration !== 'manual' || !nav || (nav.type !== 'back_forward' && nav.type !== 'reload')) return;
   const y = Number(entry().ionScroll);
   const id = entry().ionFocus;
+  let input = false;
+  const INPUTS = ['wheel', 'touchstart', 'keydown', 'pointerdown'] as const;
+  const saw = () => {
+    input = true;
+  };
+  for (const t of INPUTS) addEventListener(t, saw, { capture: true, passive: true });
+  const done = () => {
+    for (const t of INPUTS) removeEventListener(t, saw, { capture: true });
+    removeEventListener('scroll', again);
+  };
+  // The browser's own fragment scroll after the load: restored over once, unless the reader acted first.
+  const again = () => {
+    if (input || !atFragment()) return;
+    done();
+    scrollToY(y);
+    markDirty();
+  };
   const go = () => {
-    if (window.scrollY === 0 && y > 0) scrollToY(y);
+    if (y > 0 && !input && (window.scrollY === 0 || atFragment())) {
+      scrollToY(y);
+      if (location.hash) {
+        addEventListener('scroll', again, { passive: true });
+        setTimeout(done, FRAGMENT_WINDOW_MS);
+      } else done();
+    } else done();
     if (nav.type === 'back_forward' && id) focusEl(document.querySelector<HTMLElement>(`[data-gl-id="${CSS.escape(id)}"]`));
     markDirty();
   };
@@ -144,7 +182,15 @@ export function bootRouter(): Swup {
   // Back and Forward: focus the print link that started the forward visit, else the page's h1.
   swup.hooks.on('visit:end', (visit) => {
     navigating = false;
-    getLenis()?.start();
+    const lenis = getLenis();
+    lenis?.start();
+    // Lenis's start() resets it, which drops the glide scroll:anchor began during the visit: on the full tier the nav's
+    // Work link from a project page landed at y 0 (round-5 should-fix S3, Breaker 4.2 #2). The one anchor scroller
+    // issues it again from where the page is (W-D015).
+    if (lenis && !visit.history.popstate && visit.to.hash) {
+      const el = byId(visit.to.hash);
+      if (el) scrollToElement(el);
+    }
     if (visit.history.popstate) {
       const id = entry().ionFocus;
       const link = id ? document.querySelector<HTMLElement>(`[data-gl-id="${CSS.escape(id)}"]`) : null;
