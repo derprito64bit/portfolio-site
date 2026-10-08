@@ -103,10 +103,23 @@ export const HARD_STOP_MS = WINDOW_END_MS * 2 + 1000;
  * after an arrival); the window ran in full; and nothing presented inside the window moved the motion end.
  */
 export async function motionWindow(page, since) {
+  // One clock: the counters stamp every realm on the owner's clock (init.js (b): the top-most same-origin window), and
+  // a caller reading a child frame (m2 zero) took `since` from the child's own performance.now(), whose timeOrigin is
+  // its document's. Both are moved onto the owner's clock: `since` once here, `now` on every read (0 in a top page).
+  const shift = await page.evaluate(() => {
+    let o = window;
+    try {
+      for (let p = window.parent; p !== o && p.__gateApi; p = p.parent) o = p;
+    } catch {
+      /* a cross-origin ancestor: the counters' owner is the last same-origin one */
+    }
+    return o === window ? 0 : performance.timeOrigin - o.performance.timeOrigin;
+  });
+  since += shift;
   // An arrival (a full load, a bfcache restore, a Swup visit's end) anchors the window as an input does (ruling
   // 6030949628 item 1); the windowEndS bound counts from an input only (ruling 6031879782 item 2). The anchor is the
   // later of the two: an input after an arrival brings the bound back.
-  const live = () => page.evaluate((since) => {
+  const live = () => page.evaluate(({ since, shift }) => {
     const g = window.__gateCounters;
     const last = (l) => { for (let i = l.length - 1; i >= 0; i--) if (l[i] > since) return l[i]; return 0; };
     const arrival = (g.lastArrivalAt ?? 0) > since ? g.lastArrivalAt : 0;
@@ -115,18 +128,18 @@ export async function motionWindow(page, since) {
     const anchor = Math.max(input || since, arrival);
     const anchorKind = arrival > 0 && arrival >= input ? 'arrival' : 'input';
     const lastPresent = Math.max(last(g.drawTimes), last(g.clearTimes));
-    return { now: performance.now(), anchor, anchorKind, arrival, lastScroll: g.lastScrollAt > since ? g.lastScrollAt : 0, lastPresent, end: Math.max(anchor, g.lastScrollAt > since ? g.lastScrollAt : 0, lastPresent) };
-  }, since);
+    return { now: performance.now() + shift, anchor, anchorKind, arrival, lastScroll: g.lastScrollAt > since ? g.lastScrollAt : 0, lastPresent, end: Math.max(anchor, g.lastScrollAt > since ? g.lastScrollAt : 0, lastPresent) };
+  }, { since, shift });
   const frameMsOf = () => page.evaluate((since) => {
     const r = window.__gateCounters.rafTimes.filter((t) => t > since);
     const gaps = r.slice(1).map((t, i) => t - r[i]).sort((a, b) => a - b);
     return gaps.length ? gaps[Math.floor(gaps.length / 2)] : 1000 / 60;
   }, since);
   // The stage's own counts and the gate's uncapped counts, read together at the window's start and end.
-  const stage = () => page.evaluate(() => {
+  const stage = () => page.evaluate((shift) => {
     const g = window.__gateCounters;
-    return { ticks: window.__stage.stats.ticks, drawCalls: window.__stage.stats.drawCalls, draws: window.__stage.stats.draws, tailFrames: window.__stage.stats.tailFrames ?? 0, gateRaf: g.raf, gateDraws: g.draws, gateClears: g.clears, at: performance.now() };
-  });
+    return { ticks: window.__stage.stats.ticks, drawCalls: window.__stage.stats.drawCalls, draws: window.__stage.stats.draws, tailFrames: window.__stage.stats.tailFrames ?? 0, gateRaf: g.raf, gateDraws: g.draws, gateClears: g.clears, at: performance.now() + shift };
+  }, shift);
   // A motion end after the hard stop is a motion that never ended: the harness stops waiting for it there.
   const pastHardStop = (s) => s.end - s.anchor > HARD_STOP_MS;
   let s = await live();
