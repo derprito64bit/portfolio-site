@@ -479,6 +479,11 @@ export async function boot(stop: () => boolean = () => false): Promise<GLApi | n
     demote('static', 'no-webgl2');
     return null;
   }
+  // The boot's synchronous work goes in three tasks, not one (ruling 6049539219 item 3: on a mobile load of / the context,
+  // three's renderer and the first measure ran as one main-thread task of 16 to 40 ms, 4x that under Lighthouse's
+  // simulated CPU): the context, then the renderer, then the measure. Each await reads the page's opt-out again.
+  await nextTask();
+  if (stop()) return standDown();
   try {
     renderer = new WebGLRenderer({ canvas, context, alpha: true, antialias: tier === 'full', powerPreference: 'high-performance', stencil: false });
   } catch {
@@ -498,6 +503,8 @@ export async function boot(stop: () => boolean = () => false): Promise<GLApi | n
   renderer.info.autoReset = false;
   canvas.addEventListener('webglcontextlost', onLost);
   canvas.addEventListener('webglcontextrestored', onRestored);
+  await nextTask();
+  if (stop()) return standDown();
   resize();
   await nextTask();
   if (stop()) return standDown();
