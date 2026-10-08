@@ -38,10 +38,11 @@ async function governor(base) {
   const lenisBefore = await page.waitForFunction(() => document.documentElement.classList.contains('lenis'), null, { polling: 100, timeout: 8000 }).then(() => true, () => false);
   const t0 = await page.evaluate(() => ({ ticks: window.__stage.stats.ticks, draws: window.__stage.stats.draws, now: performance.now() }));
   await page.evaluate(() => window.__stage.fixtures.spin(4000));
-  await page.waitForFunction(() => window.__stage.tier !== 'full', null, { polling: 20, timeout: 15000 });
+  // The frames up to the step are read where the step is seen; the spin goes on at lite after it.
+  const atStep = await (await page.waitForFunction(() => window.__stage.tier !== 'full' && { draws: window.__stage.stats.draws }, null, { polling: 20, timeout: 15000 })).jsonValue();
   await sleep(100); // the step's listeners (W-D014's Lenis teardown) run in the same task; read after it
   const first = await page.evaluate(() => ({ tier: window.__stage.tier, log: window.__stage.tierLog, draws: window.__stage.stats.draws, now: performance.now(), lenis: document.documentElement.classList.contains('lenis') }));
-  const busyFramesBeforeStep = first.draws - t0.draws;
+  const busyFramesBeforeStep = atStep.draws - t0.draws;
   // Keep watching: the tier never comes back up (a second busy run may only step down again).
   const seen = [];
   for (let i = 0; i < 12; i++) {
