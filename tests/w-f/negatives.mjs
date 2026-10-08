@@ -7,13 +7,16 @@
 //             .bind, ?.(), .call, a destructured alias or a computed name; a core or touch-point read by a computed key,
 //             destructuring or an alias of navigator): each fails it, the clean copy passes (round-3 should-fix S9)
 //   detach    a ticker kept awake (__stage.invalidate every 250 ms) must fail the counters' after-scroll idle window
-//   draws     draws outside the ticker (a timer on the stage's context: no rAF) at D2 / (where the intro passes the
-//             counters' old 20,000-stamp cap) and WK-P2 /, one kind per plant: drawArrays, WEBGL_multi_draw,
-//             clearBufferfv, and blitFramebuffer into the default framebuffer where valid (lite: single-sampled); each
-//             must fail h-counters' step 1 (idle after a mouse move and a key) and step 2 (idle after a scroll); the
-//             clean page passes both (round-2 and round-3 must-fix counters-draw-cap). NEG_COUNTERS_INIT=<init.js> runs
-//             it with another in-page instrument (7a2d0df's misses all but drawArrays); NEG_COUNTERS_DIR=<dir> another
-//             counters directory
+//   draws     draws and frames outside the ticker at D2 / (where the intro passes the counters' old 20,000-stamp cap)
+//             and WK-P2 /, one kind per plant: drawArrays, WEBGL_multi_draw, clearBufferfv, and blitFramebuffer into
+//             the default framebuffer where valid (lite: single-sampled); round 5 (ruling 6049539219 item 4 (e)): lower-
+//             and mixed-case webgl_multi_draw, angle_instanced_arrays on a WebGL1 canvas, an iframe realm's clear and
+//             drawArrays on the stage's context, a webkitRequestAnimationFrame loop, an iframe realm's rAF loop, an
+//             OffscreenCanvas transfer to a worker (and a WebGPU request where the engine has it); each must fail
+//             h-counters' step 1 (idle after a mouse move and a key) and step 2 (idle after a scroll); the clean page
+//             passes both (round-2 to round-5 must-fix counters-draw-cap). NEG_COUNTERS_INIT=<init.js> runs it with
+//             another in-page instrument (8a9e8e8's misses every round-5 plant); NEG_COUNTERS_DIR=<dir> another
+//             counters directory; NEG_DRAW_PLANTS=<a,b> a subset
 //   tolerance one rAF callback planted at motion end + 1 s + 40 ms fails the window, one at + 1 s + 20 ms passes
 //             (ruling 6030949628 item 2: max(2 frames, 34 ms)), D2 and WK-P2
 //   arrival   a wake that presents nothing (180 rAF callbacks, no draw) 1.5 s after the load fails h-counters' arrival
@@ -178,12 +181,22 @@ async function detachControl() {
 }
 
 /**
- * Draws outside the ticker, every 250 ms on the stage's own context, inside the idle window (Breaker 2.2 #2, Breaker
- * 3.3 #1; round-2 and round-3 must-fix counters-draw-cap): the gate must see each kind of draw in both h-counters steps.
- * One plant per entry point that writes the default framebuffer (see init.js): drawArrays, WEBGL_multi_draw's
- * multiDrawArraysWEBGL, clearBufferfv and a blitFramebuffer into the default framebuffer (only where that is valid: a
- * single-sampled default framebuffer, so the lite tier). D2 / (full; the intro passes the old 20,000-stamp cap) and
- * WK-P2 / (lite). A plant whose extension the engine lacks is reported as unsupported, not as caught.
+ * Draws and frames outside the ticker, inside the idle window (Breaker 2.2 #2, Breaker 3.3 #1, Breakers 4.2 #1 and 4.3
+ * #4; round-2 to round-4 must-fix counters-draw-cap, ruling 6049539219 item 4 (e)): the gate must see each plant in both
+ * h-counters steps. A plant returns a function (fired every 250 ms), 'loop' (it runs its own loop) or null (the engine
+ * lacks the API: reported as unsupported, not as caught). D2 / (full; the intro passes the old 20,000-stamp cap) and
+ * WK-P2 / (lite). By axis:
+ *  - method (round 4): drawArrays, WEBGL_multi_draw's multiDrawArraysWEBGL, clearBufferfv and a blitFramebuffer into the
+ *    default framebuffer (only where valid: a single-sampled default framebuffer, so the lite tier);
+ *  - name (a): getExtension('webgl_multi_draw') and getExtension('WebGL_Multi_Draw'), each before any exact-name
+ *    request, and getExtension('angle_instanced_arrays') on a WebGL1 canvas of its own;
+ *  - realm (b): a same-origin about:blank iframe's WebGL2 prototype clear and drawArrays called on the stage's context,
+ *    and an rAF loop in that iframe's realm;
+ *  - scheduler (c): a webkitRequestAnimationFrame loop;
+ *  - unseen sources (d): a canvas transferred to a worker (transferControlToOffscreen) that clears it every 250 ms, and
+ *    navigator.gpu.requestAdapter with a 'webgpu' context (where navigator.gpu exists; an extra beside the list).
+ * Each round-5 plant must also pass with 8a9e8e8's init.js (NEG_COUNTERS_INIT): that is what shows it sits outside the
+ * old instrument.
  */
 const DRAW_PLANTS = {
   drawArrays: (gl) => () => gl.drawArrays(gl.POINTS, 0, 0),
@@ -215,19 +228,122 @@ const DRAW_PLANTS = {
       gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, pd);
     };
   },
+  multiDrawLower: (gl) => {
+    const ext = gl.getExtension('webgl_multi_draw');
+    if (!ext) return null;
+    return () => ext.multiDrawArraysWEBGL(gl.POINTS, new Int32Array([0]), 0, new Int32Array([0]), 0, 1);
+  },
+  multiDrawMixed: (gl) => {
+    const ext = gl.getExtension('WebGL_Multi_Draw');
+    if (!ext) return null;
+    return () => ext.multiDrawArraysWEBGL(gl.POINTS, new Int32Array([0]), 0, new Int32Array([0]), 0, 1);
+  },
+  angleLowerWebgl1: () => {
+    // A WebGL1 canvas of its own (ANGLE_instanced_arrays is a WebGL1 extension), on screen, one red point per draw.
+    const c = document.createElement('canvas');
+    c.width = c.height = 4;
+    c.style.cssText = 'position:fixed;left:0;bottom:0;width:4px;height:4px;pointer-events:none;z-index:2147483647';
+    document.body.append(c);
+    const g = c.getContext('webgl');
+    const ext = g && g.getExtension('angle_instanced_arrays');
+    if (!ext) return null;
+    const sh = (t, src) => {
+      const s = g.createShader(t);
+      g.shaderSource(s, src);
+      g.compileShader(s);
+      return s;
+    };
+    const p = g.createProgram();
+    g.attachShader(p, sh(g.VERTEX_SHADER, 'attribute vec2 a;void main(){gl_Position=vec4(a,0.0,1.0);gl_PointSize=1.0;}'));
+    g.attachShader(p, sh(g.FRAGMENT_SHADER, 'precision mediump float;void main(){gl_FragColor=vec4(1.0,0.0,0.0,1.0);}'));
+    g.bindAttribLocation(p, 0, 'a');
+    g.linkProgram(p);
+    g.useProgram(p);
+    const b = g.createBuffer();
+    g.bindBuffer(g.ARRAY_BUFFER, b);
+    g.bufferData(g.ARRAY_BUFFER, new Float32Array([0, 0]), g.STATIC_DRAW);
+    g.enableVertexAttribArray(0);
+    g.vertexAttribPointer(0, 2, g.FLOAT, false, 0, 0);
+    window.__plantGl = g; // the plant's GL errors are read from its own context
+    return () => ext.drawArraysInstancedANGLE(g.POINTS, 0, 1, 1);
+  },
+  iframeClear: (gl) => {
+    const f = document.createElement('iframe');
+    f.style.cssText = 'position:fixed;left:0;top:0;width:4px;height:4px;border:0;pointer-events:none';
+    document.body.append(f);
+    const P = f.contentWindow.WebGL2RenderingContext?.prototype;
+    if (!P) return null;
+    return () => P.clear.call(gl, gl.COLOR_BUFFER_BIT);
+  },
+  iframeDraw: (gl) => {
+    const f = document.createElement('iframe');
+    f.style.cssText = 'position:fixed;left:0;top:0;width:4px;height:4px;border:0;pointer-events:none';
+    document.body.append(f);
+    const P = f.contentWindow.WebGL2RenderingContext?.prototype;
+    if (!P) return null;
+    return () => P.drawArrays.call(gl, gl.POINTS, 0, 0);
+  },
+  webkitRaf: () => {
+    if (typeof window.webkitRequestAnimationFrame !== 'function') return null;
+    const loop = () => {
+      window.__plantFires++;
+      window.webkitRequestAnimationFrame(loop);
+    };
+    window.webkitRequestAnimationFrame(loop);
+    return 'loop';
+  },
+  iframeRaf: () => {
+    const f = document.createElement('iframe');
+    f.style.cssText = 'position:fixed;left:0;top:0;width:4px;height:4px;border:0;pointer-events:none';
+    document.body.append(f);
+    const cw = f.contentWindow;
+    if (typeof cw?.requestAnimationFrame !== 'function') return null;
+    const loop = () => {
+      window.__plantFires++;
+      cw.requestAnimationFrame(loop);
+    };
+    cw.requestAnimationFrame(loop);
+    return 'loop';
+  },
+  offscreen: () => {
+    const c = document.createElement('canvas');
+    if (typeof c.transferControlToOffscreen !== 'function' || typeof Worker !== 'function') return null;
+    c.width = c.height = 4;
+    c.style.cssText = 'position:fixed;right:0;top:0;width:4px;height:4px;pointer-events:none;z-index:2147483647';
+    document.body.append(c);
+    const off = c.transferControlToOffscreen();
+    const src = 'onmessage=(e)=>{const c=e.data;const g=c.getContext("webgl2")||c.getContext("webgl");let n=0;setInterval(()=>{if(g){g.clearColor(1,0,0,1);g.clear(g.COLOR_BUFFER_BIT);}postMessage(++n);},250);};';
+    const w = new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })));
+    w.onmessage = (e) => {
+      window.__plantFires = e.data;
+    };
+    w.postMessage(off, [off]);
+    return 'loop';
+  },
+  webgpu: () => {
+    if (!navigator.gpu) return null;
+    navigator.gpu.requestAdapter().then(() => {}, () => {});
+    document.createElement('canvas').getContext('webgpu');
+    return 'loop';
+  },
 };
+/** The plants ruling 6049539219 item 4 (e) lists (webgpu is an extra beside them). */
+const ROUND5_PLANTS = ['multiDrawLower', 'multiDrawMixed', 'angleLowerWebgl1', 'iframeClear', 'iframeDraw', 'webkitRaf', 'iframeRaf', 'offscreen'];
 async function drawsControl() {
   // NEG_COUNTERS_DIR=<another tests/harness/counters> runs the control with that instrument (init.js and run.mjs), so
   // the pre-fix instrument can be shown to miss the plants.
-  // NEG_COUNTERS_INIT=<an init.js> swaps only the in-page instrument (round 4: 7a2d0df's init.js under this window).
+  // NEG_COUNTERS_INIT=<an init.js> swaps only the in-page instrument (round 5: 8a9e8e8's init.js under this window).
+  // NEG_DRAW_PLANTS=a,b runs a subset (and does not require the 20,000-stamp row).
   const dir = process.env.NEG_COUNTERS_DIR;
   const counters = dir ? await import(pathToFileURL(join(dir, 'run.mjs')).href) : { INIT: COUNTERS_INIT, motionWindow, idleAfterScroll };
   const init = process.env.NEG_COUNTERS_INIT ? readFileSync(process.env.NEG_COUNTERS_INIT, 'utf8') : counters.INIT;
+  const only = process.env.NEG_DRAW_PLANTS ? process.env.NEG_DRAW_PLANTS.split(',') : null;
+  const kinds = Object.keys(DRAW_PLANTS).filter((k) => !only || only.includes(k));
   const srv = await serve();
   try {
     const rows = [];
     for (const profile of ['D2', 'WK-P2']) {
-      for (const plant of [null, ...Object.keys(DRAW_PLANTS)]) {
+      for (const plant of [null, ...kinds]) {
         const ctx = await newContext(profile);
         await ctx.addInitScript({ content: init });
         const page = await ctx.newPage();
@@ -236,30 +352,40 @@ async function drawsControl() {
         await page.waitForFunction(() => window.__stage.glState === 'ready', null, { polling: 100, timeout: 15000 }).catch(() => {});
         await waitSettled(page, 15000);
         await sleep(300);
-        const atPlant = await page.evaluate(() => {
+        const read = () => page.evaluate(() => {
           const g = window.__gateCounters;
-          return { draws: g.draws, drawStamps: g.drawTimes.length, stampsDropped: g.stampsDropped ?? null, tier: window.__stage.tier, glState: window.__stage.glState };
+          return { raf: g.raf, draws: g.draws, clears: g.clears, drawStamps: g.drawTimes.length, stampsDropped: g.stampsDropped ?? null, blind: (g.blind ?? []).length, realms: g.realms ?? null, fires: window.__plantFires ?? 0, tier: window.__stage.tier, glState: window.__stage.glState };
         });
+        const atPlant = await read();
         let supported = true;
+        let plantError = null;
         if (plant) {
-          supported = await page.evaluate(({ plant, src }) => {
+          supported = await page.evaluate(({ src }) => {
             const gl = window.__stage.gl?.renderer?.getContext();
             if (!gl) return false;
+            window.__plantFires = 0;
+            window.__plantErrors = [];
             const make = new Function(`return (${src})`)();
             const fire = make(gl);
             if (!fire) return false;
-            window.__plantErrors = [];
-            window.__plant = setInterval(() => {
-              fire();
-              const e = gl.getError();
-              if (e) window.__plantErrors.push(e);
-            }, 250);
+            if (typeof fire === 'function') {
+              const eg = window.__plantGl ?? gl;
+              window.__plant = setInterval(() => {
+                fire();
+                window.__plantFires++;
+                const e = eg.getError();
+                if (e) window.__plantErrors.push(e);
+              }, 250);
+            }
             return true;
-          }, { plant, src: DRAW_PLANTS[plant].toString() });
+          }, { src: DRAW_PLANTS[plant].toString() }).catch((e) => {
+            plantError = String(e).slice(0, 200);
+            return false;
+          });
         }
         if (!supported) {
           await ctx.close();
-          rows.push({ profile, plant, supported: false });
+          rows.push({ profile, plant, supported: false, ...(plantError ? { error: plantError } : {}) });
           continue;
         }
         const { width, height } = page.viewportSize();
@@ -269,24 +395,34 @@ async function drawsControl() {
         await page.keyboard.press('Shift');
         const step1 = await counters.motionWindow(page, since).catch((e) => ({ error: String(e).slice(0, 200), pass: false }));
         const step2 = await counters.idleAfterScroll(page, null).catch((e) => ({ error: String(e).slice(0, 200), pass: false }));
-        const end = await page.evaluate(() => ({ draws: window.__gateCounters.draws, drawsBy: window.__gateCounters.drawsBy ?? null, plantErrors: window.__plantErrors ?? [] }));
+        const endRead = await read();
+        const end = await page.evaluate(() => ({ drawsBy: window.__gateCounters.drawsBy ?? null, rafBy: window.__gateCounters.rafBy ?? null, blindKinds: (window.__gateCounters.blind ?? []).map((b) => `${b.kind}@${b.realm}`), plantErrors: window.__plantErrors ?? [] }));
         await ctx.close();
-        const brief = (r) => ({ pass: r.pass, error: r.error, window: r.afterMotion, uncapped: r.uncappedInWindow, bound: r.bound, restarts: r.windowRestarts, motionEndsBy: r.motionEndsBy });
-        rows.push({ profile, plant, supported, atPlant, drawsDuringSteps: end.draws - atPlant.draws, drawsBy: end.drawsBy, plantGlErrors: end.plantErrors.length, step1: brief(step1), step2: brief(step2), caught1: !step1.pass, caught2: !step2.pass });
+        const brief = (r) => ({ pass: r.pass, error: r.error, window: r.afterMotion, uncapped: r.uncappedInWindow, blind: r.blind?.length ?? null, bound: r.bound, restarts: r.windowRestarts, motionEndsBy: r.motionEndsBy });
+        rows.push({
+          profile, plant, supported, atPlant, firesDuringSteps: endRead.fires - atPlant.fires, drawsDuringSteps: endRead.draws - atPlant.draws, clearsDuringSteps: endRead.clears - atPlant.clears,
+          rafDuringSteps: endRead.raf - atPlant.raf, realms: endRead.realms, drawsBy: end.drawsBy, rafBy: end.rafBy, blind: end.blindKinds, plantGlErrors: end.plantErrors.length,
+          step1: brief(step1), step2: brief(step2), caught1: !step1.pass, caught2: !step2.pass,
+        });
       }
     }
     const clean = rows.filter((r) => r.plant === null);
     const planted = rows.filter((r) => r.plant !== null && r.supported);
-    const pastOldCap = rows.some((r) => r.profile === 'D2' && r.plant === 'drawArrays' && r.atPlant.draws > 20000);
-    // Every kind is planted where it is valid: drawArrays, multiDraw and clearBufferfv in both engines' rows (when the
-    // engine has the extension), blitFramebuffer at least once (the lite tier's single-sampled framebuffer).
+    const pastOldCap = rows.some((r) => r.profile === 'D2' && r.plant !== null && r.atPlant?.draws > 20000);
+    // Every kind is planted where it is valid (each in both engines' rows when the engine has the API), and each kind
+    // of the round-4 and round-5 lists runs at least once (blitFramebuffer needs the lite tier's single-sampled
+    // framebuffer); webgpu is an extra and only reported.
     const kindsRun = new Set(planted.map((r) => r.plant));
+    const required = kinds.filter((k) => k !== 'webgpu');
+    const verdict = (r) => (r.supported === false ? 'unsupported' : r.caught1 && r.caught2 ? 'caught' : `MISSED (step 1 ${r.caught1 ? 'caught' : 'passed'}, step 2 ${r.caught2 ? 'caught' : 'passed'})`);
     return {
       instrument: process.env.NEG_COUNTERS_INIT ?? dir ?? 'tests/harness/counters', rows, pastOldCap, kindsRun: [...kindsRun],
+      caught: planted.filter((r) => r.caught1 && r.caught2).map((r) => `${r.profile} ${r.plant}`),
       missedKinds: [...new Set(planted.filter((r) => !r.caught1 || !r.caught2).map((r) => `${r.profile} ${r.plant}`))],
-      unsupported: rows.filter((r) => r.supported === false).map((r) => `${r.profile} ${r.plant}`),
-      pass: pastOldCap && clean.every((r) => !r.caught1 && !r.caught2) && planted.length > 0 && planted.every((r) => r.caught1 && r.caught2 && r.plantGlErrors === 0)
-        && Object.keys(DRAW_PLANTS).every((k) => kindsRun.has(k)),
+      unsupported: rows.filter((r) => r.supported === false).map((r) => `${r.profile} ${r.plant}${r.error ? ` (${r.error})` : ''}`),
+      round5: Object.fromEntries(ROUND5_PLANTS.filter((k) => kinds.includes(k)).map((k) => [k, rows.filter((r) => r.plant === k).map((r) => `${r.profile}: ${verdict(r)}${r.supported === false ? '' : `; fires ${r.firesDuringSteps}, gate raf ${r.rafDuringSteps} draws ${r.drawsDuringSteps} clears ${r.clearsDuringSteps}, blind ${r.blind?.length ?? 0}`}`)])),
+      pass: (only ? true : pastOldCap) && clean.every((r) => !r.caught1 && !r.caught2) && planted.length > 0 && planted.every((r) => r.caught1 && r.caught2 && r.plantGlErrors === 0)
+        && required.every((k) => kindsRun.has(k)),
     };
   } finally {
     await srv.close();

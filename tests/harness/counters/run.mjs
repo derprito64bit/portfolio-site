@@ -182,9 +182,14 @@ export async function motionWindow(page, since) {
       ifClearsIgnored: (() => { const e2 = Math.max(anchor, g.lastScrollAt > since ? g.lastScrollAt : 0, lastDraw); return { raf: inWin(g.rafTimes, e2 + from, e2 + WINDOW_END_MS) }; })(),
       // For information: counted from the anchor (the budget's old wording, gate F1).
       afterInput: { fromMs: WINDOW_START_MS, toMs: WINDOW_END_MS, raf: inWin(g.rafTimes, anchor + WINDOW_START_MS, anchor + WINDOW_END_MS), draws: inWin(g.drawTimes, anchor + WINDOW_START_MS, anchor + WINDOW_END_MS) },
-      // Any frame the gate sees in the window fails it: a rAF callback, a draw through any entry point, a clear (clear or
-      // clearBuffer*, round-3 must-fix counters-draw-cap), by the stamps and by the uncapped counts.
-      pass: boundOk && win.raf === 0 && win.draws === 0 && win.clears === 0 && uncapped.raf === 0 && uncapped.draws === 0 && uncapped.clears === 0 && stageWin.ticks === 0 && stageWin.drawCalls === 0,
+      // Frame sources the counters cannot see (init.js (d): a worker's frames through transferControlToOffscreen, a
+      // 'webgpu' context, navigator.gpu): a page that used one has frames no window can count, so it fails every window
+      // (ruling 6049539219 item 4 (d)). rafBy and realms say which alias and how many realms the counts came from.
+      blind: [...(g.blind ?? [])], rafBy: { ...(g.rafBy ?? {}) }, realms: g.realms ?? 1,
+      // Any frame the gate sees in the window fails it: a rAF callback (any alias, any same-origin realm), a draw through
+      // any entry point, a clear (clear or clearBuffer*, round-3 must-fix counters-draw-cap), by the stamps and by the
+      // uncapped counts.
+      pass: boundOk && (g.blind ?? []).length === 0 && win.raf === 0 && win.draws === 0 && win.clears === 0 && uncapped.raf === 0 && uncapped.draws === 0 && uncapped.clears === 0 && stageWin.ticks === 0 && stageWin.drawCalls === 0,
     };
   }, { since, end: endAtStart, endNow: s.end, ranMs, from: WINDOW_START_MS + windowTolerance(frameMs), toleranceMs: windowTolerance(frameMs), frameMs, a, b, WINDOW_START_MS, WINDOW_END_MS, HARD_STOP_MS, anchor: s.anchor, anchorKind: s.anchorKind, arrival: s.arrival, restarts });
 }
