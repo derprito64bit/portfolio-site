@@ -350,8 +350,34 @@ function onRestored(): void {
   // Every current slot whose entity is not bound to it: the slots that arrived during the loss, persistent entities'
   // returning slots included (round-6 must-fix one-loss-costs-restore (b)).
   for (const s of allSlots()) if (boundTo.get(s.id) !== s) bindSlot(s);
+  rewarm();
   resize();
   markDirty();
+}
+
+/**
+ * The restore rebuilds in one go (perf row 21; ruling 6049539219 item 2: one loss costs the restore and nothing more).
+ * three rebuilds a program or a texture on its first use after a restore, and a crew's warm-up (compileAsync at boot)
+ * does not run again, so a program first drawn later in the opening rebuilt in a frame of its own (measured, WebKit D3
+ * on /: one 52 ms frame about 330 ms after the restore's 0.7 s stall, a program and 2 textures). Every
+ * program of the stage's scenes (the page scene and each view's, hidden objects included) is compiled and every image
+ * texture they hold is uploaded here, inside the restore's own task.
+ */
+function rewarm(): void {
+  if (!renderer || lost || dead) return;
+  const scenes: [any, any][] = [[pageScene, pageCamera], ...[...views].map((v): [any, any] => [v.scene, v.camera])];
+  const textures = new Set<any>();
+  const collect = (m: any) => {
+    if (!m) return;
+    for (const k of Object.keys(m)) if (m[k]?.isTexture) textures.add(m[k]);
+    if (m.uniforms) for (const u of Object.values(m.uniforms) as any[]) if (u?.value?.isTexture) textures.add(u.value);
+  };
+  for (const [scene, camera] of scenes) {
+    guard(() => renderer.compile(scene, camera), undefined);
+    scene.traverse((o: any) => (Array.isArray(o.material) ? o.material : [o.material]).forEach(collect));
+  }
+  // Only textures with their data in hand: a render target's texture, or one still decoding, uploads when it is ready.
+  for (const t of textures) if (!t.isRenderTargetTexture && t.image && t.version > 0) guard(() => renderer.initTexture(t), undefined);
 }
 
 /**

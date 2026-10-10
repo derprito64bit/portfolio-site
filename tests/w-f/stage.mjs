@@ -251,15 +251,22 @@ async function restoreGovernor(base) {
   });
   const state = (page) => page.evaluate(() => ({ tier: window.__stage.tier, reason: window.__stage.tierReason, log: window.__stage.tierLog, restores: window.__stage.stats.restores, governorSteps: window.__stage.stats.governorSteps }));
   const rows = [];
+  // The restore rebuilds in one go (round 6, perf row 21): every program the stage's scenes held before the loss is
+  // linked again by the restore's own task (read 2 frames after webglcontextrestored), not on its first use later in the
+  // opening (2f496c8: 7 of 8, the 8th in a 52 ms frame about 1 s after the restore, a frame the governor counted).
+  const programs = (page) => page.evaluate(() => window.__stage.gl.info().programs);
+  const afterRestoreFrames = (page) => page.evaluate(() => new Promise((res) => window.requestAnimationFrame(() => window.requestAnimationFrame(() => res(window.__stage.gl.info().programs)))));
   for (let i = 0; i < 3; i++) {
     const { ctx, page } = await open('/');
     await sleep(600); // inside the opening
+    const programsBefore = await programs(page);
     const restored = await loseRestore(page);
+    const programsAfter = await afterRestoreFrames(page);
     await sleep(3500);
     await waitSettled(page, 10000);
     const s = await state(page);
     await ctx.close();
-    rows.push({ kind: 'one loss in the opening', restored, ...s, pass: restored && s.tier === 'full' && s.restores === 1 && s.governorSteps === 0 });
+    rows.push({ kind: 'one loss in the opening', restored, programsBefore, programsAfter, ...s, pass: restored && s.tier === 'full' && s.restores === 1 && s.governorSteps === 0 && programsBefore > 0 && programsAfter >= programsBefore });
   }
   {
     const { ctx, page } = await open('/');
