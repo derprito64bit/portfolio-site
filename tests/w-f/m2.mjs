@@ -584,23 +584,29 @@ async function grid(base) {
     await ctx.close();
     rows.push(gridRow(profile, s, b));
   }
-  // A fractional layout width (round-5 must-fix canvas-grid-fractional-width; Breaker 4.2 #6): a real display at 125% or
-  // 175% scaling, or browser zoom, lays #rail out at a fractional CSS width while view.W (#rail's clientWidth) is a whole
-  // number. Playwright's emulated DSF keeps every CSS width whole (an iframe 801.3 px wide too: its frame is snapped to a
-  // whole CSS width), so the rows are: real Chrome with a forced device scale factor of 1.25 and 1.75 and a 1366 x 768
-  // window (viewport null: 1092.8 and 780.57 CSS px wide), and, in Chromium and WebKit, a page whose #rail containing
-  // block (body, position: relative) is 801.3 px wide (a style added before the stage first measures). The canvas must be
-  // laid out at exactly W; each row asserts its #rail width really was fractional.
+  // A fractional layout width (must-fix canvas-grid-fractional-width, rounds 5 and 6; Breaker 4.2 #6, Breaker 5.1 #1): a
+  // real display at 125% or 175% scaling, or browser zoom, lays #rail out at a fractional CSS width while view.W (#rail's
+  // clientWidth) is a whole number. Playwright's emulated DSF keeps every CSS width whole (an iframe of fractional width
+  // too: its frame is snapped to a whole CSS width), so the rows are real Chrome with a forced device scale factor
+  // (viewport null) and, in Chromium and WebKit, a page whose #rail containing block (body, position: relative) is given a
+  // fractional width before the stage first measures. Both sides of the rounding are rows: where the fraction is under
+  // .5, W rounds down (W < #rail); where it is .5 or more, W rounds up (W > #rail), and an element rule such as
+  // max-width: 100% caps the canvas below W (2f496c8 laid it out at #rail's width there). Each row asserts the side it is
+  // on, so a row set that loses one side fails; the canvas must be laid out at exactly W in every row.
   const frac = [];
-  const FRACTIONAL_BODY = "document.addEventListener('DOMContentLoaded', () => { const s = document.createElement('style'); s.textContent = 'body{inline-size:801.3px}'; document.head.append(s); });";
-  for (const [label, make] of [
-    ['Chrome DSF 1.25, window 1366x768', async () => (await browser('chromium-dsf-1.25')).newContext({ viewport: null, serviceWorkers: 'block' })],
-    ['Chrome DSF 1.75, window 1366x768', async () => (await browser('chromium-dsf-1.75')).newContext({ viewport: null, serviceWorkers: 'block' })],
-    ['D2 chromium, body 801.3px', async () => newContext('D2')],
-    ['D3 webkit, body 801.3px', async () => newContext('D3', 'auto', { browser: 'webkit' })],
+  const fractionalBody = (w) => `document.addEventListener('DOMContentLoaded', () => { const s = document.createElement('style'); s.textContent = 'body{inline-size:${w}px}'; document.head.append(s); });`;
+  const dsfContext = (name) => async () => (await browser(name)).newContext({ viewport: null, serviceWorkers: 'block' });
+  for (const [label, wantSide, make, bodyW] of [
+    ['Chrome DSF 1.25, window 1366x768', 'down', dsfContext('chromium-dsf-1.25')],
+    ['Chrome DSF 1.75, window 1366x768', 'down', dsfContext('chromium-dsf-1.75')],
+    ['Chrome DSF 1.25, window 1280x800', 'up', dsfContext('chromium-dsf-1.25-w1280')],
+    ['D2 chromium, body 801.3px', 'down', async () => newContext('D2'), 801.3],
+    ['D3 webkit, body 801.3px', 'down', async () => newContext('D3', 'auto', { browser: 'webkit' }), 801.3],
+    ['D2 chromium, body 801.7px', 'up', async () => newContext('D2'), 801.7],
+    ['D3 webkit, body 801.7px', 'up', async () => newContext('D3', 'auto', { browser: 'webkit' }), 801.7],
   ]) {
     const ctx = await make();
-    if (label.includes('body 801.3px')) await ctx.addInitScript({ content: FRACTIONAL_BODY });
+    if (bodyW) await ctx.addInitScript({ content: fractionalBody(bodyW) });
     const page = await ctx.newPage();
     let s;
     try {
@@ -612,9 +618,13 @@ async function grid(base) {
       s = { error: String(e?.message || e).slice(0, 200) };
     }
     await ctx.close();
-    frac.push({ ...gridRow(label, s, b), fractional: s.railW !== undefined && Math.abs(s.railW - Math.round(s.railW)) > 1 / 64 });
+    const row = gridRow(label, s, b);
+    const fractional = s.railW !== undefined && Math.abs(s.railW - Math.round(s.railW)) > 1 / 64;
+    const side = s.railW === undefined ? null : s.W > s.railW ? 'up' : 'down';
+    frac.push({ ...row, fractional, side, wantSide, pass: row.pass && fractional && side === wantSide });
   }
-  return { rows, fractional: frac, pass: rows.every((r) => r.pass) && frac.length > 0 && frac.every((r) => r.pass && r.fractional) };
+  const sides = new Set(frac.map((r) => r.side));
+  return { rows, fractional: frac, pass: rows.every((r) => r.pass) && frac.every((r) => r.pass) && sides.has('up') && sides.has('down') };
 }
 /** The canvas grid as laid out: view.W, #rail's fractional width, the canvas's laid-out box and its buffer. */
 const GRID_READ = () => {

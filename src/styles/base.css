@@ -65,6 +65,10 @@ button { font: inherit; color: inherit; }
   inset-inline-start: 0;
   inline-size: 100%;
   block-size: calc(100lvh * 1.25); /* toolbar rule: lvh, never dvh */
+  /* rail.ts lays it out at W, #rail's clientWidth, which rounds: where #rail's fraction is .5 or more W is wider than
+     #rail, and the element rule's max-width: 100% would cap it below W (#59 item 3). #rail clips the remainder. */
+  max-inline-size: none;
+  min-inline-size: 0;
 }
 html[data-rail="drip"] #rail { z-index: var(--z-gl-raised-for-drip); }
 html[data-tier="static"] #rail, html:not(.js) #rail { display: none; }
