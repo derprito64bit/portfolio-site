@@ -39,8 +39,21 @@ function writeEntry(patch: EntryState): void {
   history.replaceState({ ...entry(), ...patch }, '');
 }
 
-function byId(id: string): HTMLElement | null {
-  return document.getElementById(decodeURIComponent(id.replace(/^#/, '')));
+/**
+ * A fragment's element id: percent-decoded, or the raw text where the fragment is not valid percent-encoding (a '/#%'
+ * entry threw an uncaught URIError from the restore's scroll listener, W-D030; round-6 must-fix s8-scroll-restore).
+ * Every fragment the router reads goes through here.
+ */
+function fragmentId(hash: string): string {
+  const raw = hash.replace(/^#/, '');
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    return raw;
+  }
+}
+function byId(hash: string): HTMLElement | null {
+  return document.getElementById(fragmentId(hash));
 }
 /** Focus without scrolling. Headings get tabindex -1 so they can hold focus; links keep their tab order. */
 function focusEl(el: HTMLElement | null): boolean {
@@ -87,7 +100,10 @@ function atFragment(): boolean {
 function restoreFullLoad(): void {
   const nav = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined;
   if (history.scrollRestoration !== 'manual' || !nav || (nav.type !== 'back_forward' && nav.type !== 'reload')) return;
-  const y = Number(entry().ionScroll);
+  // A saved position is restored whatever it is, 0 included (round-6 must-fix s8-scroll-restore: a reader at the top of
+  // a Swup-touched /#work entry was left on the fragment in WebKit). An entry without one is the browser's.
+  const saved = entry().ionScroll;
+  const y = typeof saved === 'number' && Number.isFinite(saved) && saved >= 0 ? saved : null;
   const id = entry().ionFocus;
   let input = false;
   const INPUTS = ['wheel', 'touchstart', 'keydown', 'pointerdown'] as const;
@@ -101,13 +117,13 @@ function restoreFullLoad(): void {
   };
   // The browser's own fragment scroll after the load: restored over once, unless the reader acted first.
   const again = () => {
-    if (input || !atFragment()) return;
+    if (y === null || input || !atFragment()) return;
     done();
     scrollToY(y);
     markDirty();
   };
   const go = () => {
-    if (y > 0 && !input && (window.scrollY === 0 || atFragment())) {
+    if (y !== null && !input && (window.scrollY === 0 || atFragment())) {
       scrollToY(y);
       if (location.hash) {
         addEventListener('scroll', again, { passive: true });
@@ -130,6 +146,17 @@ export function bootRouter(): Swup {
     ignoreVisit: (url, { el } = {}) => Boolean(el?.closest('[data-no-swup]')) || FORK_PATH.test(new URL(url, location.origin).pathname),
     plugins: [new SwupA11yPlugin({ headingSelector: ['main h1', 'h1'], respectReducedMotion: false })],
   });
+  // Swup's own anchor lookup (which the a11y plugin's scroll:anchor handler calls) percent-decodes the fragment
+  // unguarded: a visit to '/#%' logged "Error in hook 'scroll:anchor': URIError" (round 6, s8-scroll-restore). A
+  // fragment that is not valid percent-encoding is looked up raw instead.
+  const anchorOf = swup.getAnchorElement;
+  swup.getAnchorElement = (hash) => {
+    try {
+      return anchorOf(hash);
+    } catch {
+      return hash ? byId(hash) : null;
+    }
+  };
 
   // The current entry keeps its scroll position (debounced; Safari limits replaceState bursts). On popstate the
   // browser has already switched entries, so this is the only way Forward can restore the page we left.
@@ -155,7 +182,7 @@ export function bootRouter(): Swup {
       writeEntry({ ionScroll: window.scrollY, ionFocus: origin?.dataset.glId ?? '' });
     }
     if (isReduced() || !document.querySelector('#swup [data-swup-fade]')) visit.animation.animate = false;
-    if (visit.to.hash) visit.a11y.focus = `[id="${CSS.escape(decodeURIComponent(visit.to.hash.slice(1)))}"]`;
+    if (visit.to.hash) visit.a11y.focus = `[id="${CSS.escape(fragmentId(visit.to.hash))}"]`;
     if (visit.history.popstate) visit.a11y.focus = false; // handled after the swap, below
     getLenis()?.stop();
     // Each crew's hook on its own (guard): one that throws must not stop the others or the visit.
