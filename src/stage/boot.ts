@@ -12,15 +12,18 @@ import { mark, stats } from './state.ts';
 import { getTier, onTier } from './tier.ts';
 import { afterNextFrame } from './ticker.ts';
 
-export type GLState = 'off' | 'deferred' | 'scheduled' | 'booting' | 'ready' | 'failed';
+/** 'lost': the boot is waiting for its lost context to come back (nothing moves meanwhile: the page is settled). */
+export type GLState = 'off' | 'deferred' | 'scheduled' | 'booting' | 'lost' | 'ready' | 'failed';
 let state: GLState = 'off';
 let started = false;
 let resolveReady: (v: unknown) => void = () => {};
 /** Resolves with the GL context API once GL is ready (never on the static tier). */
 export const glReady: Promise<unknown> = new Promise((r) => (resolveReady = r));
+/** The GL chunk once imported: it says whether its boot is waiting for a context restore. */
+let glChunk: { waitingForRestore(): boolean } | null = null;
 
 export function glState(): GLState {
-  return state;
+  return state === 'booting' && glChunk?.waitingForRestore() ? 'lost' : state;
 }
 
 const idle = (fn: () => void, timeout: number): void => {
@@ -115,6 +118,7 @@ async function start(why: string): Promise<void> {
     // ...and never while it runs (round-3 must-fix s2-404-gl-boot): a Swup visit can land on the 404 during any await
     // of the boot. The page is read again after the import, after every await inside gl.boot(), and once more here.
     if (optedOut()) return standDown();
+    glChunk = gl;
     const api = await gl.boot(optedOut);
     if (api === 'stood-down') return standDown(); // gl.boot() has already abandoned what it made
     if (optedOut()) return standDown(gl);

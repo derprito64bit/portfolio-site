@@ -32,9 +32,12 @@
 //               the slot is handed back); both counted (round-3 should-fix S1, Breaker 3.1 #3)
 //   scrollRestore a full-load Back and a reload land where the reader was (+-1 px), also after a Swup visit touched
 //               the entry (round-3 should-fix S8, Breaker 3.3 #3), and a reload of a Swup-touched hash entry (/#work)
-//               the reader scrolled past (round-5 should-fix S8: WebKit scrolls it to the fragment first)
+//               the reader scrolled past (round-5 should-fix S8: WebKit scrolls it to the fragment first); the same
+//               entry with the reader at y 0, reloaded and reached by a full-load Back (round 6: on a WebKit profile at
+//               WK-T2 and D3 in WebKit too), and a reload of a Swup-touched /#% entry in Chromium (no page error)
 //   staticSwap  a Swup visit after a drop to static, or while the context is lost, binds nothing; the restore binds the
-//               page that arrived (round-5 should-fix S5, Breaker 4.3 #1)
+//               page that arrived (round-5 should-fix S5, Breaker 4.3 #1), persistent entities included: the camera on
+//               / after a Swup visit away, a loss and Back (round 6), with a no-loss control
 //   glideCut    reduced motion (the switch or the OS) or a step-down during a Lenis anchor glide lands on the anchor
 //               within 1 px, Lenis gone (round-5 should-fix S6, Breaker 4.3 #2; WebKit runs D3 for the full tier)
 //   gapGovernor a 3 s bfcache stay during the opening or a Lenis glide does not step the tier (round-3 should-fix S7,
@@ -132,16 +135,22 @@ async function settles(page, ms = SETTLE_MS) {
   const t1 = await page.evaluate(() => ({ ticks: window.__stage.stats.ticks, settled: window.__stage.settled }));
   return { settled, still: t1.ticks === t0 && t1.settled, ok: settled && t1.ticks === t0 && t1.settled };
 }
-/** The canvas on its buffer-pixel grid and as wide as its layout (#59 item 3, W-D013 as amended). */
+/**
+ * The canvas on its buffer-pixel grid and as wide as its layout (#59 item 3, W-D013 as amended): W is #rail's
+ * clientWidth (equal to body.clientWidth), and the canvas is laid out at exactly W x Hc. #rail's own box may be
+ * fractional (a fractional DSF or zoom): the canvas is then laid out at the whole W, not at #rail's box (round 6, Breaker
+ * 5.1 #1: comparing W with #rail's box failed at every fractional width).
+ */
 const gridOf = (page) => page.evaluate(() => {
   const s = window.__stage;
   if (!s.gl || s.tier === 'static') return { ok: true, gl: false };
   const c = document.getElementById('gl');
   const v = s.view;
-  const cssH = c.getBoundingClientRect().height;
-  const railW = document.getElementById('rail').getBoundingClientRect().width;
-  const r = { gl: true, W: v.W, Hc: v.Hc, dpr: v.dpr, width: c.width, height: c.height, cssH, railW, bodyW: document.body.clientWidth };
-  return { ...r, ok: Math.abs(c.width / v.W - v.dpr) < 1e-6 && Math.abs(c.height / v.Hc - v.dpr) < 1e-6 && Math.abs(cssH - v.Hc) <= 1 / 64 + 1e-6 && v.W === railW && railW === r.bodyW };
+  const box = c.getBoundingClientRect();
+  const rail = document.getElementById('rail');
+  const r = { gl: true, W: v.W, Hc: v.Hc, dpr: v.dpr, width: c.width, height: c.height, cssW: box.width, cssH: box.height, railW: rail.getBoundingClientRect().width, railClientW: rail.clientWidth, bodyW: document.body.clientWidth };
+  const unit = 1 / 64 + 1e-6;
+  return { ...r, ok: Math.abs(c.width / v.W - v.dpr) < 1e-6 && Math.abs(c.height / v.Hc - v.dpr) < 1e-6 && Math.abs(r.cssH - v.Hc) <= unit && Math.abs(r.cssW - v.W) <= unit && v.W === r.railClientW && r.railClientW === r.bodyW };
 });
 /**
  * One ticker chain: over an active window (a wheel down and up), the gate's rAF callbacks other than Lenis's and
@@ -667,13 +676,54 @@ const CASES = {
     // hashReload (round-4 Breaker 4.2 #3, round-5 should-fix S8): a Swup visit to /#work by the nav's Work link from a
     // project page, the reader scrolls 600 px past #work, then reloads: WebKit scrolls the reload to the fragment first,
     // and the router must still land where the reader was.
-    for (const kind of ['back', 'reload', 'swupBack', 'hashReload']) {
-      const { ctx, page, gate } = await open(base, profile, kind === 'hashReload' ? '/work/project-01/' : '/');
+    // hashReloadTop and hashBackTop (round-6 must-fix s8-scroll-restore, Breaker 5.1 #5): the same entry with the reader
+    // back at the top (y 0), then a reload or a full-load Back: WebKit scrolled to the fragment and 2f496c8 left it there
+    // (it restored only y > 0). Run on this profile and, from a WebKit profile, on WK-T2 and D3 in WebKit too. WebKit's
+    // fragment scroll on a full-load Back is not steady: the gate saw it once at WK-D3 (857), and its own probe lands at
+    // 0 on 2f496c8 here. hashBackTopLate makes it steady: the browser's fragment scroll is done for it right after the
+    // load event of the Back (an init script added before the Back, as WebKit's own scroll came in the gate's run); the
+    // router must restore the reader's 0 over it (2f496c8 left it on the fragment).
+    // pctReload (Breaker 5.2 #2): a Swup visit to /#% (not valid percent-encoding), the reader scrolls 600 px, then
+    // reloads: the restore's fragment listener threw an uncaught URIError at 2f496c8 (and the visit itself logged a hook
+    // error and fell back to a full load). Chromium only; the console gate holds it.
+    const specs = ['back', 'reload', 'swupBack', 'hashReload'].map((kind) => ({ kind, profile, extra: {} }));
+    const topProfiles = PROFILES[profile].browser === 'webkit' ? [[profile, {}], ['WK-T2', {}], ['D3', { browser: 'webkit' }]] : [[profile, {}]];
+    const seenTop = new Set();
+    for (const [p, extra] of topProfiles) {
+      const key = `${p}@${extra.browser ?? PROFILES[p].browser}`;
+      if (seenTop.has(key)) continue;
+      seenTop.add(key);
+      for (const kind of ['hashReloadTop', 'hashBackTop', 'hashBackTopLate']) specs.push({ kind, profile: p, extra, at: key });
+    }
+    if (PROFILES[profile].browser === 'chromium') specs.push({ kind: 'pctReload', profile, extra: {} });
+    const viaWork = (kind) => kind === 'hashReload' || kind === 'hashReloadTop' || kind === 'hashBackTop' || kind === 'hashBackTopLate';
+    const hashRowKinds = new Set(['hashReload', 'hashReloadTop', 'hashBackTop', 'hashBackTopLate', 'pctReload']);
+    const LATE_FRAGMENT_SCROLL = `addEventListener('load', () => setTimeout(() => {
+      const nav = performance.getEntriesByType('navigation')[0];
+      if (!nav || nav.type !== 'back_forward' || !location.hash) return;
+      const el = document.getElementById(location.hash.slice(1));
+      if (el) { el.scrollIntoView(); window.__lateFragmentScroll = Math.round(scrollY); }
+    }, 0));`;
+    for (const { kind, profile: p, extra, at } of specs) {
+      const { ctx, page, gate } = await open(base, p, viaWork(kind) || kind === 'pctReload' ? '/work/project-01/' : '/', extra);
       await waitSettled(page, 15000);
-      if (kind === 'hashReload') {
+      if (viaWork(kind)) {
         await page.focus('a[data-nav="work"]');
         await page.keyboard.press('Enter');
         await page.waitForFunction(() => location.pathname === '/' && location.hash === '#work' && !document.documentElement.hasAttribute('aria-busy'), null, { timeout: 10000 });
+        await waitSettled(page, 10000);
+      }
+      if (kind === 'pctReload') {
+        await page.evaluate(() => {
+          const a = document.createElement('a');
+          a.href = '/#%';
+          a.id = 'sb-pct';
+          a.textContent = 'percent';
+          document.getElementById('main')?.prepend(a);
+        });
+        await page.focus('#sb-pct');
+        await page.keyboard.press('Enter');
+        await page.waitForFunction(() => location.pathname === '/' && location.hash === '#%' && !document.documentElement.hasAttribute('aria-busy'), null, { timeout: 10000 });
         await waitSettled(page, 10000);
       }
       if (kind === 'swupBack') {
@@ -688,22 +738,36 @@ const CASES = {
         await page.waitForFunction(() => location.pathname === '/' && !document.documentElement.hasAttribute('aria-busy'), null, { timeout: 10000 });
         await waitSettled(page, 10000);
       }
-      const fragmentY = kind === 'hashReload' ? await page.evaluate(() => Math.round(document.getElementById('work').getBoundingClientRect().top + window.scrollY)) : null;
-      const want = await scrollTo(page, kind === 'hashReload' ? fragmentY + 600 : 1200);
+      const fragmentY = viaWork(kind) ? await page.evaluate(() => Math.round(document.getElementById('work').getBoundingClientRect().top + window.scrollY)) : null;
+      const backTop = kind === 'hashBackTop' || kind === 'hashBackTopLate';
+      const target = kind === 'hashReload' ? fragmentY + 600 : kind === 'hashReloadTop' || backTop ? 0 : kind === 'pctReload' ? 600 : 1200;
+      const want = await scrollTo(page, target);
       const mode = await page.evaluate(() => history.scrollRestoration);
-      if (kind === 'reload' || kind === 'hashReload') await page.reload({ waitUntil: 'load' });
+      const url = await page.evaluate(() => location.pathname + location.hash);
+      if (kind === 'reload' || kind === 'hashReload' || kind === 'hashReloadTop' || kind === 'pctReload') await page.reload({ waitUntil: 'load' });
       else {
-        await page.goto(`${base}/work/project-01/`, { waitUntil: 'load' });
+        // The gate's path (s8back-gate.mjs): away by a full load to another project, then Back.
+        await page.goto(`${base}/work/${backTop ? 'project-02' : 'project-01'}/`, { waitUntil: 'load' });
         await waitSettled(page, 10000);
+        if (kind === 'hashBackTopLate') await ctx.addInitScript({ content: LATE_FRAGMENT_SCROLL });
         await page.goBack({ waitUntil: 'load' });
       }
       await waitSettled(page, 15000);
-      await sleep(300);
+      // WebKit's own fragment scroll can come well after the load on the full tier (the gate read WK-D3 1.5 s later).
+      await sleep(hashRowKinds.has(kind) ? 1500 : 300);
       const got = await yNow(page);
       const nav = await page.evaluate(() => performance.getEntriesByType('navigation')[0]?.type ?? null);
+      const lateScroll = kind === 'hashBackTopLate' ? await page.evaluate(() => window.__lateFragmentScroll ?? null) : undefined;
       const c = verdict(gate);
       await ctx.close();
-      rows.push({ kind, modeBefore: mode, want, got, nav, fragmentY, ...c, ok: want > 0 && Math.abs(got - want) <= 1 && c.ok && (kind !== 'hashReload' || mode === 'manual') });
+      // Every row lands where the reader was, 0 included (no 'want > 0' precondition). A hash row holds only where the
+      // fragment is away from the top (else landing on it and on the reader's 0 look alike), on a router-restored entry.
+      const hashRow = viaWork(kind) || kind === 'pctReload';
+      const ok = (target === 0 ? want === 0 : want > 0) && Math.abs(got - want) <= 1 && c.ok && (!hashRow || mode === 'manual') && (!viaWork(kind) || fragmentY > 100)
+        && (kind !== 'pctReload' || url === '/#%')
+        // The late fragment scroll really happened (it put the page on the fragment), so the row tests the restore.
+        && (kind !== 'hashBackTopLate' || (nav === 'back_forward' && (lateScroll ?? 0) > 100));
+      rows.push({ kind, profile: at ?? p, modeBefore: mode, url, want, got, nav, fragmentY, ...(lateScroll !== undefined ? { lateScroll } : {}), ...c, ok });
     }
     return { rows, pass: rows.every((r) => r.ok) };
   },
@@ -758,6 +822,61 @@ const CASES = {
         const after = await settles(page);
         const restored = await read();
         r = { whileLost, restored, after, ok: whileLost.lost === true && whileLost.isGl === 0 && whileLost.entities === 0 && restored.lost === false && restored.isGl > 0 && restored.entities > 0 && after.ok };
+      }
+      const c = verdict(gate);
+      await ctx.close();
+      rows.push({ variant, ...r, ...c, ok: r.ok && c.ok });
+    }
+    // (c) a persistent entity (round-6 must-fix one-loss-costs-restore (b), Breaker 5.1 #2): on / the camera is bound; a
+    // Swup visit to a project, a context loss, Back to / (a Swup popstate visit: the camera's slot returns while lost),
+    // then the restore. The camera must be bound again (2f496c8 bound only slots with no entity, and the camera keeps
+    // its entity across a swap). The no-loss control is the same visit and Back with no loss.
+    for (const variant of ['persistent-lost', 'persistent-control']) {
+      const { ctx, page, gate } = await open(base, profile, '/');
+      const camera = () => page.evaluate(() => ({ bound: window.__stage.bounds('camera')?.gl != null, visible: window.__stage.gl?.entity('camera')?.visible?.() ?? null, lost: window.__stage.gl?.renderer?.getContext().isContextLost() ?? null, tier: window.__stage.tier, losses: window.__stage.stats.losses, restores: window.__stage.stats.restores }));
+      let r;
+      try {
+        await page.waitForFunction(() => window.__stage?.glState === 'ready' && window.__stage.bounds('camera')?.gl != null, null, { polling: 100, timeout: 20000 });
+        await waitSettled(page, 15000);
+        const before = await camera();
+        await page.evaluate(() => {
+          const a = document.createElement('a');
+          a.href = '/work/project-01/';
+          a.id = 'sb-away';
+          a.textContent = 'away';
+          document.getElementById('main')?.prepend(a);
+        });
+        await page.focus('#sb-away');
+        await page.keyboard.press('Enter');
+        await page.waitForFunction(() => location.pathname === '/work/project-01/' && !document.documentElement.hasAttribute('aria-busy'), null, { timeout: 10000 });
+        await sleep(400);
+        if (variant === 'persistent-lost') {
+          await page.evaluate(() => new Promise((res) => {
+            document.getElementById('gl').addEventListener('webglcontextlost', () => setTimeout(res, 50), { once: true });
+            window.__stage.gl.forceContextLoss();
+          }));
+        }
+        await page.evaluate(() => history.back());
+        await page.waitForFunction(() => location.pathname === '/' && !document.documentElement.hasAttribute('aria-busy'), null, { timeout: 10000 });
+        await sleep(400);
+        const whileLost = await camera();
+        if (variant === 'persistent-lost') {
+          await page.evaluate(() => new Promise((res) => {
+            document.getElementById('gl').addEventListener('webglcontextrestored', res, { once: true });
+            window.__stage.gl.forceContextRestore();
+            setTimeout(res, 3000);
+          }));
+        }
+        const after = await settles(page);
+        const restored = await camera();
+        const lostRow = variant === 'persistent-lost';
+        r = {
+          before, whileLost, restored, after,
+          ok: before.bound && restored.bound && restored.lost === false && restored.tier === before.tier && after.ok
+            && (!lostRow || (whileLost.lost === true && restored.losses === 1 && restored.restores === 1)),
+        };
+      } catch (e) {
+        r = { error: String(e?.message || e).slice(0, 300), ok: false };
       }
       const c = verdict(gate);
       await ctx.close();

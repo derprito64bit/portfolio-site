@@ -2,7 +2,7 @@
 // no-op develop, and the stage-local projection of the fixture cube. Reference host only (real GPU).
 // Usage: node tests/w-f/stage.mjs [--out stage.json]
 import sharp from 'sharp';
-import { PROFILES, browser, budget, cliMain, expectedTier, newContext, serve, sleep, waitSettled } from '../harness/lib.mjs';
+import { PROFILES, browser, budget, cliMain, consoleGate, expectedTier, newContext, serve, sleep, waitSettled } from '../harness/lib.mjs';
 
 const nextFrames = (page, n = 1) => page.evaluate((k) => new Promise((r) => { let i = 0; const f = () => (++i >= k ? r(i) : window.requestAnimationFrame(f)); window.requestAnimationFrame(f); }), n);
 
@@ -293,12 +293,31 @@ async function restoreGovernor(base) {
   return { rows, pass: rows.every((r) => r.pass) };
 }
 
+/** Records, in the page, when #gl's context was lost and restored (capture listeners: the events do not bubble). */
+const LOSS_CLOCK = `(() => {
+  document.addEventListener('webglcontextlost', (e) => { if (e.target && e.target.id === 'gl') (window.__lossAt ||= []).push(performance.now()); }, true);
+  document.addEventListener('webglcontextrestored', (e) => { if (e.target && e.target.id === 'gl') (window.__restoreAt ||= []).push(performance.now()); }, true);
+})();`;
+/** The stage's loss record, the context's state and when stage:gl-ready was marked (null: never). */
+const LOSS_STATE = () => {
+  const s = window.__stage;
+  const ready = s.marks().find((m) => m.name === 'stage:gl-ready');
+  return {
+    glState: s.glState, tier: s.tier, reason: s.tierReason, settled: s.settled, losses: s.stats.losses, restores: s.stats.restores, probeRetries: s.stats.probeRetries,
+    probe: s.gl?.probe ?? null, lostNow: s.gl?.renderer?.getContext().isContextLost() ?? null, readyAt: ready ? ready.t : null,
+    lossAt: window.__lossAt ?? [], restoreAt: window.__restoreAt ?? [], isGl: document.querySelectorAll('.is-gl').length, lostOnce: Boolean(window.__lostOnce),
+  };
+};
+
 /**
- * The W-D017 boot probe does not pass on a lost context (round-5 should-fix S7, Breaker 4.3 #3): the stage context is
- * lost in the task after its first program link (the probe's compileAsync) and restored 300 ms later, at D2 on /bench/
- * (full). A probe that timed nothing (three's render returns at once on a lost context: median about 0 ms) must report
- * lost and fail, so the tier goes to lite ('probe'). Control: with no loss the probe passes and the tier stays full (or
- * a logged probe demotion on a slow GPU, as tiers allows), and is not reported lost.
+ * The W-D017 boot probe on a lost context (round-5 should-fix S7, Breaker 4.3 #3; round-6 must-fix one-loss-costs-restore
+ * (c), Breaker 5.1 #4): the stage context is lost in the task after its first program link (the probe's compileAsync)
+ * and restored 300 ms later, at D2 on /bench/ and on / (full; on / W-S1's camera builds on the context at gl-ready). A
+ * probe that saw its context lost timed nothing and never passes; the boot waits for the restore and probes again, so
+ * the one loss costs only its restore (ruling 6049539219 item 2): one loss, one restore, a probe retry, a final probe
+ * that was not lost, the tier that probe gives (full, or a logged probe demotion on a slow GPU), GL ready only after the
+ * restore, and a clean console (2f496c8 marked gl-ready 12 to 16 ms after the loss, stepped to lite, and on / logged 6
+ * 'INVALID_OPERATION: delete: object does not belong to this context'). Control: no loss, no retry, the same tier rule.
  */
 async function probeLoss(base) {
   const LOSE = `(() => {
@@ -315,19 +334,90 @@ async function probeLoss(base) {
     };
   })();`;
   const rows = [];
-  for (const variant of ['loss', 'control']) {
-    const ctx = await newContext('D2');
-    if (variant === 'loss') await ctx.addInitScript({ content: LOSE });
-    const page = await ctx.newPage();
-    await page.goto(`${base}/bench/`, { waitUntil: 'load' });
-    await page.waitForFunction(() => ['ready', 'failed', 'off'].includes(window.__stage?.glState), null, { polling: 100, timeout: 20000 }).catch(() => {});
-    await waitSettled(page, 15000);
-    const s = await page.evaluate(() => ({ glState: window.__stage.glState, tier: window.__stage.tier, reason: window.__stage.tierReason, probe: window.__stage.gl?.probe ?? null, lostOnce: Boolean(window.__lostOnce) }));
-    await ctx.close();
-    const pass = variant === 'loss'
-      ? s.lostOnce && s.probe?.lost === true && s.probe.pass === false && s.tier === 'lite' && s.reason === 'probe'
-      : s.probe?.lost === false && (s.probe.pass ? s.tier === 'full' : s.tier === 'lite' && s.reason === 'probe');
-    rows.push({ variant, ...s, pass });
+  for (const path of ['/bench/', '/']) {
+    for (const variant of ['loss', 'control']) {
+      const ctx = await newContext('D2');
+      await ctx.addInitScript({ content: LOSS_CLOCK });
+      if (variant === 'loss') await ctx.addInitScript({ content: LOSE });
+      const page = await ctx.newPage();
+      const gate = consoleGate(page);
+      await page.goto(`${base}${path}`, { waitUntil: 'load' });
+      await page.waitForFunction(() => ['ready', 'failed', 'off'].includes(window.__stage?.glState), null, { polling: 100, timeout: 20000 }).catch(() => {});
+      await waitSettled(page, 15000);
+      await sleep(500);
+      const s = await page.evaluate(LOSS_STATE);
+      const v = gate.verdict();
+      await ctx.close();
+      const tierOk = s.probe?.pass ? s.tier === 'full' : s.tier === 'lite' && s.reason === 'probe';
+      const pass = variant === 'loss'
+        ? s.lostOnce && s.losses === 1 && s.restores === 1 && s.probeRetries >= 1 && s.probe?.lost === false && tierOk && s.glState === 'ready'
+          && s.restoreAt.length === 1 && s.readyAt !== null && s.readyAt >= Math.floor(s.restoreAt[0]) && v.pass
+        : s.probe?.lost === false && s.probeRetries === 0 && s.losses === 0 && tierOk && s.glState === 'ready' && v.pass;
+      rows.push({ path, variant, ...s, console: v.failures.map((f) => `${f.channel}/${f.level}: ${f.text.slice(0, 160)}`), pass });
+    }
+  }
+  return { rows, pass: rows.every((r) => r.pass) };
+}
+
+/**
+ * A context loss in the boot's task gap (round-6 must-fix one-loss-costs-restore (a), Breaker 5.1 #3): the loss is queued
+ * (a timer) as #gl's getContext('webgl2') returns, so it lands between the context and three's renderer, which d9abc26
+ * put in separate tasks. W-D017 prices one loss at its restore: the loss is counted (losses 1), the tier is kept and the
+ * console stays clean, at D2 and at D3 in WebKit, on /. With a restore 300 ms later GL boots (ready after the restore);
+ * with none it waits (glState 'lost', settled, no slot taken). 2f496c8 left the loss unprevented, read it as no WebGL2
+ * and ended static (losses 0). Control (W-D017): that loss restored, then a second loss within 60 s, ends static.
+ */
+async function bootGap(base) {
+  const PLANT = (restore) => `(() => {
+    const get = HTMLCanvasElement.prototype.getContext;
+    HTMLCanvasElement.prototype.getContext = function (type, attrs) {
+      const c = get.call(this, type, attrs);
+      if (c && this.id === 'gl' && type === 'webgl2' && !window.__lostOnce) {
+        window.__lostOnce = true;
+        const ext = c.getExtension('WEBGL_lose_context');
+        setTimeout(() => ext.loseContext(), 0);
+        ${restore ? "this.addEventListener('webglcontextlost', () => setTimeout(() => ext.restoreContext(), 300), { once: true });" : ''}
+      }
+      return c;
+    };
+  })();`;
+  const rows = [];
+  for (const [profile, extra] of [['D2', {}], ['D3', { browser: 'webkit' }]]) {
+    for (const variant of ['restored', 'never restored', 'control: a second loss within 60 s']) {
+      const ctx = await newContext(profile, 'auto', extra);
+      await ctx.addInitScript({ content: LOSS_CLOCK });
+      await ctx.addInitScript({ content: PLANT(variant !== 'never restored') });
+      const page = await ctx.newPage();
+      const gate = consoleGate(page);
+      let s;
+      let headTier = null;
+      try {
+        await page.goto(`${base}/`, { waitUntil: 'load' });
+        headTier = await page.evaluate(() => window.__stage?.tierLog?.[0]?.tier ?? null);
+        await page.waitForFunction(() => window.__lostOnce && ['ready', 'lost', 'failed', 'off'].includes(window.__stage?.glState), null, { polling: 100, timeout: 20000 }).catch(() => {});
+        if (variant === 'never restored') await sleep(1500);
+        await waitSettled(page, 15000);
+        if (variant.startsWith('control')) {
+          await page.evaluate(() => new Promise((res) => {
+            document.getElementById('gl').addEventListener('webglcontextlost', () => setTimeout(res, 100), { once: true });
+            window.__stage.gl.forceContextLoss();
+          }));
+          await sleep(300);
+        }
+        s = await page.evaluate(LOSS_STATE);
+      } catch (e) {
+        s = { error: String(e?.message || e).slice(0, 300) };
+      }
+      const v = gate.verdict();
+      await ctx.close();
+      const kept = s.tier === headTier || (s.tier === 'lite' && headTier === 'full' && s.reason === 'probe');
+      let pass;
+      if (s.error) pass = false;
+      else if (variant === 'restored') pass = s.lostOnce && s.losses === 1 && s.restores === 1 && kept && s.glState === 'ready' && s.readyAt !== null && s.restoreAt.length === 1 && s.readyAt >= Math.floor(s.restoreAt[0]) && v.pass;
+      else if (variant === 'never restored') pass = s.lostOnce && s.losses === 1 && s.restores === 0 && s.tier === headTier && s.glState === 'lost' && s.settled && s.readyAt === null && s.isGl === 0 && v.pass;
+      else pass = s.lostOnce && s.losses === 2 && s.tier === 'static' && s.reason === 'context-loss';
+      rows.push({ profile: `${profile}${extra.browser ? `@${extra.browser}` : ''}`, variant, headTier, ...s, console: v.failures.map((f) => `${f.channel}/${f.level}: ${f.text.slice(0, 160)}`), pass });
+    }
   }
   return { rows, pass: rows.every((r) => r.pass) };
 }
@@ -397,7 +487,7 @@ async function cubeProjection(base) {
 export async function run(opts = {}) {
   const srv = await serve(opts.dist ? String(opts.dist) : undefined);
   const only = opts.only ? new Set(String(opts.only).split(',')) : null;
-  const checks = { tiers, governor, caps, reducedMidTimeline, motionSwitch, railSlack, contextLoss, restoreGovernor, probeLoss, developKeepsFocus, cubeProjection };
+  const checks = { tiers, governor, caps, reducedMidTimeline, motionSwitch, railSlack, contextLoss, restoreGovernor, probeLoss, bootGap, developKeepsFocus, cubeProjection };
   const out = {};
   try {
     for (const [name, fn] of Object.entries(checks)) if (!only || only.has(name)) out[name] = await fn(srv.base);

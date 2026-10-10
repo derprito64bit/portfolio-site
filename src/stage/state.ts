@@ -26,6 +26,8 @@ export const stats = {
   swaps: 0,
   losses: 0,
   restores: 0,
+  /** Boot probes run again because the context was lost during the first (it timed nothing). */
+  probeRetries: 0,
   governorSteps: 0,
   motionLogInvalid: 0,
   /** Errors thrown by a crew's hook inside a frame (reported as uncaught; the ticker keeps running). */

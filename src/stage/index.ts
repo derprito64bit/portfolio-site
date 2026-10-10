@@ -58,7 +58,7 @@ document.addEventListener('visibilitychange', () => {
 });
 
 // ---------------------------------------------------------------- settled (capture waits for this)
-const SETTLED_GL = new Set(['off', 'deferred', 'ready', 'failed']);
+const SETTLED_GL = new Set(['off', 'deferred', 'lost', 'ready', 'failed']);
 function isSettled(): boolean {
   return fontsReady && !isRunning() && !anyActive() && SETTLED_GL.has(glState());
 }

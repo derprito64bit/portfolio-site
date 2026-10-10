@@ -98,9 +98,14 @@ export async function runProbe(renderer: any, view: { dpr: number }): Promise<Pr
     canvas.removeEventListener('webglcontextlost', onLoss);
     lost ||= gl.isContextLost();
     renderer.setRenderTarget(null);
-    rt.dispose();
-    geo.dispose();
-    mats.forEach((m) => m.dispose());
+    // A loss destroyed these objects with its context. Freeing them later, once the context is back, deletes objects of
+    // the old context ('INVALID_OPERATION: delete: object does not belong to this context', round-6 must-fix
+    // one-loss-costs-restore (c)), so after a loss they are only dropped.
+    if (!lost) {
+      rt.dispose();
+      geo.dispose();
+      mats.forEach((m) => m.dispose());
+    }
   }
   times.sort((x, y) => x - y);
   const medianMs = times.length ? times[Math.floor(times.length / 2)] : Infinity;

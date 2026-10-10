@@ -111,6 +111,22 @@ let represent = 0;
 /** The last presented frame drew nothing, so the canvas shows only the clear colour. */
 let presentedClear = false;
 const lossTimes: number[] = [];
+/**
+ * The slot each entity is bound to now, by slot id. A restore binds every current slot whose entity is not bound to it
+ * (round-6 must-fix one-loss-costs-restore (b)): a persistent entity (W-S1's camera) keeps its entity across a swap, so
+ * "has an entity" does not mean "is bound" once its slot came back while the context was lost.
+ */
+const boundTo = new Map<string, Slot>();
+/** The boot is waiting for its lost context to come back (boot.ts reports glState 'lost' meanwhile). */
+let waitingRestore = false;
+/** True while the GL boot waits for a lost context's restore: nothing is built on it and GL is not reported ready. */
+export function waitingForRestore(): boolean {
+  return waitingRestore;
+}
+/** The boot has wired the stage into the page (gl-ready); before that a restore only clears the loss. */
+let wiredUp = false;
+/** The context the boot made (untilRestored reads whether it is lost). */
+let bootContext: WebGL2RenderingContext | null = null;
 
 class StageViewImpl implements StageView {
   readonly scene = new Scene();
@@ -133,6 +149,8 @@ function rendererName(gl: WebGL2RenderingContext): string {
 }
 
 const nextTask = () => new Promise<void>((r) => setTimeout(r, 0));
+/** Boot probes at most (a probe that saw a loss is run again after the restore; a second loss in 60 s is static). */
+const PROBE_ATTEMPTS = 3;
 
 /**
  * GL commands issued between frames (three's compileAsync from a timer, a texture upload from a decode) wait in
@@ -287,13 +305,17 @@ function bindSlot(s: Slot): void {
     entities.set(s.id, e);
   }
   const bound = e;
-  guard(() => bound.bind(s), undefined);
+  guard(() => {
+    bound.bind(s);
+    boundTo.set(s.id, s);
+  }, undefined);
   invalidate();
 }
 function unbindSlots(gone: Slot[]): void {
   for (const s of gone) {
     const e = entities.get(s.id);
     if (!e) continue;
+    boundTo.delete(s.id);
     guard(() => e.unbind(), undefined);
     if (!guard(() => e.persistent, false)) {
       guard(() => e.dispose(), undefined);
@@ -319,13 +341,49 @@ function onRestored(): void {
   lost = false;
   presentedClear = false;
   stats.restores++;
+  // A loss during the boot: the boot waits for this restore (untilRestored) and goes on from where it was.
+  if (!wiredUp) return;
   // The frames that rebuild the scene after a restore are not steady frames (perf row 33: one restore stepped the
   // governor in the WebKit opening); a single loss costs the restore and nothing more (W-D017).
   restartClock();
   for (const e of entities.values()) guard(() => e.restore?.(), undefined);
-  for (const s of allSlots()) if (!entities.has(s.id)) bindSlot(s);
+  // Every current slot whose entity is not bound to it: the slots that arrived during the loss, persistent entities'
+  // returning slots included (round-6 must-fix one-loss-costs-restore (b)).
+  for (const s of allSlots()) if (boundTo.get(s.id) !== s) bindSlot(s);
   resize();
   markDirty();
+}
+
+/**
+ * A context lost while the GL boot runs (round-6 must-fix one-loss-costs-restore (a), (c)): nothing is built on it and
+ * GL is not reported ready on it; the boot waits here for the restore (W-D017 prices one loss at its restore).
+ * Resolves true once the context is back, false when the boot must stop waiting: the page opted out of GL (a Swup
+ * visit to the 404, `stop`) or the tier dropped to static (a second loss within 60 s). Event-driven: nothing polls.
+ */
+function untilRestored(stop: () => boolean): Promise<boolean> {
+  // The context can read lost before its lost event is dispatched (a loss queued as the boot's task ended).
+  const isLost = () => lost || Boolean(bootContext?.isContextLost());
+  if (!isLost()) return Promise.resolve(true);
+  return new Promise((resolve) => {
+    const done = (back: boolean) => {
+      canvas.removeEventListener('webglcontextrestored', onBack);
+      mo.disconnect();
+      offTier();
+      waitingRestore = false;
+      resolve(back && !isLost());
+    };
+    // Added after onRestored (and three's own listener), so the loss is already cleared when this runs.
+    const onBack = () => done(true);
+    const mo = new MutationObserver(() => {
+      if (stop()) done(false);
+    });
+    const offTier = onTier((t) => {
+      if (t === 'static') done(false);
+    });
+    canvas.addEventListener('webglcontextrestored', onBack);
+    mo.observe(document.documentElement, { attributes: true, attributeFilter: ['data-gl-page'] });
+    waitingRestore = true;
+  });
 }
 
 /** A drop to static: GL goes for the visit, and so does its wiring (the scan and step hooks, listeners), as abandon(). */
@@ -340,6 +398,7 @@ function teardown(): void {
   setRender(null);
   for (const e of entities.values()) guard(() => e.dispose(), undefined);
   entities.clear();
+  boundTo.clear();
   views.clear();
   renderer?.dispose();
 }
@@ -428,8 +487,10 @@ export function abandon(): void {
   giveAll();
   for (const e of entities.values()) guard(() => e.dispose(), undefined);
   entities.clear();
+  boundTo.clear();
   views.clear();
   factories.length = 0;
+  wiredUp = false;
   canvas.removeEventListener('webglcontextlost', onLost);
   canvas.removeEventListener('webglcontextrestored', onRestored);
   const st = (window as unknown as { __stage?: Record<string, unknown> }).__stage;
@@ -479,40 +540,71 @@ export async function boot(stop: () => boolean = () => false): Promise<GLApi | n
     demote('static', 'no-webgl2');
     return null;
   }
+  // The loss listeners go on as soon as the context exists (round-6 must-fix one-loss-costs-restore (a)): a loss in the
+  // boot's task gaps is prevented, counted and waited out like any other (W-D017: one loss costs its restore), never
+  // read as no WebGL2. A context reused from an abandoned boot may already be lost.
+  bootContext = context;
+  lost = context.isContextLost();
+  canvas.addEventListener('webglcontextlost', onLost);
+  canvas.addEventListener('webglcontextrestored', onRestored);
+  const unlisten = () => {
+    canvas.removeEventListener('webglcontextlost', onLost);
+    canvas.removeEventListener('webglcontextrestored', onRestored);
+  };
+  // The boot stops waiting for a restore: the page opted out (stand down) or the tier went static (GL goes).
+  const gone = (): 'stood-down' | null => {
+    if (stop()) return standDown();
+    teardown();
+    return null;
+  };
   // The boot's synchronous work goes in three tasks, not one (ruling 6049539219 item 3: on a mobile load of / the context,
   // three's renderer and the first measure ran as one main-thread task of 16 to 40 ms, 4x that under Lighthouse's
   // simulated CPU): the context, then the renderer, then the measure. Each await reads the page's opt-out again.
   await nextTask();
   if (stop()) return standDown();
+  if (!(await untilRestored(stop))) return gone();
   try {
     renderer = new WebGLRenderer({ canvas, context, alpha: true, antialias: tier === 'full', powerPreference: 'high-performance', stencil: false });
   } catch {
+    unlisten();
     demote('static', 'no-webgl2');
     return null;
   }
   const gl = renderer.getContext();
   if (typeof WebGL2RenderingContext === 'undefined' || !(gl instanceof WebGL2RenderingContext)) {
+    unlisten();
     renderer.dispose();
     demote('static', 'no-webgl2');
     return null;
   }
+  // After three's own listeners, as before the boot split: three re-initialises its state on a restore first, then
+  // onRestored re-uploads and redraws through it.
+  unlisten();
+  canvas.addEventListener('webglcontextlost', onLost);
+  canvas.addEventListener('webglcontextrestored', onRestored);
   name = rendererName(gl);
   mark('stage:renderer', name);
   renderer.setClearColor(0x000000, 0);
   renderer.autoClear = false;
   renderer.info.autoReset = false;
-  canvas.addEventListener('webglcontextlost', onLost);
-  canvas.addEventListener('webglcontextrestored', onRestored);
   await nextTask();
   if (stop()) return standDown();
   resize();
   await nextTask();
   if (stop()) return standDown();
 
-  // The boot probe (W-D017): full needs 3 wet hero-size prints at <= 8 ms median, else lite.
+  // The boot probe (W-D017): full needs 3 wet hero-size prints at <= 8 ms median, else lite. A probe that saw its context
+  // lost timed nothing (S7): the boot waits for the restore and probes again, so one loss costs only its restore
+  // (ruling 6049539219 item 2; round-6 must-fix one-loss-costs-restore (c)). A second loss within 60 s is static.
   if (tier === 'full' && !new URLSearchParams(location.search).has('tier')) {
-    probeResult = await runProbe(renderer, view);
-    if (stop()) return standDown();
+    for (let attempt = 1; ; attempt++) {
+      probeResult = await runProbe(renderer, view);
+      if (stop()) return standDown();
+      if (!probeResult.lost || attempt >= PROBE_ATTEMPTS) break;
+      stats.probeRetries++;
+      if (!(await untilRestored(stop))) return gone();
+      resize();
+    }
     if (!probeResult.pass) demote('lite', 'probe');
     resize();
     await nextTask();
@@ -524,9 +616,14 @@ export async function boot(stop: () => boolean = () => false): Promise<GLApi | n
   }
 
   // Test fixtures and the GPU bench load only on the pages that ask for them (/bench/). They are imported before
-  // anything is wired, so this is the boot's last await.
+  // anything is wired.
   const fixtures = document.querySelector('[data-gl-fixture]') || flags.debug ? await import('./fixtures.ts') : null;
   const bench = document.querySelector('[data-bench]') ? await import('./bench.ts') : null;
+  if (stop()) return standDown();
+  // The boot's last await: GL is never reported ready, and nothing is built, on a lost context (round-6 must-fix
+  // one-loss-costs-restore (c): crews that built on it at gl-ready freed pre-loss objects after the restore, and the
+  // console logged 'delete: object does not belong to this context').
+  if (!(await untilRestored(stop))) return gone();
   if (stop()) return standDown();
   // A drop to static while those chunks loaded: bind nothing, and say so.
   if (dead || getTier() === 'static') {
@@ -572,6 +669,7 @@ export async function boot(stop: () => boolean = () => false): Promise<GLApi | n
   wired.push(() => removeEventListener('scroll', onScroll));
   setRender(render);
 
+  wiredUp = true;
   fixtures?.install(api);
   bench?.install(api);
   for (const s of allSlots()) bindSlot(s);
