@@ -119,6 +119,12 @@ const LINT_PLANTS = {
   clientInfoTouch: "const ci: any = (window as any).clientInformation;\nexport const m = ci['maxTouch' + 'Points'];",
   globalThisNavigator: "export const n = (globalThis as any)['navi' + 'gator']['hardware' + 'Concurrency'];",
   readAfterStringSlashes: "const u = 'a//b'; export const n = navigator.hardwareConcurrency; export { u };",
+  // Round-6 must-fix s9-lint-scanner (Breaker 5.1 #6 forms 5 and 6): the 3 forms that passed 2f496c8's lint. A regex
+  // literal holding '//' after an if condition's ')' (read there as a division, so its '//' blanked the line), and a
+  // real '//' comment right after a ':' holding a '/*' (kept as code, so the '/*' blanked the lines after it).
+  rafAfterRegexInIf: "declare const debug: boolean;\ndeclare const u: string;\ndeclare const loop: () => void;\nif (debug) /x\\/\\//.test(u), requestAnimationFrame(loop);",
+  readAfterRegexInIf: "declare const debug: boolean;\ndeclare const u: string;\nexport let n = 0;\nif (debug) /x\\/\\//.test(u), (n = navigator.hardwareConcurrency);",
+  rafAfterColonComment: 'export const o = { tick:// see docs/*.md\n  requestAnimationFrame,\n  // end */\n};',
 };
 function lintControl() {
   const lint = process.env.NEG_LINT ? resolve(process.env.NEG_LINT) : join(ROOT, 'scripts/check/lint.mjs');

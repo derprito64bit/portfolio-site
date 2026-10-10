@@ -10,6 +10,7 @@ import { execFileSync } from 'node:child_process';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import ts from 'typescript';
 import { BANNED, DASHES } from '../../src/lib/content/validate.js';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
@@ -24,87 +25,47 @@ const SRC = srcArg > 0 ? resolve(process.argv[srcArg + 1]) : join(ROOT, 'src');
 const src = walk(SRC).filter((f) => /\.(ts|js|mjs|astro)$/.test(f) && !f.endsWith('.d.ts'));
 
 /**
- * Comments out, everything else kept, line numbers kept (round-5 should-fix S9, Breaker 4.2 #5: the old regex strip
- * took '//' inside a string such as 'a//b' for a comment and dropped the rest of the line, hiding a requestAnimationFrame
- * or a navigator read after it). A small scanner: strings ('', "", template literals with ${} nesting) and regex
- * literals are skipped as text, so only real comments go; a comment's characters become spaces and its newlines stay.
- * In .astro markup a '//' right after ':' (a URL in prose) is not a comment, as before. A string the scanner opens by
- * mistake (an apostrophe in prose) ends at its line's end, and since strings are kept, a mistake can only keep text.
+ * Comments out, everything else kept, line numbers kept. TypeScript's own parser finds the comments (round-6 must-fix
+ * s9-lint-scanner, Breaker 5.1 #6 forms 5 and 6): round 5's hand scanner read a regex literal after an if condition's
+ * ')' as a division, so the '//' inside it blanked the rest of the line, and it kept a '//' comment right after a ':' as
+ * code, so a '/*' inside that comment blanked the lines after it; both hid live code. Here a comment is only what the
+ * parser leaves as trivia: the leading and trailing comment ranges of every token of the parsed file (strings, template
+ * text and regex literals are tokens, never trivia). A comment's characters become spaces and its newlines stay.
+ * In an .astro file only the frontmatter and the <script> bodies are code and parsed so; the markup is kept whole, so a
+ * '//' in prose (a URL) is never a comment and anything written in markup counts.
  */
-function stripComments(t) {
+function stripCode(t, kind) {
+  const sf = ts.createSourceFile(kind === ts.ScriptKind.JS ? 'lint.js' : 'lint.ts', t, ts.ScriptTarget.Latest, true, kind);
+  const ranges = new Map();
+  const add = (list) => {
+    for (const r of list ?? []) ranges.set(r.pos, r.end);
+  };
+  const visit = (node) => {
+    // A JSDoc block is the leading trivia of its node's first token, found there; its own nodes are not walked.
+    if (node.kind >= ts.SyntaxKind.FirstJSDocNode && node.kind <= ts.SyntaxKind.LastJSDocNode) return;
+    add(ts.getLeadingCommentRanges(t, node.pos));
+    add(ts.getTrailingCommentRanges(t, node.end));
+    for (const child of node.getChildren(sf)) visit(child);
+  };
+  visit(sf);
   let out = '';
-  let i = 0;
-  const n = t.length;
-  const tpl = []; // brace depth inside each open ${ }
-  let mode = 'code';
-  let prev = ''; // the last significant character in code (for a regex literal vs a division)
-  let word = ''; // the last identifier in code
-  const REGEX_AFTER = new Set(['', '(', ',', '=', ':', '[', '!', '&', '|', '?', '{', '}', ';', '+', '-', '*', '%', '<', '>', '~', '^']);
-  const REGEX_WORDS = new Set(['return', 'typeof', 'case', 'do', 'else', 'in', 'of', 'new', 'delete', 'void', 'throw', 'instanceof', 'yield', 'await']);
-  const blank = (s) => s.replace(/[^\n]/g, ' ');
-  while (i < n) {
-    const c = t[i];
-    const d = t[i + 1];
-    if (mode === 'code') {
-      if (c === '/' && d === '/' && t[i - 1] !== ':') {
-        const end = t.indexOf('\n', i);
-        const stop = end < 0 ? n : end;
-        out += blank(t.slice(i, stop));
-        i = stop;
-        continue;
-      }
-      if (c === '/' && d === '*') {
-        const end = t.indexOf('*/', i + 2);
-        const stop = end < 0 ? n : end + 2;
-        out += blank(t.slice(i, stop));
-        i = stop;
-        continue;
-      }
-      if (c === "'" || c === '"') mode = c;
-      else if (c === '`') mode = 'tpl';
-      else if (c === '/' && (REGEX_AFTER.has(prev) || REGEX_WORDS.has(word))) mode = 'regex';
-      else if (c === '{' && tpl.length) tpl[tpl.length - 1]++;
-      else if (c === '}' && tpl.length) {
-        if (tpl[tpl.length - 1] === 0) {
-          tpl.pop();
-          mode = 'tpl';
-        } else tpl[tpl.length - 1]--;
-      }
-      if (/[A-Za-z0-9_$]/.test(c)) word = /[A-Za-z0-9_$]/.test(t[i - 1] ?? '') ? word + c : c;
-      else if (!/\s/.test(c)) word = '';
-      if (!/\s/.test(c)) prev = c;
-      out += c;
-      i++;
-      continue;
-    }
-    // Inside a string, a template's text or a regex literal: kept as it is.
-    out += c;
-    i++;
-    if (c === '\\') {
-      if (i < n) out += t[i++];
-      continue;
-    }
-    if (mode === "'" || mode === '"') {
-      if (c === mode || c === '\n') mode = 'code';
-    } else if (mode === 'tpl') {
-      if (c === '`') mode = 'code';
-      else if (c === '$' && t[i] === '{') {
-        out += t[i++];
-        tpl.push(0);
-        mode = 'code';
-      }
-    } else if (mode === 'regex') {
-      if (c === '[') mode = 'regexClass';
-      else if (c === '/' || c === '\n') mode = 'code';
-    } else if (mode === 'regexClass') {
-      if (c === ']') mode = 'regex';
-      else if (c === '\n') mode = 'code';
-    }
-    if (mode === 'code') {
-      prev = 'x'; // a string or a regex ends an expression: a '/' after it divides
-      word = '';
-    }
+  let at = 0;
+  for (const [pos, end] of [...ranges].sort((a, b) => a[0] - b[0])) {
+    if (pos < at) continue;
+    out += t.slice(at, pos) + t.slice(pos, end).replace(/[^\n]/g, ' ');
+    at = end;
   }
+  return out + t.slice(at);
+}
+function stripComments(t, file) {
+  if (!file.endsWith('.astro')) return stripCode(t, /\.(m?js)$/.test(file) ? ts.ScriptKind.JS : ts.ScriptKind.TS);
+  // The frontmatter (between the opening and closing '---' lines) and every <script> body, each stripped as TypeScript.
+  const regions = [];
+  const fm = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(t);
+  if (fm) regions.push([t.indexOf('\n') + 1, fm[1].length]);
+  for (const m of t.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)) regions.push([m.index + m[0].indexOf('>') + 1, m[1].length]);
+  let out = t;
+  for (const [start, len] of regions) out = out.slice(0, start) + stripCode(out.slice(start, start + len), ts.ScriptKind.TS) + out.slice(start + len);
   return out;
 }
 
@@ -123,7 +84,7 @@ const RAF_RE = /requestanimation|animationframe/gi;
 const FORBIDDEN_RE = /\b(hardwareConcurrency|maxTouchPoints)\b|\b(navigator|clientInformation)\b(?!\s*\??\.\s*[A-Za-z_$])/g;
 const GLOBAL_COMPUTED_RE = /\b(globalThis|window|self)\b(?:\s+as\s+[^)]*\))?\)?\s*(?:\?\.)?\s*\[/g;
 for (const f of src) {
-  const code = stripComments(readFileSync(f, 'utf8'));
+  const code = stripComments(readFileSync(f, 'utf8'), f);
   const line = (i) => code.slice(0, i).split('\n').length;
   const where = rel(f).startsWith('..') ? f.replaceAll('\\', '/') : rel(f);
   for (const m of code.matchAll(RAF_RE)) raf.push(`${where}:${line(m.index)}`);
