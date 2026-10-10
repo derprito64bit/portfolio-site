@@ -1,12 +1,11 @@
 ---
-// Home (W-D004): hero, Selected work, Proof sheet, Awards and medals, the door; the footer comes from the layout.
+// Home (W-D004, D-023): hero, Selected work, Proof sheet, Awards and medals; the footer (contact) comes from the layout.
 // W-F mounts the sections in their fixed order; each section belongs to its crew.
 import Base from '../layouts/Base.astro';
 import Hero from '../sections/hero/Hero.astro';
 import Work from '../sections/work/Work.astro';
 import Sheet from '../sections/sheet/Sheet.astro';
 import Honours from '../sections/honours/Honours.astro';
-import Door from '../sections/door/Door.astro';
 import { content } from '../lib/content/index.ts';
 ---
 <Base title="Portfolio" path="/" page="home" noindex={content.hasPlaceholders}>
@@ -14,5 +13,4 @@ import { content } from '../lib/content/index.ts';
   <Work />
   <Sheet />
   <Honours />
-  <Door />
 </Base>

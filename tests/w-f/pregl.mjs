@@ -1,13 +1,15 @@
 // Pre-GL (budgets.md, D-005, W-D034).
 //  1. bytes: the JavaScript the network delivered before the stage:gl-start mark, summed from the network log (encoded
-//     bytes over gzip from serve-dist), on the home page at D2 (full) and P2 (lite). <= 35 kB gz.
+//     bytes over gzip from serve-dist), on the home page at D2 (full) and P2 (lite). At most the json budgets block's
+//     site.preGlJsKbGz.
 //  2. order: on every tier and every boot path, first contentful paint comes before stage:gl-start and before the first
-//     request for a GL chunk (gl.*.js, three.*.js), and stage:gl-start comes after the page could know about FCP (a
-//     test-owned PerformanceObserver records when the FCP entry is delivered). The static tier never starts GL. Each
+//     request for a GL chunk (gl.*.js, three.*.js), and stage:gl-start comes after the page could know about FCP (the
+//     test records the first moment page script sees the FCP entry: a PerformanceObserver delivery or a
+//     getEntriesByName call that returns it, as the stage's own check does). The static tier never starts GL. Each
 //     GL case runs --repeat times (default 3). Fails if any run breaks the order, so the lite boot cannot slip back in
 //     front of first paint when the hero lands.
 // Usage: node tests/w-f/pregl.mjs [--out pregl.json] [--skip-bytes] [--repeat 3] [--cases D2:/,P2:/]
-import { cliMain, newContext, serve, sleep, waitSettled } from '../harness/lib.mjs';
+import { budget, cliMain, newContext, serve, sleep, waitSettled } from '../harness/lib.mjs';
 
 const GL_CHUNK = /\/_astro\/(gl|three\.[a-z]+)\.[\w-]+\.js$/;
 
@@ -52,12 +54,22 @@ const CASES = [
   { profile: 'WK-P2', route: '/', earlyTouch: true, expect: 'lite' },
 ];
 
-// Test-owned: when the FCP entry reaches page script (the earliest moment a page can act on first paint).
+// Test-owned: when the FCP entry reaches page script (the earliest moment a page can act on first paint): the first
+// of a PerformanceObserver delivery and a performance.getEntriesByName('first-contentful-paint') call that returns it
+// (the stage's own check; an observer's callback task can run after it, behind frame work: measured 11 ms later on the
+// P2 early-touch path).
 const FCP_SEEN = `(() => {
+  const seen = () => { if (window.__fcpDeliveredAt == null) window.__fcpDeliveredAt = performance.now(); };
   try {
+    const get = performance.getEntriesByName.bind(performance);
+    performance.getEntriesByName = function (name, type) {
+      const r = get(name, type);
+      if (name === 'first-contentful-paint' && r.length) seen();
+      return r;
+    };
     const po = new PerformanceObserver((list) => {
       if (!list.getEntriesByName('first-contentful-paint').length) return;
-      window.__fcpDeliveredAt = performance.now();
+      seen();
       po.disconnect();
     });
     po.observe({ type: 'paint', buffered: true });
@@ -96,7 +108,7 @@ async function bytes(srv) {
     const all = [...reqs.values()].filter((r) => r.type === 'Script' && r.bytes);
     const before = all.filter((r) => timing.glStart === null || startOf(r.url) < timing.glStart);
     const sum = before.reduce((n, r) => n + r.bytes, 0);
-    rows.push({ profile, glStartMs: timing.glStart, scripts: all.map((r) => ({ url: r.url.replace(srv.base, ''), bytes: r.bytes, encoding: r.encoding, startedMs: Math.round(startOf(r.url)), preGL: before.includes(r) })), preGLBytes: sum, pass: sum <= 35_000 && sum > 0 });
+    rows.push({ profile, glStartMs: timing.glStart, scripts: all.map((r) => ({ url: r.url.replace(srv.base, ''), bytes: r.bytes, encoding: r.encoding, startedMs: Math.round(startOf(r.url)), preGL: before.includes(r) })), preGLBytes: sum, limitBytes: budget('site.preGlJsKbGz') * 1000, pass: sum <= budget('site.preGlJsKbGz') * 1000 && sum > 0 });
     await ctx.close();
   }
   return rows;

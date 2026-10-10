@@ -8,15 +8,19 @@
 //   node scripts/crew.mjs a11y [opts]           axe (D2, T2, P2 x auto, static, reduced, dark), the keyboard walk with
 //                                               ring coverage, text spacing, forced colours, dark scheme, an
 //                                               accessibility-tree snapshot per route and the text-over-GL check
-//   node scripts/crew.mjs lighthouse [opts]     Lighthouse 13.5.0, 5 runs per form factor, median by score, valid
-//                                               only on a real renderer at the expected tier and with the LCP element
-//                                               budgets.md names (the h1 on desktop; the h1 or print 1's still on
-//                                               mobile); every run must request GL after the observed FCP (D-005), and
-//                                               the medians must meet the LCP, TBT and CLS budgets (budgets.md)
+//   node scripts/crew.mjs lighthouse [opts]     Lighthouse (the budgets block's version and run count) per form
+//                                               factor, medians over the clean runs, valid only on a real
+//                                               renderer at the expected tier and with the LCP element budgets.md names
+//                                               (the h1 on desktop; the h1 or print 1's still on mobile); every run
+//                                               must request GL after the observed FCP (D-005), and the medians must
+//                                               meet the Lighthouse, LCP, TBT and CLS budgets; host load per
+//                                               Measurement validity R1-R5 (hostload.ps1 precheck and -Watch, #67)
 // Options: --routes /,/work/project-01/,/404.html  --profiles D1,D2,...  --modes auto,static,reduced
 //          --crew W-F  --wave wave3a  --role crew|gate  --out <dir>
+//          lighthouse: --runs n  --budgets <budgets.md>  --precheck-wait <min>  --plant bench-low:<n|all>,watch-flagged:<n|all>,a11y-low:<n|all>
+//                      --stub <file> (tests only: planted hostload and Lighthouse results, see STUB below)
 // Evidence goes to ../portfolio-evidence/<wave>/<crew>/<sha7>/<role>/<command>/ with manifest.json. Any failed item
-// makes the command exit 1.
+// makes the command exit 1; otherwise a blocked (host) item makes it exit 75.
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -78,7 +82,7 @@ function outDir(lib, name) {
 }
 const slug = (route) => (route === '/' ? 'home' : route.replace(/^\/|\/$/g, '').replace(/[^a-z0-9]+/gi, '-'));
 
-/** Named scroll stops (W-D030) that exist on the page: top, #work, each enlargement, #sheet, #honours, #door, footer. */
+/** Named scroll stops (W-D030) that exist on the page: top, #work, each enlargement, #sheet, #honours, footer. */
 async function stops(page) {
   return page.evaluate(() => {
     const out = [{ name: 'top', y: 0 }];
@@ -88,7 +92,6 @@ async function stops(page) {
     document.querySelectorAll('#work ~ * [data-gl-id], #work ~ ol [data-gl-id]').forEach((el, i) => out.push({ name: `enlargement-${i + 1}`, y: at(el) }));
     add('sheet', '#sheet');
     add('honours', '#honours');
-    add('door', '#door');
     out.push({ name: 'footer', y: Math.max(0, document.documentElement.scrollHeight - innerHeight) });
     const seen = new Set();
     return out.filter((s) => (seen.has(s.name) ? false : seen.add(s.name)));
@@ -137,7 +140,7 @@ async function shoot() {
           const logFile = `${base}-console.json`;
           lib.writeJson(join(dir, logFile), { verdict, events: gate.events });
           items.push(lib.item(dir, logFile, { kind: 'console', route, profile, mode, tier: st?.tier ?? null, pass: verdict.pass, metrics: { failures: verdict.failures.length } }));
-          items.push({ kind: 'page', path: null, sha256: null, route, profile, mode, tier: st?.tier ?? null, pass: settled && tierOk && ovf.maxOverflowPx === 0 && ovf.offenders.length === 0, metrics: { settled, expectedTier: wantTier, tierReason: st?.tierReason ?? null, renderer: st?.renderer ?? null, overflowPx: ovf.maxOverflowPx, overflowOffenders: ovf.offenders } });
+          items.push({ kind: 'page', path: null, sha256: null, route, profile, mode, tier: st?.tier ?? null, pass: settled && tierOk && ovf.maxOverflowPx <= lib.budget('site.layout.overflowPx') && ovf.offenders.length === 0, metrics: { settled, expectedTier: wantTier, tierReason: st?.tierReason ?? null, renderer: st?.renderer ?? null, overflowPx: ovf.maxOverflowPx, overflowOffenders: ovf.offenders } });
           await ctx.close();
         }
       }
@@ -175,7 +178,7 @@ async function a11y() {
           const contrastIncomplete = r.incomplete.filter((x) => x.id === 'color-contrast');
           const file = `axe/${slug(route)}-${profile}-${mode}.json`;
           lib.writeJson(join(dir, file), { violations: r.violations, incomplete: r.incomplete.map((x) => ({ id: x.id, nodes: x.nodes.map((n) => ({ target: n.target, why: n.any.map((a) => a.message).join(' | ') })) })), passes: r.passes.length, testEngine: r.testEngine });
-          items.push(lib.item(dir, file, { kind: 'axe', route, profile, mode, tier: null, pass: r.violations.length === 0 && !(mode === 'static' && contrastIncomplete.length), metrics: { violations: r.violations.length, incomplete: r.incomplete.length, contrastIncomplete: contrastIncomplete.length } }));
+          items.push(lib.item(dir, file, { kind: 'axe', route, profile, mode, tier: null, pass: r.violations.length <= lib.budget('site.zero.axeViolationsWcag') && !(mode === 'static' && contrastIncomplete.length), metrics: { violations: r.violations.length, incomplete: r.incomplete.length, contrastIncomplete: contrastIncomplete.length } }));
           await ctx.close();
         }
       }
@@ -225,7 +228,7 @@ async function a11y() {
         const tsFile = `spacing/${slug(route)}-${profile}.png`;
         mkdirSync(join(dir, 'spacing'), { recursive: true });
         await tp.screenshot({ path: join(dir, tsFile), fullPage: true });
-        items.push(lib.item(dir, tsFile, { kind: 'text-spacing', route, profile, mode: 'auto', tier: null, pass: clipped.length === 0 && ovf.maxOverflowPx === 0, metrics: { clipped, overflowPx: ovf.maxOverflowPx } }));
+        items.push(lib.item(dir, tsFile, { kind: 'text-spacing', route, profile, mode: 'auto', tier: null, pass: clipped.length === 0 && ovf.maxOverflowPx <= lib.budget('site.layout.overflowPx'), metrics: { clipped, overflowPx: ovf.maxOverflowPx } }));
         await ts.close();
 
         // Forced colours: the focus ring stays visible (an outline, not only a box-shadow).
@@ -251,7 +254,7 @@ async function a11y() {
         mkdirSync(join(dir, 'dark'), { recursive: true });
         await dp.screenshot({ path: join(dir, dkFile), fullPage: true });
         const dovf = await measure(dp);
-        items.push(lib.item(dir, dkFile, { kind: 'dark', route, profile, mode: 'auto', tier: null, pass: dovf.maxOverflowPx === 0, metrics: { overflowPx: dovf.maxOverflowPx } }));
+        items.push(lib.item(dir, dkFile, { kind: 'dark', route, profile, mode: 'auto', tier: null, pass: dovf.maxOverflowPx <= lib.budget('site.layout.overflowPx'), metrics: { overflowPx: dovf.maxOverflowPx } }));
         await dk.close();
       }
     }
@@ -261,10 +264,28 @@ async function a11y() {
   return finish(lib, dir, items, 'a11y');
 }
 
+
 // ---------------------------------------------------------------- lighthouse
-function runAsync(cmd, args) {
+// Every number comes from the json budgets block (docs/agents/budgets.md, or --budgets <file>), never a literal, and
+// every set follows "Measurement validity" R1-R5 (#67), with the host key's thresholds:
+//   R1  hostload.ps1's precheck before each set (route x form factor) and again before an R5 extension. Exit 75 is
+//       re-checked every minute for up to R1's wait (30 minutes, read from budgets.md; --precheck-wait <min>
+//       overrides it); a precheck that never clears makes the set blocked (host), never pass or fail. A busy try that
+//       a retry cleared is recorded as a wait, not as blocked.
+//   R2  each run runs in its own node worker (the server and Lighthouse, as the host key was calibrated), watched by
+//       hostload.ps1 -Watch; a run whose benchmarkIndex is under the ratio, or whose -Watch file does not exit 0, is
+//       host-suspect and invalid with the reason.
+//   R3  a host-suspect run is replaced, never averaged in, at most host.rules.extraRunsPerSetMax per set; a set that
+//       cannot reach its run count with clean runs is blocked (host).
+//   R5  a set whose median is at or above host.rules.nearBudgetPct of a maximum, or with a clean run past a budget
+//       (above a maximum or below a minimum), grows to host.rules.nearBudgetRuns after a fresh precheck; the summary
+//       reports the median of all clean runs, the worst run and the count past budget (lib.lighthouseSetSummary).
+// Test hooks (negative controls): --plant bench-low:<run|all> lowers a run's benchmarkIndex under the ratio;
+// --plant watch-flagged:<run|all> replaces its -Watch result with a flagged foreign process; --plant a11y-low:<run|all>
+// puts its accessibility score under a11yMin (R5 must grow the set).
+function runAsync(cmd, args, input = null) {
   return new Promise((res) => {
-    const p = spawn(cmd, args, { cwd: ROOT });
+    const p = spawn(cmd, args, { cwd: ROOT, stdio: [input === null ? 'ignore' : 'pipe', 'pipe', 'pipe'] });
     let stderr = '';
     p.stderr.on('data', (d) => (stderr += d));
     p.stdout.on('data', () => {});
@@ -272,88 +293,257 @@ function runAsync(cmd, args) {
   });
 }
 
+/** The worker: serve dist/ in this process, wait for 'go' on stdin (the watch is sampling by then), run Lighthouse. */
+async function lhRun() {
+  const { startServer } = await import('./serve-dist.mjs');
+  const b = (await harness()).readBudgets(o.budgets ? resolve(String(o.budgets)) : undefined);
+  const server = await startServer({ root: join(ROOT, 'dist'), port: 0, quiet: true });
+  const { port } = server.address();
+  await new Promise((res) => {
+    let buf = '';
+    process.stdin.on('data', (d) => { buf += d; if (buf.includes('go')) res(); });
+    process.stdin.on('end', res);
+  });
+  const args = ['-y', `lighthouse@${b.site.protocol.lighthouseVersion}`, `http://127.0.0.1:${port}${o.route}`, '--output=json', `--output-path=${o.file}`, '--chrome-flags=--headless=new --mute-audio', '--quiet', '--only-categories=performance,accessibility,best-practices,seo', ...(o.ff === 'desktop' ? ['--preset=desktop'] : [])];
+  // npm's own npx script under this Node, so no shell splits the --chrome-flags value. Async, because the server
+  // Lighthouse loads runs in this process: a blocking spawn would starve it.
+  const npx = join(dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npx-cli.js');
+  const r = await runAsync(existsSync(npx) ? process.execPath : 'npx', existsSync(npx) ? [npx, ...args] : args);
+  await new Promise((res) => server.close(res));
+  if (r.status !== 0) process.stderr.write(r.stderr.slice(-400));
+  return r.status ?? 1;
+}
+
 const GL_CHUNK = /\/_astro\/(gl|three\.[a-z]+)\.[\w-]+\.js$/;
+const plantSpec = (kind) => {
+  const p = String(o.plant || '').split(',').find((x) => x.startsWith(`${kind}:`));
+  return p ? p.slice(kind.length + 1) : null;
+};
+const planted = (kind, n) => {
+  const s = plantSpec(kind);
+  return s !== null && (s === 'all' || s.split('+').map(Number).includes(n));
+};
+
+/**
+ * --stub <file> (tests only, never a measurement): the hostload precheck and -Watch results and the Lighthouse reports
+ * come from a JSON file instead of PowerShell and Lighthouse ({ prechecks: [{exitCode, json}], runs: { mobile: [{lhr,
+ * watch}], desktop: [...] } }, each list taken in order, its last entry repeated), and R1's wait runs on a virtual
+ * clock. Everything else is this command as it runs for real, so tests/w-f/hostload.test.mjs drives the whole set
+ * loop (R1, R3, R5, the summary, the manifest items and the exit code) with planted runs (round-2 should-fix S2).
+ */
+const STUB = o.stub ? JSON.parse(readFileSync(resolve(String(o.stub)), 'utf8')) : null;
+const stubNext = (list) => (list.length > 1 ? list.shift() : list[0]);
+let virtualMs = 0;
+const clock = STUB ? { now: () => virtualMs, sleep: async (ms) => { virtualMs += ms; } } : { now: () => Date.now(), sleep: (ms) => new Promise((r) => setTimeout(r, ms)) };
+
+/** One Lighthouse run in a watched worker. Resolves with its report fields, host load and R2 verdict. */
+async function lighthouseRun(lib, dir, b, route, ff, n) {
+  const base = `${slug(route)}-${ff}-${n}`;
+  const file = join(dir, `${base}.json`);
+  const watchFile = join(dir, `hostload-${base}-watch.json`);
+  let w;
+  if (STUB) {
+    const s = stubNext(STUB.runs[ff]);
+    writeFileSync(file, JSON.stringify(s.lhr));
+    w = s.watch ?? { exitCode: null, json: null };
+    if (w.json) writeFileSync(watchFile, JSON.stringify(w.json));
+  } else {
+    const child = spawn(process.execPath, [join(ROOT, 'scripts/crew.mjs'), 'lh-run', '--route', route, '--ff', ff, '--file', file, ...(o.budgets ? ['--budgets', String(o.budgets)] : [])], { cwd: ROOT, stdio: ['pipe', 'ignore', 'pipe'] });
+    let stderr = '';
+    child.stderr.on('data', (d) => (stderr += d));
+    const exited = new Promise((res) => child.on('close', res));
+    const watch = lib.startHostload(['-Watch', child.pid, '-Out', watchFile, '-MaxMinutes', 15], { budgetsFile: o.budgets ? resolve(String(o.budgets)) : undefined });
+    await lib.sleep(watch.child ? 3000 : 0); // hostload's first sample lands within its 5 s head-gap bound
+    child.stdin.end('go\n');
+    const [status, done] = await Promise.all([exited, watch.done]);
+    w = done;
+    if (status !== 0 || !existsSync(file)) throw new Error(`lighthouse failed (run ${n}): ${stderr.slice(-400)}`);
+  }
+  const lhr = JSON.parse(readFileSync(file, 'utf8'));
+  let benchmarkIndex = lhr.environment?.benchmarkIndex ?? null;
+  const plantedFields = [];
+  if (planted('bench-low', n)) {
+    benchmarkIndex = Math.floor((b.host?.benchmarkIndex?.baseline ?? 1000) * (b.host?.benchmarkIndex?.suspectBelowRatio ?? 1) * 0.5);
+    plantedFields.push('benchmarkIndex');
+  }
+  let watchResult = w.exitCode === null && !w.json ? null : w;
+  if (planted('watch-flagged', n)) {
+    watchResult = { exitCode: 75, stderr: '', json: { verdict: 'flagged', reasons: ['foreign process planted.exe (pid 4242) at 55% > foreignCpuPctMax (planted)'] } };
+    plantedFields.push('watch');
+  }
+  // R5's minimums, end to end: a planted accessibility score just under a11yMin must grow the set to nearBudgetRuns.
+  let accessibility = lhr.categories.accessibility.score;
+  if (planted('a11y-low', n)) {
+    accessibility = Math.round((b.site.lighthouse.a11yMin - 4)) / 100;
+    plantedFields.push('accessibility');
+  }
+  const suspect = lib.hostSuspectReasons({ benchmarkIndex, watch: watchResult }, b.host);
+  const timings = lhr.audits['user-timings']?.details?.items?.map((x) => x.name) ?? [];
+  const renderer = timings.find((x) => x.startsWith('stage:renderer='))?.slice(15) ?? null;
+  const tier = timings.find((x) => x.startsWith('stage:tier='))?.slice(11).split(':')[0] ?? null;
+  // A run is valid on a real renderer at the expected tier, with the LCP element budgets.md names (W-D030), on a host
+  // that was quiet for it (R2).
+  const lcpElement = lib.lcpElementOf(lhr);
+  const lcpCheck = lib.lcpElementVerdict(lcpElement, ff);
+  const invalid = [
+    !renderer || lib.SOFTWARE_RENDERER.test(renderer) ? `renderer ${renderer ?? 'missing'}` : null,
+    tier !== (ff === 'mobile' ? 'lite' : 'full') ? `tier ${tier ?? 'missing'}` : null,
+    lcpCheck.why,
+    ...suspect,
+  ].filter(Boolean);
+  // D-005: the GL chunk loads after first paint. Observed FCP and the user-timing mark share the navigation clock;
+  // network-requests times start at the document request, which is at or after navigation start.
+  const observedFcp = lhr.audits.metrics?.details?.items?.[0]?.observedFirstContentfulPaint ?? null;
+  const glMarkMs = lhr.audits['user-timings']?.details?.items?.find((x) => x.name === 'stage:gl-start')?.startTime ?? null;
+  const glReqs = (lhr.audits['network-requests']?.details?.items ?? []).filter((x) => GL_CHUNK.test(new URL(x.url).pathname));
+  const glRequestMs = glReqs.length ? Math.min(...glReqs.map((x) => x.networkRequestTime ?? x.rendererStartTime)) : null;
+  const glAfterFcp = observedFcp !== null && glMarkMs !== null && glRequestMs !== null && glMarkMs > observedFcp && glRequestMs > observedFcp;
+  return {
+    run: n, file: `${base}.json`, watchFile: existsSync(watchFile) ? `hostload-${base}-watch.json` : null, watchVerdict: watchResult?.json?.verdict ?? null, watchExit: watchResult?.exitCode ?? null,
+    benchmarkIndex, suspect, planted: plantedFields, valid: invalid.length === 0, invalid, renderer, tier, observedFcp, glMarkMs, glRequestMs, glAfterFcp,
+    performance: lhr.categories.performance.score, accessibility, bestPractices: lhr.categories['best-practices'].score, seo: lhr.categories.seo?.score ?? null,
+    lcp: lhr.audits['largest-contentful-paint'].numericValue, cls: lhr.audits['cumulative-layout-shift'].numericValue, tbt: lhr.audits['total-blocking-time'].numericValue, fcp: lhr.audits['first-contentful-paint'].numericValue,
+    lcpElement, lcpElementOk: lcpCheck.ok,
+  };
+}
+
+/**
+ * R1: the precheck. While it exits 75 it is taken again every minute until R1's wait is spent (lib.precheckWaitMin:
+ * the block's host.rules.precheckWaitMin, else R1's own sentence, 30 minutes; --precheck-wait <min> overrides it and 0
+ * means no wait). An exit other than 0 or 75 is a broken tool: blocked at once.
+ */
+/** How often a busy precheck is taken again (a polling interval, not a budget). */
+const PRECHECK_RETRY_MS = 60000;
+async function precheck(lib, dir, name) {
+  const waitMs = lib.precheckWaitMin(o['precheck-wait'], lib.readBudgets(o.budgets ? resolve(String(o.budgets)) : undefined).host) * 60000;
+  const t0 = clock.now();
+  const tries = [];
+  for (let k = 0; ; k++) {
+    const file = join(dir, `hostload-${name}${k ? `-retry${k}` : ''}.json`);
+    let r;
+    if (STUB) {
+      const s = stubNext(STUB.prechecks);
+      writeFileSync(file, JSON.stringify(s.json ?? {}));
+      r = { exitCode: s.exitCode, json: s.json ?? null, stderr: s.stderr ?? '', file };
+    } else {
+      r = await lib.startHostload(['-Out', file], { budgetsFile: o.budgets ? resolve(String(o.budgets)) : undefined }).done;
+    }
+    tries.push({ file: r.file ? r.file.slice(dir.length + 1) : null, at: new Date().toISOString(), exitCode: r.exitCode, verdict: r.json?.verdict ?? null, reasons: r.json?.reasons ?? (r.stderr ? [r.stderr] : []), cpuBusyPct: r.json?.cpuBusyPct?.median ?? null, gpu3dPct: r.json?.gpu3dPct?.median ?? null });
+    // 0 clear; 75 busy, flagged, incomplete or no-data: wait; uncalibrated, or any other exit (a broken tool): blocked.
+    const next = lib.precheckNext({ exitCode: r.exitCode, verdict: r.json?.verdict ?? null }, clock.now() - t0, waitMs, PRECHECK_RETRY_MS);
+    if (next !== 'wait') return { ok: next === 'run', last: tries[tries.length - 1], tries, waitedMin: Math.round((clock.now() - t0) / 6000) / 10 };
+    await clock.sleep(PRECHECK_RETRY_MS);
+  }
+}
+
 async function lighthouse() {
   const lib = await harness();
-  const { startServer } = await import('./serve-dist.mjs');
   const dir = outDir(lib, 'lighthouse');
+  const b = lib.readBudgets(o.budgets ? resolve(String(o.budgets)) : undefined);
+  const site = b.site;
+  const rules = b.host?.rules ?? {};
   const routes = list(o.routes, '/');
-  const runs = Number(o.runs) || 5;
-  const port = 4391;
-  const server = await startServer({ root: join(ROOT, 'dist'), port, quiet: true });
+  const runs = Number(o.runs) || site.protocol.lighthouseRuns;
   const items = [];
-  try {
-    for (const route of routes) {
-      for (const ff of ['mobile', 'desktop']) {
-        const reports = [];
-        for (let i = 0; i < runs; i++) {
-          const file = join(dir, `${slug(route)}-${ff}-${i + 1}.json`);
-          const args = ['-y', 'lighthouse@13.5.0', `http://127.0.0.1:${port}${route}`, '--output=json', `--output-path=${file}`, '--chrome-flags=--headless=new --mute-audio', '--quiet', '--only-categories=performance,accessibility,best-practices,seo', ...(ff === 'desktop' ? ['--preset=desktop'] : [])];
-          // npm's own npx script under this Node, so no shell splits the --chrome-flags value. Async, because the
-          // server Lighthouse loads runs in this process: a blocking spawn would starve it.
-          const npx = join(dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npx-cli.js');
-          const r = await runAsync(existsSync(npx) ? process.execPath : 'npx', existsSync(npx) ? [npx, ...args] : args);
-          if (r.status !== 0 || !existsSync(file)) throw new Error(`lighthouse failed: ${r.stderr?.slice(-400)}`);
-          const lhr = JSON.parse(readFileSync(file, 'utf8'));
-          const timings = lhr.audits['user-timings']?.details?.items?.map((x) => x.name) ?? [];
-          const renderer = timings.find((n) => n.startsWith('stage:renderer='))?.slice(15) ?? null;
-          const tier = timings.find((n) => n.startsWith('stage:tier='))?.slice(11).split(':')[0] ?? null;
-          // A run is valid on a real renderer at the expected tier, with the LCP element budgets.md names (W-D030).
-          const lcpElement = lib.lcpElementOf(lhr);
-          const lcpCheck = lib.lcpElementVerdict(lcpElement, ff);
-          const invalid = [
-            !renderer || lib.SOFTWARE_RENDERER.test(renderer) ? `renderer ${renderer ?? 'missing'}` : null,
-            tier !== (ff === 'mobile' ? 'lite' : 'full') ? `tier ${tier ?? 'missing'}` : null,
-            lcpCheck.why,
-          ].filter(Boolean);
-          const valid = invalid.length === 0;
-          // D-005: the GL chunk loads after first paint. Observed FCP and the user-timing mark share the navigation
-          // clock; network-requests times start at the document request, which is at or after navigation start.
-          const observedFcp = lhr.audits.metrics?.details?.items?.[0]?.observedFirstContentfulPaint ?? null;
-          const glMarkMs = lhr.audits['user-timings']?.details?.items?.find((x) => x.name === 'stage:gl-start')?.startTime ?? null;
-          const glReqs = (lhr.audits['network-requests']?.details?.items ?? []).filter((x) => GL_CHUNK.test(new URL(x.url).pathname));
-          const glRequestMs = glReqs.length ? Math.min(...glReqs.map((x) => x.networkRequestTime ?? x.rendererStartTime)) : null;
-          const glAfterFcp = observedFcp !== null && glMarkMs !== null && glRequestMs !== null && glMarkMs > observedFcp && glRequestMs > observedFcp;
-          reports.push({
-            run: i + 1, file: `${slug(route)}-${ff}-${i + 1}.json`, valid, invalid, renderer, tier, observedFcp, glMarkMs, glRequestMs, glAfterFcp,
-            performance: lhr.categories.performance.score, accessibility: lhr.categories.accessibility.score, bestPractices: lhr.categories['best-practices'].score, seo: lhr.categories.seo?.score ?? null,
-            lcp: lhr.audits['largest-contentful-paint'].numericValue, cls: lhr.audits['cumulative-layout-shift'].numericValue, tbt: lhr.audits['total-blocking-time'].numericValue, fcp: lhr.audits['first-contentful-paint'].numericValue,
-            lcpElement, lcpElementOk: lcpCheck.ok,
-          });
+  const loads = [];
+  for (const route of routes) {
+    for (const ff of ['mobile', 'desktop']) {
+      const name = `${slug(route)}-${ff}`;
+      const budget = lib.lighthouseBudget(site, ff);
+      const pre = [await precheck(lib, dir, `${name}-pre`)];
+      const reports = [];
+      let need = runs;
+      let blocked = pre[0].ok ? null : `precheck ${pre[0].last.verdict ?? `exit ${pre[0].last.exitCode}`}: ${pre[0].last.reasons.slice(0, 3).join('; ')}`;
+      let grew = null;
+      while (!blocked) {
+        const step = lib.setStep(reports.map((r) => ({ suspect: r.suspect })), need, rules.extraRunsPerSetMax ?? 0);
+        if (step.next === 'blocked') {
+          blocked = step.why;
+          break;
         }
-        const sorted = [...reports].sort((a, b) => a.performance - b.performance);
-        const median = sorted[Math.floor(sorted.length / 2)];
-        const need = ff === 'mobile' ? 0.9 : 0.95;
-        // budgets.md: LCP <= 2.5 s mobile and <= 2.0 s desktop, TBT <= 150 ms, CLS <= 0.02; each a median over the runs.
-        const med = (k) => [...reports].map((r) => r[k]).sort((a, b) => a - b)[Math.floor(reports.length / 2)];
-        const budget = { lcp: ff === 'mobile' ? 2500 : 2000, tbt: 150, cls: 0.02 };
-        const medians = { lcp: med('lcp'), tbt: med('tbt'), cls: med('cls'), fcp: med('fcp') };
-        const budgetPass = medians.lcp <= budget.lcp && medians.tbt <= budget.tbt && medians.cls <= budget.cls;
-        const glOrderPass = reports.every((r) => r.glAfterFcp);
-        const summaryFile = `${slug(route)}-${ff}-summary.json`;
-        lib.writeJson(join(dir, summaryFile), { route, formFactor: ff, runs: reports, median, medians, budget, budgetPass, glOrderPass });
-        for (const r of reports) items.push(lib.item(dir, r.file, { kind: 'lighthouse-run', route, profile: ff, mode: 'auto', tier: r.tier, pass: r.valid && r.glAfterFcp, metrics: { performance: r.performance, accessibility: r.accessibility, cls: r.cls, lcp: Math.round(r.lcp), lcpElement: r.lcpElement?.selector ?? null, lcpElementOk: r.lcpElementOk, invalid: r.invalid, renderer: r.renderer, observedFcp: r.observedFcp, glMarkMs: r.glMarkMs === null ? null : Math.round(r.glMarkMs), glRequestMs: r.glRequestMs === null ? null : Math.round(r.glRequestMs), glAfterFcp: r.glAfterFcp } }));
-        items.push(lib.item(dir, summaryFile, { kind: 'lighthouse', route, profile: ff, mode: 'auto', tier: median.tier, pass: reports.every((r) => r.valid) && median.performance >= need && median.accessibility === 1 && median.cls === 0 && budgetPass && glOrderPass, metrics: { medianPerformance: median.performance, accessibility: median.accessibility, bestPractices: median.bestPractices, cls: median.cls, medianLcp: Math.round(medians.lcp), medianTbt: Math.round(medians.tbt), medianFcp: Math.round(medians.fcp), lcpBudget: budget.lcp, budgetPass, glAfterFcpRuns: reports.filter((r) => r.glAfterFcp).length, runs: reports.length, renderer: median.renderer, lcpElement: median.lcpElement?.selector ?? null, lcpElementOkRuns: reports.filter((r) => r.lcpElementOk).length } }));
+        if (step.next === 'done') {
+          // R5: near a budget, or a clean run past one (above a maximum or below a minimum), the set grows to
+          // nearBudgetRuns after a fresh precheck.
+          const r5 = lib.r5Grow(reports.filter((r) => !r.suspect.length), budget, rules, need);
+          if (r5.grow && !o['no-r5']) {
+            grew = { from: r5.from, to: r5.to, why: r5.why };
+            need = r5.to;
+            const again = await precheck(lib, dir, `${name}-pre-r5`);
+            pre.push(again);
+            if (!again.ok) blocked = `R5 precheck ${again.last.verdict ?? `exit ${again.last.exitCode}`}: ${again.last.reasons.slice(0, 3).join('; ')}`;
+            continue;
+          }
+          break;
+        }
+        reports.push(await lighthouseRun(lib, dir, b, route, ff, reports.length + 1));
       }
+      const clean = reports.filter((r) => !r.suspect.length);
+      const replaced = reports.filter((r) => r.suspect.length).map((r) => ({ run: r.run, reasons: r.suspect }));
+      // Medians over the clean runs only (R3: a host-suspect run is never averaged in); R5's report: the median of
+      // all clean runs, the worst run and the count past budget.
+      const sum = lib.lighthouseSetSummary(clean, budget);
+      const { medians } = sum;
+      const median = sum.medianRun;
+      const budgetPass = Boolean(medians) && medians.lcp <= budget.lcp && medians.tbt <= budget.tbt && medians.cls <= budget.cls;
+      const glOrderPass = clean.every((r) => r.glAfterFcp);
+      // The clear precheck the set ran after (a wait's busy tries describe the host before the set, not during it).
+      const ran = pre[0].tries.find((t) => t.exitCode === 0) ?? pre[0].last;
+      const load = { benchmarkIndex: lib.median(clean.map((r) => r.benchmarkIndex)), cpuBusyPct: ran.cpuBusyPct, gpu3dPct: ran.gpu3dPct };
+      loads.push(load); // a blocked set still records the precheck that blocked it
+      const summaryFile = `${name}-summary.json`;
+      // #11's stub-home line asks for CLS 0 (the median), inside budgets.md's CLS limit.
+      const pass = blocked ? null : clean.every((r) => r.valid) && medians.performance >= budget.performance && medians.accessibility >= budget.accessibility && medians.bestPractices >= budget.bestPractices && medians.cls === 0 && budgetPass && glOrderPass;
+      lib.writeJson(join(dir, summaryFile), { route, formFactor: ff, budgetsFrom: o.budgets ?? 'docs/agents/budgets.md', budget, need, grew, prechecks: pre, blocked, runs: reports, clean: clean.map((r) => r.run), replaced, medians, medianRun: median?.run ?? null, worstRun: sum.worstRun, worst: sum.worst, pastBudget: sum.pastBudget, budgetPass, glOrderPass, hostLoad: load, pass });
+      for (const r of reports) {
+        const suspect = r.suspect.length > 0;
+        items.push(lib.item(dir, r.file, {
+          kind: 'lighthouse-run', route, profile: ff, mode: 'auto', tier: r.tier,
+          // A replaced run is neither pass nor fail (R3): it is listed with its reason and left out of the medians.
+          pass: suspect ? null : r.valid && r.glAfterFcp, ...(suspect ? { replaced: true } : {}),
+          metrics: { performance: r.performance, accessibility: r.accessibility, cls: r.cls, lcp: Math.round(r.lcp), tbt: Math.round(r.tbt), benchmarkIndex: r.benchmarkIndex, watch: r.watchFile, watchVerdict: r.watchVerdict, hostSuspect: r.suspect, planted: r.planted, lcpElement: r.lcpElement?.selector ?? null, lcpElementOk: r.lcpElementOk, invalid: r.invalid, renderer: r.renderer, observedFcp: r.observedFcp, glMarkMs: r.glMarkMs === null ? null : Math.round(r.glMarkMs), glRequestMs: r.glRequestMs === null ? null : Math.round(r.glRequestMs), glAfterFcp: r.glAfterFcp },
+        }));
+      }
+      // R1: a busy try that a retry cleared is a wait (pass null, no blocked); only a precheck that never cleared blocks.
+      for (const t of lib.precheckItems(pre)) {
+        if (!t.file) continue;
+        items.push(lib.item(dir, t.file, { kind: 'hostload-precheck', route, profile: ff, mode: 'auto', tier: null, pass: t.pass, ...(t.blocked ? { blocked: t.blocked } : {}), ...(t.waited ? { waited: true } : {}), metrics: { exitCode: t.exitCode, verdict: t.verdict, reasons: t.reasons, cpuBusyPct: t.cpuBusyPct, gpu3dPct: t.gpu3dPct, at: t.at } }));
+      }
+      items.push(lib.item(dir, summaryFile, {
+        kind: 'lighthouse', route, profile: ff, mode: 'auto', tier: median?.tier ?? null, pass, ...(blocked ? { blocked: 'host' } : {}),
+        metrics: {
+          blocked, need, grew, cleanRuns: clean.length, replaced: replaced.length,
+          medianPerformance: medians?.performance ?? null, accessibility: medians?.accessibility ?? null, bestPractices: medians?.bestPractices ?? null, cls: medians?.cls ?? null,
+          medianLcp: medians ? Math.round(medians.lcp) : null, medianTbt: medians ? Math.round(medians.tbt) : null, medianFcp: medians ? Math.round(medians.fcp) : null,
+          worstRun: sum.worstRun, worst: sum.worst, pastBudgetCount: sum.pastBudget.count, pastBudget: sum.pastBudget.runs,
+          budget, budgetPass, glAfterFcpRuns: clean.filter((r) => r.glAfterFcp).length, medianRun: median?.run ?? null, renderer: median?.renderer ?? null, lcpElement: median?.lcpElement?.selector ?? null, lcpElementOkRuns: clean.filter((r) => r.lcpElementOk).length, ...load,
+        },
+      }));
     }
-  } finally {
-    await new Promise((r) => server.close(r));
   }
-  return finish(lib, dir, items, 'lighthouse');
+  const hostLoad = {
+    benchmarkIndex: lib.median(loads.map((l) => l.benchmarkIndex)), cpuBusyPct: lib.median(loads.map((l) => l.cpuBusyPct)), gpu3dPct: lib.median(loads.map((l) => l.gpu3dPct)),
+    source: 'benchmarkIndex: the median of the sets\' clean-run medians; cpuBusyPct and gpu3dPct: the median of the sets\' precheck medians',
+  };
+  return finish(lib, dir, items, 'lighthouse', hostLoad);
 }
 
-async function finish(lib, dir, items, name) {
-  const failed = items.filter((i) => !i.pass);
-  const path = await lib.writeManifest(dir, items, { crew: crewId(), fields: { command: name, failed: failed.length } });
+/** Exit 1 on any failed item; else 75 when an item is blocked (host); else 0. A replaced run (pass null) is neither. */
+async function finish(lib, dir, items, name, hostLoad = {}) {
+  const failed = items.filter((i) => i.pass === false || (i.pass !== true && i.pass !== null));
+  const blocked = items.filter((i) => i.blocked === 'host');
+  const replaced = items.filter((i) => i.replaced);
+  const stubbed = STUB ? { host: { stub: true, ...hostLoad }, tools: { stub: true }, name: 'manifest.json' } : {};
+  const path = await lib.writeManifest(dir, items, { crew: crewId(), hostLoad, ...stubbed, fields: { command: name, failed: failed.length, blocked: blocked.length, replaced: replaced.length, ...(STUB ? { stub: true } : {}) } });
   await lib.closeBrowsers();
-  console.log(`${name}: ${items.length} items, ${failed.length} failed; manifest ${path}`);
+  console.log(`${name}: ${items.length} items, ${failed.length} failed, ${blocked.length} blocked (host), ${replaced.length} replaced; manifest ${path}`);
   for (const f of failed.slice(0, 20)) console.log(`  FAIL ${f.kind} ${f.route} ${f.profile} ${f.mode} ${JSON.stringify(f.metrics).slice(0, 200)}`);
-  return failed.length ? 1 : 0;
+  for (const f of blocked.slice(0, 20)) console.log(`  BLOCKED (host) ${f.kind} ${f.route} ${f.profile} ${JSON.stringify(f.metrics).slice(0, 240)}`);
+  return failed.length ? 1 : blocked.length ? 75 : 0;
 }
 
-const commands = { open: () => open(o._[0]), check, shoot, a11y, lighthouse };
+const commands = { open: () => open(o._[0]), check, shoot, a11y, lighthouse, 'lh-run': lhRun };
 if (!commands[command]) {
-  console.error('usage: node scripts/crew.mjs open <id> | check | shoot | a11y | lighthouse [--routes ...] [--profiles ...] [--modes ...]');
+  console.error('usage: node scripts/crew.mjs open <id> | check | shoot | a11y | lighthouse [--routes ...] [--profiles ...] [--modes ...] [--runs n] [--budgets file] [--precheck-wait min]');
   process.exit(2);
 }
 process.exitCode = await commands[command]();

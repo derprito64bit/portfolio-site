@@ -9,6 +9,14 @@ built `dist/` served by `scripts/serve-dist.mjs` (gzip, Pages rules), and prints
 - **GPU.** Numbers that depend on the GPU count only on a real renderer. `SOFTWARE_RENDERER` in `lib.mjs` is the
   regex that makes a run INVALID. Budgets compare only on the reference host (RX 6700 XT).
 - **CI.** It runs the GPU-free instruments: content, spring, contrast, `flash --self-test` and `console --fixtures-only`.
+- **The console gate** (`consoleGate` in `lib.mjs`, W-D030). Error-level messages (`error` and `assert`), page errors,
+  failed requests, unexpected statuses and any message with a W-D030 word fail. A warning passes only when every line
+  of it passes an entry of `console-allow.json`. The browser's echo of a 4xx response is skipped only when it is the
+  whole message and comes from a URL whose status the test expected.
+- **The allowlist is reviewed.** Every new entry in `console-allow.json` needs a regex, a reason, who added it, an
+  expiry, a literal (fixed text every allowed line must hold, at least 10 characters with a digit, such as the
+  diagnostic code) and one real example. `loadAllowlist` rejects a malformed or broad entry, but it cannot judge
+  intent: an entry lands only in a reviewed PR whose gate re-reads it, and its reason names the request or ruling.
 - **Profiles and modes.** These are in `lib.mjs`: `PROFILES` (D1, D2, D3, T1, T2, P1, P2, WK-P2, WK-T2, S1, S2, R1,
   Z-D2, Z-P2) and `MODES` (auto, static, reduced). `expectedTier(profile)` gives the tier auto mode must report:
   mouse full (or a logged probe demotion), touch lite.
@@ -26,7 +34,7 @@ built `dist/` served by `scripts/serve-dist.mjs` (gzip, Pages rules), and prints
 | `h:content` | `content/` | Content v2 rules, JsonUtility safety, identity.json flatness, content hashes | no |
 | `h:flash` | `flash/` | WCAG 2.3.1 general and red flash analysis (self-test, seeked capture or frames on disk) | capture: yes |
 | `h:keyboard` | `keyboard/` | ring coverage at every Tab stop; sheet -> project -> Back focus; hash focus; one-way anchor scroll | yes |
-| `h:counters` | `counters/` | gate-owned counters: 0 rAF and 0 draws from 1 to 4 s after input, matching `__stage.stats` | yes |
+| `h:counters` | `counters/` | gate-owned counters: 0 rAF and 0 draws from 1 s + 2 frames to 4 s after the motion end (the later of the last input event and the last presented frame, tail and clear-only frames included; #11 ruling 5992928262), the motion ending within 4 s of the last input; matching `__stage.stats` | yes |
 
 ## Stage hooks the instruments read (`window.__stage`)
 
@@ -34,12 +42,14 @@ built `dist/` served by `scripts/serve-dist.mjs` (gzip, Pages rules), and prints
   Shots are taken only after it is true; a 10 s timeout is a FAIL.
 - `seek(ms)`: exists only behind `?t=`. It runs one frame on the manual clock and seeks CSS animations.
 - `bounds(id)` returns `{ id, kind, slot: {x, y, w, h}, gl: {x, y, w, h, angleDeg} | null }` in viewport CSS px.
-- `stats` holds the counters `ticks, draws, layoutRenders, reanchors, renderSkips, drawCalls, measures,
-  measuresInTick, reallocs, wakes, sleeps, swaps, losses, restores, governorSteps, motionLogInvalid`, and the gauges
-  `dpr, canvasPx`. `layoutRenders` are renders run from the slots ResizeObserver callback when layout moved a slot
+- `stats` holds the counters `ticks, draws, layoutRenders, reanchors, tailFrames, renderSkips, drawCalls, measures,
+  measuresInTick, reallocs, wakes, sleeps, swaps, losses, restores, governorSteps, motionLogInvalid, hookErrors`, and
+  the gauges `dpr, canvasPx, canvasW, canvasH`. `layoutRenders` are renders run from the slots ResizeObserver callback when layout moved a slot
   (outside rAF, also counted in `draws` and `drawCalls`); `reanchors` counts the rail moving the canvas.
 - The remaining hooks are `tier`, `tierReason`, `tierLog`, `motion`, `glState`, `gl` (the GL API once ready, with
-  `info()`, `forceContextLoss()` and `forceContextRestore()`), `slots()` and `marks()`.
+  `info()`, `forceContextLoss()` and `forceContextRestore()`), `slots()`, `marks()`, `effects`, `registerEffect(name,
+  impl)` (an impl gets the call's arguments and then `next`, the effect it replaced; an `undefined` result falls
+  through to `next`) and `markDirty()`.
 - The marks are `stage:renderer`, `stage:tier`, `stage:gl-start`, `stage:gl-ready`, `stage:settled` and
   `stage:idle`. Each mark that carries a value also gets a `name=value` twin that Lighthouse's user-timings audit lists.
 - `window.__motionLog` is a list of `{id, kind, spring, trigger, t0, t1, from, to, peak, settle2Ms, tier, reduced}`.
@@ -85,11 +95,22 @@ flash     self-test: { rows: [{case, expectPass, analyserPass, generalPerSecond,
 keyboard  { rows: [{profile, walks: [{route, stops, failing[], minCoverage, detail[]}], roundtrip{started,
             afterBack{id,tag}, nextTab, pass}, hash{focus, pass}, anchor{samples, first, last, monotonic, focus,
             pass}, pass}] }
-counters  schema 2: { motionEndWindow, rows: [{profile, route, tier, gl{entities, views, ...}, empty,
-            idle{gate{raf, rafFromDependencies, draws, clears, rectReadsInRaf}, stage{ticks, drawCalls, renders,
-            renderSkips}, ms}, idlePass, afterScroll{input, motionEndsMs, motionEndsBy, frameMs, lastRafAfterMotionMs,
-            afterMotion{fromMs, toMs, raf, draws}, afterInput{fromMs, toMs, raf, draws}, scrolledTo, counts{...}}, afterScrollPass, active{...}, matchPass,
-            emptyPass, scroll{...}, scrollPass, pass}] }
+counters  schema 5: { motionEndWindow, rows: [{profile, route, tier, gl{entities, views, ...}, empty,
+            idle{motionWindow}, idlePass, afterScroll{input, motionWindow, scrolledTo, counts{...}}, afterScrollPass,
+            active{...}, matchPass, emptyPass, scroll{...}, scrollPass, pass}], arrivals{rows: [{profile, case:
+            load|load-home|back|swup|bfcache, kind, arrivals[], sleeps, quietFrames, glState, tier, url, ...motionWindow}],
+            pass}, arrivalSummary, summary }
+            motionWindow = {anchor: input|arrival, motionEndsMs, motionEndsBy: draw|presented clear|scroll|arrival|input,
+            frameMs, lastRafAfterMotionMs, bound{anchor, maxMs (windowEndS after an input, the hard stop after an
+            arrival), hardStopMs (2 x windowEndS + 1 s), motionEndsMs, movedDuringWindow, windowRanMs, complete, pass},
+            windowRestarts, afterMotion{fromMs, toMs, raf, draws,
+            clears, stampsCover{raf, draws, clears}}, uncappedInWindow{fromMs, toMs, raf, draws, clears},
+            stageInWindow{ticks, drawCalls, renders, tailFrames}, stampsDropped{rafTimes, drawTimes, clearTimes},
+            ifClearsIgnored{raf}, afterInput{fromMs, toMs, raf, draws}, pass}
+            The stamp lists (init.js) keep the newest 10,000 to 20,000 stamps of each kind and never stop stamping (the
+            old 20,000 cap filled during D2 /'s intro and hid every later draw); pass needs 0 rAF and 0 draws both in
+            the stamps and in the uncapped counts read at the window's start and end. negatives.mjs `draws` is its
+            control.
 ```
 
 ## GES-1 manifest (`scripts/crew.mjs shoot | a11y | lighthouse`)

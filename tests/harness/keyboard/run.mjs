@@ -1,13 +1,20 @@
 // Keyboard instrument (W-D015, W-D032).
-//  walk       Tab through a route; at every stop, >= 90% of the focus-ring band (outline-offset to offset + width
-//             outside the border box) differs from the unfocused frame by >= 3:1 (WCAG contrast of the two colours).
+//  walk       Tab through a route; at every stop, at least site.focusRing.coverageMinPct of the focus-ring band
+//             (outline-offset to offset + width outside the border box) differs from the unfocused frame by at least
+//             site.focusRing.contrastMin:1 (WCAG contrast of the two colours); both from the json budgets block.
 //             On /bench/?debug=ring the fixture quads draw GL 12 px past their slots, so the band sits over GL.
 //  roundtrip  sheet -> project -> Back leaves focus on the same print link, and the next Tab reaches the next print.
-//  hash       a cross-page hash visit (/work/project-01/ -> 'The Manor', /#door) focuses the target.
-//  anchor     an anchor scroll moves one way only (no double scroll).
-// Usage: npm run h:keyboard -- [--profiles D2,P2] [--routes /,/bench/?debug=ring] [--out keyboard.json]
+//  hash       a cross-page hash visit (/work/project-01/ -> /#contact, the footer's contact heading) focuses the target.
+//             The nav's Contact is a same-page link on every page (the footer is in the layout), so the check clicks a
+//             link to /#contact placed in the project page's main: a Swup visit with a hash, as any cross-page link is.
+//  anchor     an anchor scroll (the nav's Contact on /) moves one way only (no double scroll) and focuses #contact.
+// Usage: npm run h:keyboard -- [--profiles D2,P2] [--routes /,/bench/?debug=ring] [--dist <dir>] [--out keyboard.json]
 import sharp from 'sharp';
-import { cliMain, newContext, serve, sleep, waitSettled } from '../lib.mjs';
+import { budget, cliMain, newContext, serve, sleep, waitSettled } from '../lib.mjs';
+
+/** budgets.md: focus ring >= 3:1 with >= 90% ring coverage at every Tab stop (the json budgets block). */
+const RING_CONTRAST = budget('site.focusRing.contrastMin');
+const RING_COVERAGE = budget('site.focusRing.coverageMinPct') / 100;
 
 const lin = (c) => { const s = c / 255; return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4; };
 const lum = (r, g, b) => 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
@@ -68,7 +75,7 @@ export async function ringCoverage(page) {
       band++;
       const i = (y * focused.w + x) * 3;
       const c = contrast(lum(focused.data[i], focused.data[i + 1], focused.data[i + 2]), lum(plain.data[i], plain.data[i + 1], plain.data[i + 2]));
-      if (c >= 3) good++;
+      if (c >= RING_CONTRAST) good++;
       else {
         const side = dy > dx ? (cy < inner.y0 ? 'top' : 'bottom') : cx < inner.x0 ? 'left' : 'right';
         misses[`${side}@${Math.floor(d)}`] = (misses[`${side}@${Math.floor(d)}`] || 0) + 1;
@@ -85,7 +92,7 @@ export async function walk(page, maxStops = 40) {
     await sleep(80);
     const r = await ringCoverage(page);
     if (!r) break;
-    stops.push({ ...r, pass: r.coverage === null ? r.note === 'off screen' : r.coverage >= 0.9 });
+    stops.push({ ...r, pass: r.coverage === null ? r.note === 'off screen' : r.coverage >= RING_COVERAGE });
     const before = await page.evaluate(() => document.activeElement);
     await page.keyboard.press('Tab');
     const same = await page.evaluate((b) => document.activeElement === b, before);
@@ -118,14 +125,41 @@ async function roundtrip(page, base) {
   return { started: id, afterBack: back, nextTab: next, pass: id === 'project-03' && back.id === 'project-03' && next === 'project-04' };
 }
 
+/**
+ * A cross-page hash visit focuses the target and brings it into view (round-5 should-fix S3, Breaker 4.2 #2: on the
+ * full tier the page stayed at y 0 with focus on an off-screen target): /#contact by a link, and the nav's Work link
+ * (/#work) by the keyboard, both from a project page. In view: the target's top is inside the viewport once the page
+ * settles (the anchor scroll may glide).
+ */
 async function hashVisit(page, base) {
-  await page.goto(`${base}/work/project-01/`, { waitUntil: 'load' });
-  await waitSettled(page, 12000);
-  await page.click('nav[aria-label="Site"] a[href="/#door"]');
-  await visitEnd(page, '/');
-  await sleep(300);
-  const focus = await page.evaluate(() => ({ id: document.activeElement?.id ?? null, tag: document.activeElement?.tagName }));
-  return { focus, pass: focus.id === 'door' };
+  const rows = [];
+  for (const [hash, how] of [['#contact', 'click'], ['#work', 'nav key']]) {
+    await page.goto(`${base}/work/project-01/`, { waitUntil: 'load' });
+    await waitSettled(page, 12000);
+    if (how === 'click') {
+      await page.evaluate(() => {
+        const a = document.createElement('a');
+        a.href = '/#contact';
+        a.id = 'kb-hash-visit';
+        a.textContent = 'Contact (cross-page)';
+        document.getElementById('main')?.prepend(a);
+      });
+      await page.click('#kb-hash-visit');
+    } else {
+      await page.focus('a[data-nav="work"]');
+      await page.keyboard.press('Enter');
+    }
+    await visitEnd(page, '/');
+    await sleep(300);
+    await waitSettled(page, 8000);
+    const r = await page.evaluate((id) => {
+      const el = document.getElementById(id);
+      const top = el ? el.getBoundingClientRect().top : null;
+      return { id: document.activeElement?.id ?? null, tag: document.activeElement?.tagName, hash: location.hash, y: Math.round(scrollY), targetTop: top === null ? null : Math.round(top), inView: top !== null && top >= -1 && top < innerHeight };
+    }, hash.slice(1));
+    rows.push({ hash, how, ...r, pass: r.id === hash.slice(1) && r.hash === hash && r.inView });
+  }
+  return { rows, focus: rows[0], pass: rows.every((r) => r.pass) };
 }
 
 async function anchorMonotonic(page, base) {
@@ -135,19 +169,19 @@ async function anchorMonotonic(page, base) {
     window.__ys = [];
     window.__yt = setInterval(() => window.__ys.push(window.scrollY), 8);
   });
-  await page.click('nav[aria-label="Site"] a[href="/#door"]');
+  await page.click('nav[aria-label="Site"] a[href="#contact"]');
   await sleep(1600);
   const ys = await page.evaluate(() => { clearInterval(window.__yt); return window.__ys; });
   let monotonic = true;
   for (let i = 1; i < ys.length; i++) if (ys[i] < ys[i - 1]) monotonic = false;
   const focus = await page.evaluate(() => document.activeElement?.id ?? null);
-  return { samples: ys.length, first: ys[0], last: ys[ys.length - 1], monotonic, focus, pass: monotonic && ys[ys.length - 1] > ys[0] && focus === 'door' };
+  return { samples: ys.length, first: ys[0], last: ys[ys.length - 1], monotonic, focus, pass: monotonic && ys[ys.length - 1] > ys[0] && focus === 'contact' };
 }
 
 export async function run(opts = {}) {
   const profiles = String(opts.profiles || 'D2,P2').split(',');
   const routes = String(opts.routes || '/,/bench/?debug=ring').split(',');
-  const srv = await serve();
+  const srv = await serve(opts.dist ? String(opts.dist) : undefined);
   const rows = [];
   try {
     for (const profile of profiles) {

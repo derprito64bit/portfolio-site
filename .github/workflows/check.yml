@@ -46,6 +46,9 @@ jobs:
           npm run h:flash -- --self-test
           npm run h:console -- --fixtures-only
 
+      - name: W-F unit tests (size-limit groups, console allowlist, tokens, host-load rules; no GPU)
+        run: npm run test:w-f-unit
+
       - name: W-C13 rig tests (three r186 under Node, no GPU)
         if: hashFiles('tests/w-c13/**/*.test.mjs') != ''
         run: npm run test:w-c13

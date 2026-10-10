@@ -12,8 +12,11 @@ interface Props extends HTMLAttributes<'div'> {
   id: string;
   as?: Tag;
   href?: string;
-  /** Test fixtures on /bench/ only: 'cube' (stage-local object) or 'quad' (flat print). */
-  fixture?: 'cube' | 'quad';
+  /**
+   * Test fixtures on /bench/ only: 'cube' (stage-local object), 'quad' (flat print) or 'aspect' (a stage view with a
+   * fixed aspect, set by data-gl-aspect: /bench/aspect/).
+   */
+  fixture?: 'cube' | 'quad' | 'aspect';
 }
 
 const { kind, id, as: Tag = 'div', href, fixture, class: className, ...rest } = Astro.props;

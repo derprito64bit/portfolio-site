@@ -2,7 +2,7 @@
   "name": "portfolio-site",
   "private": true,
   "type": "module",
-  "description": "The Front Door of derprito64bit.github.io: a static Astro site with one riding WebGL canvas (Darkroom direction).",
+  "description": "derprito64bit's portfolio at derprito64bit.github.io: a static Astro site with one riding WebGL canvas (Darkroom direction).",
   "license": "MIT",
   "engines": {
     "node": ">=24 <25"
@@ -25,6 +25,7 @@
     "serve": "node scripts/serve-dist.mjs",
     "crew": "node scripts/crew.mjs",
     "test:w-f": "node tests/w-f/run.mjs",
+    "test:w-f-unit": "node --test \"tests/w-f/**/*.test.mjs\"",
     "glb": "node scripts/build/glb/optimize.mjs && node scripts/build/glb/rig.mjs",
     "glb:check": "node scripts/build/glb/optimize.mjs --check && node scripts/build/glb/rig.mjs --check",
     "posters": "node scripts/build/posters/render.mjs",

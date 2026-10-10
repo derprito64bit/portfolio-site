@@ -206,7 +206,7 @@ export function validateContent({ projects, honours, worlds, profile, lookIds })
     }
   });
   if (featured > 8) err('projects.json', '$.projects', `${featured} featured; at most 8`);
-  if (featured < 3) warnings.push('content/projects.json: fewer than 3 featured; the Front Door has 3 enlargements');
+  if (featured < 3) warnings.push('content/projects.json: fewer than 3 featured; the home page has 3 enlargements');
   if (heroes > 1) err('projects.json', '$.projects', 'at most one hero project (the Workshop statue)');
   const projectSlugs = new Set((projects?.projects || []).map((p) => p.slug));
 
@@ -255,7 +255,7 @@ export function validateContent({ projects, honours, worlds, profile, lookIds })
       if (w.publishAfter) err('worlds.json', at, 'a teaser cannot wait on publishAfter');
     }
   });
-  if (teasers > 1) err('worlds.json', '$.worlds', 'at most one teaser on the Front Door');
+  if (teasers > 1) err('worlds.json', '$.worlds', 'at most one teaser on the home page');
 
   // ---------- profile.json ----------
   shape('profile.json', profile, 'ProfileFile', '$');

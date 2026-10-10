@@ -1,43 +1,29 @@
-// size-limit budgets (budgets.md), computed from the client chunk graph that astro.config.mjs writes after a build
-// (Vite-manifest shape). Run `npm run build` first; `npm run size` fails loudly when a chunk group is over.
-//   pre-GL JS     the stage entry and its static imports                     <= 35 kB gz
-//   GL chunk      src/stage/gl/index.ts and its static imports, minus pre-GL  <= 185 kB gz
-//   effects       chunks holding src/gl/effects/** (once W-S1/W-C2 land them) <= 10 kB gz
-//   Lenis         the full-tier feel layer                                     <= 6 kB gz (5.4 documented)
+// size-limit budgets (docs/agents/budgets.md), computed from the client chunk graph that astro.config.mjs writes after
+// a build (Vite-manifest shape) and the module scripts each built page loads. The groups are scripts/check/
+// size-groups.cjs; every limit comes from the json budgets block (scripts/check/budgets.cjs), never a literal.
+// Run `npm run build` first; `npm run size` fails loudly when a group is over.
+//   pre-GL JS     per page: the static closure of the page's module scripts            site.preGlJsKbGz
+//   GL chunk      what GL boot loads: the closure of the GL entries (stage GL, camera,  site.glChunkKbGz
+//                 develop) minus pre-GL and bench-only, cross-checked by module path
+//   effects       chunks holding src/gl/effects/**                                      site.effectsKbGz
+//   Lenis         the full-tier feel layer: reported, no budget in budgets.md
 const { existsSync, readFileSync } = require('node:fs');
 const { join } = require('node:path');
+const { budget, readBudgets } = require('./scripts/check/budgets.cjs');
+const { pageScripts, sizeGroups } = require('./scripts/check/size-groups.cjs');
 
 const file = join(__dirname, 'node_modules/.cache/portfolio-build/vite-manifest.json');
 if (!existsSync(file)) throw new Error('size-limit: no chunk manifest; run `npm run build` first');
 const chunks = Object.values(JSON.parse(readFileSync(file, 'utf8')));
-const byFile = new Map(chunks.map((c) => [c.file, c]));
-
-function closure(start, skip = new Set()) {
-  const out = new Set();
-  const visit = (f) => {
-    if (out.has(f) || skip.has(f) || !byFile.has(f)) return;
-    out.add(f);
-    for (const i of byFile.get(f).imports) visit(i);
-  };
-  start.forEach(visit);
-  return out;
-}
-const holds = (c, prefix) => c.modules.some((m) => m.startsWith(prefix));
-const dist = (set) => [...set].map((f) => `dist/${f}`);
-
-const entries = chunks.filter((c) => c.isEntry && holds(c, 'src/stage/index.ts'));
-if (!entries.length) throw new Error('size-limit: no client entry holds src/stage/index.ts');
-const preGL = closure(entries.map((c) => c.file));
-const glEntry = chunks.find((c) => c.isDynamicEntry && holds(c, 'src/stage/gl/index.ts'));
-if (!glEntry) throw new Error('size-limit: no dynamic chunk holds src/stage/gl/index.ts');
-const gl = closure([glEntry.file], preGL);
-const effects = new Set(chunks.filter((c) => holds(c, 'src/gl/effects/')).map((c) => c.file));
-const lenis = chunks.filter((c) => holds(c, 'node_modules/lenis/')).map((c) => c.file);
+const groups = sizeGroups(chunks, pageScripts(join(__dirname, 'dist')));
+const b = readBudgets();
+const dist = (files) => files.map((f) => `dist/${f}`);
+const kB = (path) => `${budget(path, b)} kB`;
 
 const common = { gzip: true, brotli: false };
 module.exports = [
-  { name: 'pre-GL JS (stage, router, a11y)', path: dist(preGL), limit: '35 kB', ...common },
-  { name: 'GL chunk (three, anime engine, stage GL)', path: dist(gl), limit: '185 kB', ...common },
-  ...(effects.size ? [{ name: 'effects', path: dist(effects), limit: '10 kB', ...common }] : []),
-  ...(lenis.length ? [{ name: 'Lenis (full tier only)', path: lenis.map((f) => `dist/${f}`), limit: '6 kB', ...common }] : []),
+  ...groups.preGL.map((g) => ({ name: `pre-GL JS (${g.name})`, path: dist(g.files), limit: kB('site.preGlJsKbGz'), ...common })),
+  { name: 'GL chunk (three, anime, stage GL, camera, effects)', path: dist(groups.gl), limit: kB('site.glChunkKbGz'), ...common },
+  ...(groups.effects.length ? [{ name: 'effects', path: dist(groups.effects), limit: kB('site.effectsKbGz'), ...common }] : []),
+  ...(groups.lenis.length ? [{ name: 'Lenis (full tier only; reported, no budget)', path: dist(groups.lenis), ...common }] : []),
 ];
