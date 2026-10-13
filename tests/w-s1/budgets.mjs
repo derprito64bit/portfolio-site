@@ -25,7 +25,7 @@ export function loadBudgets() {
   return {
     /** "pre-GL JS <= 35 kB gz, summed from the network log before the stage:gl-start mark". */
     preGlBytes: b(/pre-GL JS <= ([\d.]+) kB gz/, 'pre-GL JS') * 1000, // kB to bytes, as budgets.md counts them
-    /** "GL chunk (three, addons, anime, stage GL, effects) <= 185 kB gz". */
+    /** "GL chunk (three, addons, anime, stage GL, effects) <= 187 kB gz". */
     glBytes: b(/GL chunk \(three, addons, anime, stage GL, effects\) <= ([\d.]+) kB gz/, 'GL chunk') * 1000, // kB to bytes, as budgets.md counts them
     /** "No automatic motion over 5 s". */
     motionCapMs: b(/No automatic motion over ([\d.]+) s\b/, 'automatic motion cap') * 1000, // s to ms
