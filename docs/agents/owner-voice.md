@@ -63,11 +63,12 @@ They do not retract the game's own gallery of projects.
 
 ## The references: quality, not a copy (2026-10-08)
 
-Said about portfolio-zxc and Jesper Landberg, the two sites quoted under "The 2D site".
+Said about portfolio-zxc and Jesper Landberg, the two sites quoted under "The 2D site", on 2026-10-08 02:19 UTC
+(2026-10-07 22:19 the owner's local time).
 
 > "it's not that i want a copy of thos websites but the quality of the animations and layout they have"
 
-- The bar is the quality of animation and layout of those sites, never their look. The orchestrator's motion
+- (orchestrator) The bar is the quality of animation and layout of those sites, never their look. The orchestrator's motion
   benchmark (2026-10-08; portfolio-evidence `research-motion/2026-10-08/MOTION-BENCHMARK.md`) is the test for W-S2,
   W-S3, W-C2, W-C3 and W-C14.
 
