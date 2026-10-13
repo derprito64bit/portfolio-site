@@ -1,5 +1,7 @@
-// Front Door build (W-F). Static output, trailing slashes, one global stylesheet (Swup swaps #swup only and there is
-// no head plugin, so every page must already carry every style), and the token seam files written into dist/seams/.
+// The portfolio's build (W-F; D-023: the site is the owner's whole portfolio, and the game is one project in it). Static
+// output, trailing slashes, one global stylesheet (Swup swaps #swup only and there is no head plugin, so every page must
+// already carry every style), and the token seam files written into dist/seams/. /manor/, /arcade/ and /play/ are
+// fork-owned paths that this build never emits or indexes.
 import { defineConfig } from 'astro/config';
 import sitemap from '@astrojs/sitemap';
 import { cpSync, existsSync, readFileSync, mkdirSync, writeFileSync } from 'node:fs';

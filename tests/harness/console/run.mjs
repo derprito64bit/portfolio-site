@@ -6,7 +6,7 @@
 import { createServer } from 'node:http';
 import { existsSync, readFileSync } from 'node:fs';
 import { extname, join } from 'node:path';
-import { ROOT, cliMain, consoleGate, newContext, serve, sleep, waitSettled } from '../lib.mjs';
+import { CONSOLE_RE, ROOT, cliMain, consoleGate, newContext, serve, sleep, waitSettled } from '../lib.mjs';
 
 const FIXTURES = join(ROOT, 'tests/harness/console/fixtures');
 const FAULTS = [
@@ -82,7 +82,7 @@ export async function run(opts = {}) {
   }
   const routesClean = routes.every((r) => r.pass);
   return {
-    schema: 1, instrument: 'console', pass: caught === FAULTS.length && routesClean, regex: '\\b(error|exception|uncaught|failed|GL_INVALID|CONTEXT_LOST|VALIDATE_STATUS)\\b',
+    schema: 1, instrument: 'console', pass: caught === FAULTS.length && routesClean, regex: CONSOLE_RE.source,
     fixtures, caught: `${caught}/${FAULTS.length}`, routes,
     summary: `faults caught ${caught}/${FAULTS.length}${routes.length ? `; routes clean ${routes.filter((r) => r.pass).length}/${routes.length}` : ''}`,
   };

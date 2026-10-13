@@ -4,8 +4,8 @@
 // It renders only when something moved, skips the render on idle frames and detaches after 1 s of idle, so a page at
 // rest costs 0 rAF callbacks and 0 draws. Any module wakes it with invalidate().
 import { durations } from '../lib/tokens.js';
-import { flags, mark, now, stats } from './state.ts';
-import { governorReset, governorSample } from './tier.ts';
+import { flags, guard, mark, now, stats } from './state.ts';
+import { governorAfterRestore, governorReset, governorSample } from './tier.ts';
 import { anyActive, bindWake } from './timelines.ts';
 import { readScroll } from './scroll.ts';
 
@@ -17,8 +17,12 @@ const steps: Step[] = [];
 const activeChecks: (() => boolean)[] = [];
 const afterFrame: (() => void)[] = [];
 const idleListeners = new Set<() => void>();
-let render: ((sy: number) => void) | null = null;
+/** The render: `tail` is true on a frame that only presents again what the last frame drew (presentTail). */
+type Render = (sy: number, tail: boolean) => void;
+let render: Render | null = null;
 let measure: (() => void) | null = null;
+/** Frames still to present after the last frame that drew something new. */
+let tail = 0;
 
 let running = false;
 let need = true;
@@ -45,8 +49,18 @@ export function onActive(fn: () => boolean): () => void {
   activeChecks.push(fn);
   return () => activeChecks.splice(activeChecks.indexOf(fn), 1);
 }
-export function setRender(fn: ((sy: number) => void) | null): void {
+export function setRender(fn: Render | null): void {
   render = fn;
+  if (!fn) tail = 0;
+}
+/**
+ * Present the next `frames` frames again, even when nothing moves (#61): WebKit shows a canvas one frame late, so a
+ * change that renders once and then sleeps would stay on its old frame there. A tail frame renders the same scene
+ * through the one render path, counts as a rendered frame (stats.draws, the governor) and never starts a new tail.
+ */
+export function presentTail(frames: number): void {
+  if (frames > tail) tail = frames;
+  wake();
 }
 export function setMeasure(fn: () => void): void {
   measure = fn;
@@ -100,19 +114,53 @@ export function renderNow(): void {
     return;
   }
   const draws = stats.draws;
-  render(readScroll());
+  const r = render;
+  // Guarded like a frame's render: a throw is reported, counted in stats.hookErrors, and the next frame still runs.
+  guard(() => r(readScroll(), false), undefined);
   if (stats.draws > draws) stats.layoutRenders++;
 }
 bindWake(invalidate);
+
+/**
+ * A gap is not a busy frame (W-D017; Breaker 3.3 #2, perf row 29): a page frozen in the back/forward cache or a hidden
+ * tab stops rAF mid-motion, and the first frame after it would otherwise feed the governor one interval of seconds (a
+ * 3 s stay stepped full to lite every time) and step the springs by the gap. Leaving and coming back start the frame
+ * clock afresh: the next frame steps 1/60 s and samples nothing.
+ */
+function resumeClock(): void {
+  lastTime = 0;
+  prevActive = false;
+  governorReset();
+}
+/** A WebGL context restore starts the frame clock afresh too (perf row 33; the governor's rebuild grace: tier.ts). */
+export function restartClock(): void {
+  resumeClock();
+  governorAfterRestore();
+}
+addEventListener('pageshow', (e) => {
+  if (e.persisted) resumeClock();
+});
+addEventListener('pagehide', resumeClock);
+document.addEventListener('visibilitychange', resumeClock);
 
 function schedule(): void {
   requestAnimationFrame(onFrame);
 }
 function onFrame(): void {
   stats.ticks++;
-  frame(now());
-  if (running) schedule();
+  try {
+    frame(now());
+  } finally {
+    if (running) schedule();
+  }
 }
+
+/**
+ * One crew's hook that throws must not stop the one ticker (guard, state.ts): the error is reported and counted in
+ * stats.hookErrors, and the hook counts as idle for this frame, so the loop still renders the rest and still detaches
+ * when nothing moves.
+ */
+export { guard };
 
 function spin(ms: number): void {
   const until = performance.now() + ms;
@@ -128,30 +176,47 @@ export function frame(time: number): void {
     const dt = lastTime ? Math.min(Math.max((time - lastTime) / 1000, 0), 0.05) : 1 / 60;
     if (lastTime) interval = time - lastTime;
     lastTime = time;
-    for (const fn of before) fn(time);
+    for (const fn of before) guard(() => fn(time), undefined);
     const sy = readScroll();
     if (dirty && measure) {
+      const m = measure;
       dirty = false;
-      measure();
+      guard(() => m(), undefined);
       stats.measuresInTick++;
       need = true;
     }
-    let active = need;
+    // Motion someone reports: a step, a timeline or an active check (Lenis inertia, anime).
+    let moving = false;
+    for (const fn of steps) if (guard(() => fn(dt, time, sy), false)) moving = true;
+    if (anyActive()) moving = true;
+    for (const fn of activeChecks) if (guard(() => fn(), false)) moving = true;
+    const active = need || moving;
     need = false;
-    for (const fn of steps) if (fn(dt, time, sy)) active = true;
-    if (anyActive()) active = true;
-    for (const fn of activeChecks) if (fn()) active = true;
 
-    if (active) {
-      lastActive = time;
+    // A frame with nothing new still renders while a present tail is owed (presentTail).
+    const tailFrame = !active && tail > 0 && render !== null;
+    if (tailFrame) tail--;
+    if (active || tailFrame) {
       if (flags.busyMs) spin(flags.busyMs);
-      render?.(sy);
+      const drawn = stats.draws;
+      const r = render;
+      if (r) guard(() => r(sy, tailFrame), undefined);
+      if (tailFrame) stats.tailFrames++;
+      // Activity is what reaches the screen (round-4 must-fix zero-width-grid): motion someone reports, or a frame the
+      // render presented. A frame that ran only because something asked for a render that then presented nothing (a
+      // collapsed canvas, a tail on it, nothing to draw on a canvas already clear) leaves lastActive where it was, so
+      // it never holds the ticker past the idle window that the gate counts from the last presented frame.
+      if (moving || stats.draws > drawn) lastActive = time;
+      else stats.quietFrames++;
       if (prevActive) governorSample(interval);
     } else {
       governorReset();
     }
-    prevActive = active;
-    while (afterFrame.length) afterFrame.shift()?.();
+    prevActive = active || tailFrame;
+    while (afterFrame.length) {
+      const fn = afterFrame.shift();
+      if (fn) guard(fn, undefined);
+    }
 
     // Detach on the frame that would otherwise run past 1 s of idle.
     if (!active && time + interval * 1.5 - lastActive >= durations.idleDetach) sleep();
@@ -165,5 +230,5 @@ function sleep(): void {
   prevActive = false;
   stats.sleeps++;
   if (idleMarks++ < 20) mark('stage:idle');
-  for (const fn of idleListeners) fn();
+  for (const fn of idleListeners) guard(fn, undefined);
 }

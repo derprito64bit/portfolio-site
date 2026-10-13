@@ -7,6 +7,7 @@ import { BoxGeometry, DataTexture, Mesh, PlaneGeometry, ShaderMaterial, Vector3,
 import { stage as stageTokens } from '../../lib/tokens.js';
 import { flags } from '../state.ts';
 import { give, take, type Slot } from '../slots.ts';
+import { invalidate } from '../ticker.ts';
 import { track, tween, type Timeline } from '../timelines.ts';
 import type { Entity, FrameInfo, GLApi, StageView } from './index.ts';
 
@@ -29,7 +30,9 @@ function disposeFlat(m: any): void {
 class QuadFixture implements Entity {
   readonly persistent = false;
   private slot: Slot | null = null;
-  private readonly mesh: any;
+  readonly mesh: any;
+  /** fixtures.hideAll: draw nothing (the present check's erase step). */
+  hidden = false;
   constructor(readonly id: string, idx: number, private readonly gl: GLApi) {
     const colour = flags.debug === 'drift' ? [255, 0, 20 * idx] : flags.debug === 'ring' ? [197, 40, 40] : [60 + ((idx * 37) % 120), 90, 110];
     this.mesh = new Mesh(new PlaneGeometry(1, 1), flat(colour[0], colour[1], colour[2]));
@@ -52,10 +55,10 @@ class QuadFixture implements Entity {
     const grow = flags.debug === 'ring' ? 12 : 0;
     this.mesh.position.set(s.cx - window.scrollX - f.W / 2, f.H / 2 - (s.cy - f.sy), 0);
     this.mesh.scale.set(s.w + grow * 2, s.h + grow * 2, 1);
-    this.mesh.visible = s.near;
+    this.mesh.visible = s.near && !this.hidden;
   }
   visible(): boolean {
-    return Boolean(this.slot?.near);
+    return Boolean(this.slot?.near) && !this.hidden;
   }
   restore(): void {
     if (this.slot) take(this.slot.id);
@@ -100,6 +103,10 @@ class CubeFixture implements Entity {
   unbind(): void {
     this.slot = null;
     this.view.visible = false;
+  }
+  /** fixtures.hideAll */
+  setShown(shown: boolean): void {
+    this.view.visible = shown && Boolean(this.slot);
   }
   place(): void {
     const pose = bandPose();
@@ -149,14 +156,94 @@ class CubeFixture implements Entity {
   }
 }
 
+/**
+ * A fixed-aspect stage view (#31): a flat quad that fills its camera's frustum exactly, so what it covers on screen
+ * is the view's contain-fit rectangle (data-gl-aspect on the slot), and nothing outside it.
+ */
+class AspectFixture implements Entity {
+  readonly persistent = false;
+  private slot: Slot | null = null;
+  private readonly view: StageView;
+  private readonly mesh: any;
+  constructor(readonly id: string, aspect: number | null, gl: GLApi) {
+    this.view = aspect ? gl.createStageView(id, { aspect }) : gl.createStageView(id);
+    const cam = this.view.camera;
+    const dist = 2;
+    cam.position.set(0, 0, dist);
+    cam.lookAt(0, 0, 0);
+    if (aspect) cam.aspect = aspect; // the owner's framing (applyFraming does this for the camera); the stage leaves it
+    cam.updateProjectionMatrix();
+    const h = 2 * dist * Math.tan(MathUtils.degToRad(cam.fov) / 2);
+    // Without an aspect the stage fits the camera to the slot every frame: a quad 10 frusta wide fills any slot.
+    this.mesh = new Mesh(new PlaneGeometry(h * (aspect ?? 10), h), flat(40, 200, 120));
+    this.view.scene.add(this.mesh);
+    this.view.visible = false;
+  }
+  bind(slot: Slot): void {
+    this.slot = slot;
+    this.view.visible = true;
+  }
+  unbind(): void {
+    this.slot = null;
+    this.view.visible = false;
+  }
+  /** fixtures.hideAll */
+  setShown(shown: boolean): void {
+    this.view.visible = shown && Boolean(this.slot);
+  }
+  place(): void {}
+  visible(): boolean {
+    return Boolean(this.slot?.near) && this.view.visible;
+  }
+  dispose(): void {
+    this.view.dispose();
+    this.mesh.geometry.dispose();
+    disposeFlat(this.mesh.material);
+  }
+  bounds() {
+    const r = this.view.rect;
+    return r ? { ...r, angleDeg: 0 } : null;
+  }
+  get stageView(): StageView {
+    return this.view;
+  }
+}
+
 export function install(gl: GLApi): void {
   gl.registerEntityFactory({
     match: (s) => s.fixture === 'quad',
     create: (s) => new QuadFixture(s.id, Number(s.el.dataset.glIndex) || 0, gl),
   });
   gl.registerEntityFactory({ match: (s) => s.fixture === 'cube', create: (s) => new CubeFixture(s.id, gl) });
+  gl.registerEntityFactory({ match: (s) => s.fixture === 'aspect', create: (s) => new AspectFixture(s.id, Number(s.el.dataset.glAspect) || null, gl) });
   const stage = (window as unknown as { __stage: Record<string, unknown> }).__stage;
   stage.fixtures = {
+    /** Recolour a quad fixture and ask for one render: the present check reads what the canvas shows afterwards. */
+    tint(id: string, r: number, g: number, b: number) {
+      const e = gl.entity(id) as QuadFixture | undefined;
+      if (!e) return false;
+      e.mesh.material.uniforms.uColor.value.set(r / 255, g / 255, b / 255);
+      invalidate();
+      return true;
+    },
+    /**
+     * Hide (or show again) every quad fixture and stage view and ask for one render. Hidden, the next frame draws
+     * nothing and only clears what the canvas showed: the present check reads that the erase reaches the screen.
+     */
+    hideAll(hidden = true) {
+      for (const s of document.querySelectorAll<HTMLElement>('[data-gl-fixture]')) {
+        const e = gl.entity(s.dataset.glId ?? '') as (QuadFixture | CubeFixture | AspectFixture) | undefined;
+        if (e instanceof QuadFixture) e.hidden = hidden;
+        else if (e) e.setShown(!hidden);
+      }
+      invalidate();
+      return true;
+    },
+    /** The last viewport (buffer px, bottom-left origin) of a fixed-aspect fixture's stage view. */
+    viewport(id: string) {
+      const e = gl.entity(id) as AspectFixture | undefined;
+      return e?.stageView.viewport ?? null;
+    },
     spin(ms = 5000, id = 'fixture-cube') {
       const e = gl.entity(id) as CubeFixture | undefined;
       if (!e) return false;

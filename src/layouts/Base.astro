@@ -1,6 +1,23 @@
 ---
 // The one page frame (W-F). Every route renders through it: skip link, the riding canvas outside #swup, a header
 // that scrolls away, #swup > main, the footer, one polite status region and the one stage module.
+//
+// The inline head script sets the render tier, motion and the scrollbar gutter before first paint (W-D017). It never
+// reads core or touch-point counts. Its comments ship with every page, so its reasons live here:
+// - The gutter (#59): only where a scrollbar takes room (a 100 px overflow:scroll probe). The page keeps its first width
+//   when the bar appears mid-parse; a gutter without a bar (hidden scrollbars) would narrow the canvas.
+// - WebGL2 means a context, not only its constructor (#61, W-D017): where none can be made (a blocklisted GPU, Chromium
+//   --disable-3d-apis) the tier is static from first paint. Probed on every load whose tier is not static: under a
+//   ?tier= override too (it cannot make WebGL2 exist), and on pages without GL (the 404), so a Swup visit from them
+//   starts on the right tier. The probe context is released at once.
+// - The cache (ion.webgl2) keeps only a failure ('0'), which skips the probe where it fails: a working answer is never
+//   trusted later, since context creation can fail in a session where it once worked (a GPU process blocked after
+//   crashes, tabs restored with hardware acceleration off), and a cached '1' that skipped the probe painted full and
+//   the line drawing first (round-5 must-fix n1-cached-webgl2). Every fresh session already pays for the probe.
+// - Size: the home page's HTML has to stay inside TCP's first congestion window (10 x 1,460 B = 14,600 B with the
+//   response headers, compressed), or the document costs one more round trip before anything paints: on Lighthouse's
+//   mobile model that is +150 ms on FCP and LCP (round 5: 14,766 B at 30b6b8d against 14,596 B at 8a9e8e8). Keep
+//   inline text out of it.
 import '../styles/tokens.css';
 import '../styles/base.css';
 import '../styles/motion.css';
@@ -44,14 +61,23 @@ const docTitle = `${title} · derprito64bit`;
     <link rel="preload" href="/fonts/bricolage-mark.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="preload" href="/fonts/bricolage-text.woff2" as="font" type="font/woff2" crossorigin />
     <script is:inline>
-      // Render tier and motion before first paint (W-D017). Never reads core or touch-point counts.
+      // Tier, motion and gutter before first paint (W-D017). Reasons: this file's frontmatter.
       (function (d, w) {
-        var h = d.documentElement, q = new URLSearchParams(location.search), t = q.get('tier'), m, c = navigator.connection;
+        var h = d.documentElement, q = new URLSearchParams(location.search), t = q.get('tier'), m, c = navigator.connection, p = d.createElement('div'), g, x, k;
         try { m = localStorage.getItem('ion.motion'); } catch (e) {}
         h.dataset.motion = m === 'reduced' || (m !== 'full' && matchMedia('(prefers-reduced-motion: reduce)').matches) ? 'reduced' : 'full';
+        p.style.cssText = 'position:absolute;top:-200px;width:100px;height:100px;overflow:scroll;visibility:hidden';
+        h.appendChild(p);
+        if (p.offsetWidth - p.clientWidth > 0) h.setAttribute('data-gutter', '');
+        p.remove();
         if (!/^(full|lite|static)$/.test(t || '')) {
-          t = !w.WebGL2RenderingContext ? 'static' : matchMedia('(pointer: fine) and (hover: hover)').matches && !(c && c.saveData) ? 'full' : 'lite';
+          t = matchMedia('(pointer: fine) and (hover: hover)').matches && !(c && c.saveData) ? 'full' : 'lite';
           try { if (sessionStorage.getItem('ion.gl-off')) t = 'static'; } catch (e) {}
+        }
+        if (t !== 'static') {
+          try { k = sessionStorage.getItem('ion.webgl2'); } catch (e) {}
+          if (k !== '0' && w.WebGL2RenderingContext) try { g = d.createElement('canvas').getContext('webgl2'); x = g && g.getExtension('WEBGL_lose_context'); x && x.loseContext(); } catch (e) { g = null; }
+          if (!g) { try { sessionStorage.setItem('ion.webgl2', '0'); } catch (e) {} t = 'static'; h.dataset.tierReason = 'no-webgl2'; }
         }
         h.dataset.tier = t;
         h.classList.add('js');
@@ -66,15 +92,14 @@ const docTitle = `${title} · derprito64bit`;
       <a class="site-mark" href="/"><span class="br" aria-hidden="true">[</span>derprito64bit<span class="br" aria-hidden="true">]</span></a>
       <nav class="site-nav" aria-label="Site">
         <ul>
-          <li><a href="/#work">Work</a></li>
-          <li><a href="#contact">Contact</a></li>
-          <li><a href="/#door">The Manor</a></li>
+          <li><a href="/#work" data-nav="work">Work</a></li>
+          <li><a href="#contact" data-nav="contact">Contact</a></li>
         </ul>
       </nav>
       <div data-mount="header-tools"></div>
     </header>
     <div id="swup">
-      <main id="main" tabindex="-1" data-page={page} data-title={docTitle}>
+      <main id="main" tabindex="-1" data-page={page} data-gl-page={gl ? 'on' : 'off'} data-title={docTitle}>
         <slot />
       </main>
     </div>

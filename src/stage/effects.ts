@@ -1,7 +1,9 @@
 // The effects API (W-F ships it as a no-op). Every call resolves at once with the final state, so crews can build
-// against it today. W-S1 and W-C2 plug the real effects in with registerEffect(); callers never change.
-// A no-op develop still exercises the handback (take, then give) and never touches focus.
+// against it today. Crews plug the real effects in with registerEffect() (W-S2 registers 'develop' from src/gl/prints
+// after stage:gl-start through window.__stage.registerEffect, #14 ruling 2; W-C2 may re-register it with the looks);
+// callers never change. A no-op develop still exercises the handback (take, then give) and never touches focus.
 import { give, take } from './slots.ts';
+import { hookError } from './state.ts';
 
 export interface DevelopResult { id: string; d: 1; developed: true }
 export interface LookResult { id: string; look: string }
@@ -19,11 +21,61 @@ export interface Effects {
   drip(opts?: { trigger?: string }): Promise<DripResult>;
 }
 
-const impls: Partial<Effects> = {};
+type Maybe<T> = T | undefined | Promise<T | undefined>;
+/**
+ * A registered effect: the call's own arguments, then `next`, the implementation it replaced (the one registered before
+ * it, or the built-in no-op). An impl serves its own ids and hands every other id on (`return next(id, opts)`), or
+ * returns undefined to fall through to `next` with the same arguments, so it never needs to import src/stage to give
+ * other ids the no-op (take, then give).
+ */
+export interface EffectImpls {
+  develop(id: string, opts: { duration?: number; trigger?: string } | undefined, next: Effects['develop']): Maybe<DevelopResult>;
+  look(id: string, look: string, next: Effects['look']): Maybe<LookResult>;
+  meshReveal(id: string, on: boolean, next: Effects['meshReveal']): Maybe<MeshRevealResult>;
+  drip(opts: { trigger?: string } | undefined, next: Effects['drip']): Maybe<DripResult>;
+}
+
+/** The built-in no-ops: the bottom of every chain. */
+const defaults: Effects = {
+  async develop(id) {
+    take(id);
+    give(id);
+    return { id, d: 1, developed: true };
+  },
+  async look(id, look) {
+    return { id, look };
+  },
+  async meshReveal(id, on) {
+    return { id, on };
+  },
+  async drip() {
+    return { covered: true };
+  },
+};
+/** The implementation each effect runs now: the latest registration, chained to the ones before it. */
+const current: Effects = { ...defaults };
 const developed = new Set<string>();
 
-export function registerEffect<K extends keyof Effects>(name: K, impl: Effects[K]): void {
-  impls[name] = impl;
+/**
+ * Plug a real effect in behind effects.<name>(): it receives the call's arguments and then the implementation it
+ * replaces. Registering again chains: the newest runs first, and its `next` is the one before it.
+ */
+export function registerEffect<K extends keyof Effects>(name: K, impl: EffectImpls[K]): void {
+  const next = current[name] as (...a: unknown[]) => Promise<unknown>;
+  const run = impl as unknown as (...a: unknown[]) => unknown;
+  (current as unknown as Record<string, unknown>)[name] = async (...args: unknown[]) => {
+    let r: unknown;
+    try {
+      r = await run(...args, next);
+    } catch (e) {
+      // A registered impl is crew code (state.ts guard; Breaker 3.1 #3): a throw or a rejection is reported and counted
+      // in stats.hookErrors, and the call falls through to `next`, so a develop that took its slot and then threw still
+      // hands it back (the no-op: take, then give) instead of leaving the print blank.
+      hookError(e);
+      return next(...args);
+    }
+    return r === undefined ? next(...args) : r;
+  };
 }
 export function isDeveloped(id: string): boolean {
   return developed.has(id);
@@ -31,23 +83,11 @@ export function isDeveloped(id: string): boolean {
 
 export const effects: Effects = {
   async develop(id, opts) {
-    if (impls.develop) {
-      const r = await impls.develop(id, opts);
-      developed.add(id);
-      return r;
-    }
-    take(id);
-    give(id);
+    const r = await current.develop(id, opts);
     developed.add(id);
-    return { id, d: 1, developed: true };
+    return r;
   },
-  async look(id, look) {
-    return impls.look ? impls.look(id, look) : { id, look };
-  },
-  async meshReveal(id, on) {
-    return impls.meshReveal ? impls.meshReveal(id, on) : { id, on };
-  },
-  async drip(opts) {
-    return impls.drip ? impls.drip(opts) : { covered: true };
-  },
+  look: (id, look) => current.look(id, look),
+  meshReveal: (id, on) => current.meshReveal(id, on),
+  drip: (opts) => current.drip(opts),
 };

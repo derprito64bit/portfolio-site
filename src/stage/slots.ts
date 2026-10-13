@@ -3,7 +3,7 @@
 // per frame. GL borrows a slot with take() (adds .is-gl, which hides the poster image only) and hands it back with
 // give(). Keyboard focus never borrows a slot.
 import { invalidate, renderNow } from './ticker.ts';
-import { stats } from './state.ts';
+import { guard, stats } from './state.ts';
 
 export type SlotKind = 'print' | 'object';
 export interface Slot {
@@ -84,7 +84,8 @@ export function scan(root: ParentNode = document): Slot[] {
     found.push(s);
   });
   measureAll();
-  for (const fn of scanListeners) fn(found);
+  // Each listener on its own (guard): one that throws must not keep GL (or another crew) from binding the new slots.
+  for (const fn of scanListeners) guard(() => fn(found), undefined);
   invalidate();
   return found;
 }
@@ -92,7 +93,8 @@ export function scan(root: ParentNode = document): Slot[] {
 /** Before Swup replaces #swup: hand every slot back and forget it. */
 export function unscan(): void {
   const gone = [...slots.values()];
-  for (const fn of unscanListeners) fn(gone);
+  // Guarded per listener: a throwing one must not leave the old slots registered (slots.clear() below always runs).
+  for (const fn of unscanListeners) guard(() => fn(gone), undefined);
   for (const s of gone) {
     s.el.classList.remove('is-gl');
     ro.unobserve(s.el);

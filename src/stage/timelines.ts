@@ -1,6 +1,6 @@
 // Running timelines. Every automatic motion registers here, so the live motion axis can end all of them at once
 // (W-D017) and __stage.seek can drive them on the manual clock (W-D030).
-import { now } from './state.ts';
+import { guard, now } from './state.ts';
 
 export interface Timeline {
   id: string;
@@ -23,11 +23,25 @@ export function track(t: Timeline): () => void {
   wake();
   return () => running.delete(t);
 }
+// Each timeline runs under guard() on its own (Breaker 2.1 #1): one that throws is reported and counted in
+// stats.hookErrors, and the others still finish, step and seek. A timeline whose `active` throws is finished (its end
+// state, guarded too) and dropped, so it can neither keep the ticker awake nor stop the frame before its render.
+/** t.active under guard. A throw finishes the timeline (guarded) and reads as false, so the caller drops it. */
+function readActive(t: Timeline): boolean {
+  let threw = true;
+  const on = guard(() => {
+    const v = t.active;
+    threw = false;
+    return v;
+  }, false);
+  if (threw) guard(() => t.finish(), undefined);
+  return on;
+}
 export function finishAll(): number {
   let n = 0;
   for (const t of [...running]) {
-    if (t.active) {
-      t.finish();
+    if (readActive(t)) {
+      guard(() => t.finish(), undefined);
       n++;
     }
   }
@@ -35,11 +49,11 @@ export function finishAll(): number {
   return n;
 }
 export function anyActive(): boolean {
-  for (const t of running) if (!t.active) running.delete(t);
+  for (const t of running) if (!readActive(t)) running.delete(t);
   return running.size > 0;
 }
 export function seekAll(ms: number): void {
-  for (const t of running) t.seek?.(ms);
+  for (const t of running) guard(() => t.seek?.(ms), undefined);
 }
 
 /** A plain eased tween on the stage clock, for fixtures and simple DOM-free values. */

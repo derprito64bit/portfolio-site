@@ -8,10 +8,11 @@
 import { PerspectiveCamera, Scene, WebGLRenderer, MathUtils } from 'three';
 import { engine } from 'animejs/engine';
 import { stage as stageTokens } from '../../lib/tokens.js';
-import { canvas, measureViewport, place, view } from '../rail.ts';
+import { containRect } from '../../../scripts/build/posters/stage.js';
+import { canvas, collapsed, measureViewport, place, resetView, view } from '../rail.ts';
 import { demote, getTier, onTier, tierReason } from '../tier.ts';
 import { flags, mark, stats } from '../state.ts';
-import { invalidate, isInFrame, markDirty, onActive, onBefore, onStep, setRender, wake } from '../ticker.ts';
+import { guard, invalidate, isInFrame, markDirty, onActive, onBefore, onStep, presentTail, restartClock, setRender, wake } from '../ticker.ts';
 import { allSlots, getSlot, giveAll, onScan, onUnscan, type Slot } from '../slots.ts';
 import { scrollState } from '../scroll.ts';
 import { onMotion } from '../motion.ts';
@@ -56,9 +57,18 @@ export interface StageView {
   readonly slotId: string;
   readonly scene: any;
   readonly camera: any;
+  /**
+   * A fixed framing aspect (#31), or null. With an aspect the view draws into the contain-fit rectangle of that
+   * aspect, centred in the slot in whole buffer pixels (like <img style="object-fit: contain">, W-C13's containRect),
+   * and the stage leaves camera.aspect to the owner (applyFraming). Without one the view fills the slot and the stage
+   * sets camera.aspect to the slot's every frame.
+   */
+  readonly aspect: number | null;
   visible: boolean;
   /** The slot's rect in viewport CSS px at the last render. */
   readonly rect: { x: number; y: number; w: number; h: number } | null;
+  /** The viewport (and scissor) of the last render, in buffer pixels from the canvas's bottom-left. */
+  readonly viewport: { x: number; y: number; w: number; h: number } | null;
   dispose(): void;
 }
 
@@ -68,7 +78,7 @@ export interface GLApi {
   pageCamera: any;
   rendererName: string;
   probe: ProbeResult | null;
-  createStageView(slotId: string, opts?: { fov?: number }): StageView;
+  createStageView(slotId: string, opts?: { fov?: number; aspect?: number }): StageView;
   registerEntityFactory(f: EntityFactory): void;
   entity(id: string): Entity | undefined;
   info(): { geometries: number; textures: number; programs: number; entities: number; views: number };
@@ -84,18 +94,48 @@ const factories: EntityFactory[] = [];
 const views = new Set<StageViewImpl>();
 let lost = false;
 let dead = false;
+/**
+ * Frames presented again after a change. WebKit (measured on its Windows build) can present the canvas a frame late:
+ * - a re-anchor moves the canvas and keeps presenting for REANCHOR_TAIL frames (represent);
+ * - a frame that drew new content presents it again for PRESENT_TAIL frames (presentTail, #61). The perf gate measured
+ *   that WebKit needs 1 (round-1 row 13: 0 of 12 wrong colours with 1, 12 of 12 with none); 2 keeps one spare;
+ * - a frame that only erased what the canvas showed (its content left) presents the clear for ERASE_TAIL frames, so
+ *   WebKit does not keep the old content on screen while the stage sleeps; a clear after a clear starts nothing.
+ * Every tail frame is a presented frame: the idle window counts from the last one (Orchestrator ruling on #11,
+ * 5992928262).
+ */
+const REANCHOR_TAIL = 3;
+const PRESENT_TAIL = 2;
+const ERASE_TAIL = 1;
 let represent = 0;
 /** The last presented frame drew nothing, so the canvas shows only the clear colour. */
 let presentedClear = false;
 const lossTimes: number[] = [];
+/**
+ * The slot each entity is bound to now, by slot id. A restore binds every current slot whose entity is not bound to it
+ * (round-6 must-fix one-loss-costs-restore (b)): a persistent entity (W-S1's camera) keeps its entity across a swap, so
+ * "has an entity" does not mean "is bound" once its slot came back while the context was lost.
+ */
+const boundTo = new Map<string, Slot>();
+/** The boot is waiting for its lost context to come back (boot.ts reports glState 'lost' meanwhile). */
+let waitingRestore = false;
+/** True while the GL boot waits for a lost context's restore: nothing is built on it and GL is not reported ready. */
+export function waitingForRestore(): boolean {
+  return waitingRestore;
+}
+/** The boot has wired the stage into the page (gl-ready); before that a restore only clears the loss. */
+let wiredUp = false;
+/** The context the boot made (untilRestored reads whether it is lost). */
+let bootContext: WebGL2RenderingContext | null = null;
 
 class StageViewImpl implements StageView {
   readonly scene = new Scene();
   readonly camera: any;
   visible = true;
   rect: { x: number; y: number; w: number; h: number } | null = null;
-  constructor(readonly slotId: string, fov: number) {
-    this.camera = new PerspectiveCamera(fov, 1, 0.01, 1000);
+  viewport: { x: number; y: number; w: number; h: number } | null = null;
+  constructor(readonly slotId: string, fov: number, readonly aspect: number | null) {
+    this.camera = new PerspectiveCamera(fov, aspect ?? 1, 0.01, 1000);
   }
   dispose(): void {
     views.delete(this);
@@ -109,6 +149,20 @@ function rendererName(gl: WebGL2RenderingContext): string {
 }
 
 const nextTask = () => new Promise<void>((r) => setTimeout(r, 0));
+/** Boot probes at most (a probe that saw a loss is run again after the restore; a second loss in 60 s is static). */
+const PROBE_ATTEMPTS = 3;
+
+/**
+ * GL commands issued between frames (three's compileAsync from a timer, a texture upload from a decode) wait in
+ * Chromium's WebGL command buffer until something flushes it, and a frame that draws nothing does not. Measured for #11
+ * (perf row 26, round 4): the camera's kept print program, linked from a timer, reported COMPLETION_STATUS_KHR only about
+ * 90 ms after the ticker detached, 1.0 s late, and its first-frame confirm then woke the stage a second time after an
+ * arrival. One flush at the start of every ticker frame (a no-op when nothing is pending) sends such work on within a
+ * frame.
+ */
+function flushPending(): void {
+  if (renderer && !lost && !dead) renderer.getContext().flush();
+}
 
 // ---------------------------------------------------------------- sizing and the page camera
 function resize(): void {
@@ -118,6 +172,9 @@ function resize(): void {
     renderer.setPixelRatio(view.dpr);
     renderer.setSize(view.W, view.Hc, false);
     presentedClear = false;
+    // A collapse (0 px wide or tall) has nothing to measure or draw: no frame for it. The resize that gives the canvas
+    // an area back reallocates again and re-measures then.
+    if (collapsed()) return;
     markDirty();
   } else if (kind === 'height') {
     // On a coarse pointer a height-only change is the toolbar: layouts use svh and lvh, so slots stay put and are
@@ -144,26 +201,33 @@ function updatePageCamera(sy: number, anchor: number): void {
 }
 
 function hasContent(): boolean {
-  for (const e of entities.values()) if (e.visible()) return true;
+  for (const e of entities.values()) if (guard(() => e.visible(), false)) return true;
   for (const v of views) if (v.visible && getSlot(v.slotId)?.near) return true;
   return false;
 }
 
 // ---------------------------------------------------------------- the frame
-function render(sy: number): void {
+function render(sy: number, tailFrame = false): void {
   if (!renderer || lost || dead) return;
+  // A collapsed canvas (0 px wide or tall) has nothing to show: no clear, no placement, no present and no tail, so the
+  // ticker detaches as usual; the resize that gives it an area back reallocates and re-measures (markDirty).
+  if (collapsed()) {
+    stats.renderSkips++;
+    return;
+  }
   // Nothing to draw and the canvas already clear (a page without GL content scrolling under Lenis): skip the clear,
-  // the placement and the present. The first frame with content re-anchors and draws as usual.
-  if (presentedClear && represent === 0 && !hasContent() && !pageScene.children.some((c: any) => c.visible)) {
+  // the placement and the present. The first frame with content re-anchors and draws as usual. A tail frame never
+  // skips: it presents the clear the frame before it drew.
+  if (!tailFrame && presentedClear && represent === 0 && !hasContent() && !pageScene.children.some((c: any) => c.visible)) {
     stats.renderSkips++;
     return;
   }
   const before = view.anchor;
   const anchor = place(sy, scrollState.dir);
   // A re-anchor moves the canvas and redraws it in one frame. WebKit (measured on its Windows build) can present the
-  // moved canvas with an older buffer for a frame or two, so a re-anchor keeps presenting for 3 more frames (counted
-  // in ticker frames: a layout render in the same frame does not use one up).
-  if (anchor !== before) represent = 3;
+  // moved canvas with an older buffer for a frame or two, so a re-anchor keeps presenting for PRESENT_TAIL more frames
+  // (counted in ticker frames: a layout render in the same frame does not use one up).
+  if (anchor !== before && Number.isFinite(anchor)) represent = REANCHOR_TAIL;
   else if (represent > 0 && isInFrame()) represent--;
   if (represent > 0) invalidate();
   const f: FrameInfo = { sy, anchor, W: view.W, H: view.H, Hc: view.Hc };
@@ -171,15 +235,19 @@ function render(sy: number): void {
   renderer.setScissorTest(false);
   renderer.setViewport(0, 0, view.W, view.Hc);
   renderer.clear();
-  for (const e of entities.values()) e.place(f);
+  // One entity that throws is reported and skipped; the others still draw this frame. Each draw runs guarded too: a
+  // throw from a three hook inside one render (onBeforeRender, onBeforeCompile) loses that scene or view for this
+  // frame only, and the page scene, the other views, the stats and the tail still run.
+  for (const e of entities.values()) guard(() => e.place(f), undefined);
   updatePageCamera(sy, anchor);
-  if (pageScene.children.some((c: any) => c.visible)) renderer.render(pageScene, pageCamera);
+  if (pageScene.children.some((c: any) => c.visible)) guard(() => renderer.render(pageScene, pageCamera), undefined);
   for (const v of views) {
     const s = getSlot(v.slotId);
     v.rect = null;
+    v.viewport = null;
     if (!v.visible || !s || !s.near || !s.w || !s.h) continue;
-    // Snap the slot to device pixels in document space (as the browser paints its box), so the scissored view
-    // lands on the same pixels at every scroll position: the anchor is device-aligned, so this never jitters.
+    // Snap the slot to buffer pixels in document space (view.dpr is on the canvas grid, rail.ts gridDpr), so the
+    // scissored view lands on the same pixels at every scroll position: the anchor is on the grid, so this never jitters.
     const snap = (n: number) => Math.round(n * view.dpr) / view.dpr;
     const x = snap(s.cx - s.w / 2 - window.scrollX);
     const top = snap(s.cy - s.h / 2);
@@ -189,38 +257,68 @@ function render(sy: number): void {
     v.rect = { x, y: top - sy, w, h };
     if (yCanvas + h <= 0 || yCanvas >= view.Hc) continue;
     const yGl = view.Hc - yCanvas - h;
-    v.camera.aspect = w / h;
-    v.camera.updateProjectionMatrix();
-    renderer.setViewport(x, yGl, w, h);
-    renderer.setScissor(x, yGl, w, h);
+    // The viewport in buffer pixels (bottom-left origin). With a fixed aspect (#31): the contain-fit rectangle of that
+    // aspect, centred in the slot's buffer box, the way W-C13's posters frame it (containRect, whole pixels).
+    const B = { x: Math.round(x * view.dpr), y: Math.round(yGl * view.dpr), w: Math.round(w * view.dpr), h: Math.round(h * view.dpr) };
+    let vp = B;
+    if (v.aspect) {
+      const c = containRect(B.w, B.h, v.aspect);
+      vp = { x: B.x + c.x, y: B.y + (B.h - c.y - c.height), w: c.width, h: c.height };
+    } else {
+      v.camera.aspect = w / h;
+      v.camera.updateProjectionMatrix();
+    }
+    v.viewport = vp;
+    // three takes CSS px and multiplies by its pixel ratio (view.dpr) before rounding: these land on vp exactly.
+    const k = 1 / view.dpr;
+    renderer.setViewport(vp.x * k, vp.y * k, vp.w * k, vp.h * k);
+    renderer.setScissor(vp.x * k, vp.y * k, vp.w * k, vp.h * k);
     renderer.setScissorTest(true);
-    renderer.render(v.scene, v.camera);
+    guard(() => renderer.render(v.scene, v.camera), undefined);
   }
   renderer.setScissorTest(false);
-  presentedClear = renderer.info.render.calls === 0;
+  const drew = renderer.info.render.calls > 0;
+  const erased = !drew && !presentedClear;
+  presentedClear = !drew;
   stats.draws++;
   stats.drawCalls += renderer.info.render.calls;
+  // Present a frame that drew something new again for a few frames, and the clear of one that erased content once (#61).
+  if (!tailFrame && drew && !flags.noTail) presentTail(PRESENT_TAIL);
+  else if (!tailFrame && erased && !flags.noEraseTail) presentTail(ERASE_TAIL);
 }
 
 // ---------------------------------------------------------------- entities
+// Every call into a crew's entity or factory runs under guard(), one entity at a time (Breaker 2.2 #3): one that
+// throws is reported and counted in stats.hookErrors, and the stage goes on with the others (bind the rest of the
+// slots, unbind and forget the old page's, restore and redraw after a context loss, snap under reduced motion).
 function bindSlot(s: Slot): void {
+  // Nothing binds while GL is gone (a drop to static) or its context is lost (round-5 should-fix S5, Breaker 4.3 #1): an
+  // entity that took its slot then hid the arriving page's print with nothing drawing it. The restore binds what
+  // arrived during the loss.
+  if (dead || lost) return;
   let e = entities.get(s.id);
   if (!e) {
-    const f = factories.find((x) => x.match(s));
+    const f = factories.find((x) => guard(() => x.match(s), false));
     if (!f) return;
-    e = f.create(s, api);
+    e = guard(() => f.create(s, api), undefined as Entity | undefined);
+    if (!e) return;
     entities.set(s.id, e);
   }
-  e.bind(s);
+  const bound = e;
+  guard(() => {
+    bound.bind(s);
+    boundTo.set(s.id, s);
+  }, undefined);
   invalidate();
 }
 function unbindSlots(gone: Slot[]): void {
   for (const s of gone) {
     const e = entities.get(s.id);
     if (!e) continue;
-    e.unbind();
-    if (!e.persistent) {
-      e.dispose();
+    boundTo.delete(s.id);
+    guard(() => e.unbind(), undefined);
+    if (!guard(() => e.persistent, false)) {
+      guard(() => e.dispose(), undefined);
       entities.delete(s.id);
     }
   }
@@ -243,18 +341,90 @@ function onRestored(): void {
   lost = false;
   presentedClear = false;
   stats.restores++;
-  for (const e of entities.values()) e.restore?.();
+  // A loss during the boot: the boot waits for this restore (untilRestored) and goes on from where it was.
+  if (!wiredUp) return;
+  // The frames that rebuild the scene after a restore are not steady frames (perf row 33: one restore stepped the
+  // governor in the WebKit opening); a single loss costs the restore and nothing more (W-D017).
+  restartClock();
+  for (const e of entities.values()) guard(() => e.restore?.(), undefined);
+  // Every current slot whose entity is not bound to it: the slots that arrived during the loss, persistent entities'
+  // returning slots included (round-6 must-fix one-loss-costs-restore (b)).
+  for (const s of allSlots()) if (boundTo.get(s.id) !== s) bindSlot(s);
+  rewarm();
   resize();
   markDirty();
 }
 
+/**
+ * The restore rebuilds in one go (perf row 21; ruling 6049539219 item 2: one loss costs the restore and nothing more).
+ * three rebuilds a program or a texture on its first use after a restore, and a crew's warm-up (compileAsync at boot)
+ * does not run again, so a program first drawn later in the opening rebuilt in a frame of its own (measured, WebKit D3
+ * on /: one 52 ms frame about 330 ms after the restore's 0.7 s stall, a program and 2 textures). Every
+ * program of the stage's scenes (the page scene and each view's, hidden objects included) is compiled and every image
+ * texture they hold is uploaded here, inside the restore's own task.
+ */
+function rewarm(): void {
+  if (!renderer || lost || dead) return;
+  const scenes: [any, any][] = [[pageScene, pageCamera], ...[...views].map((v): [any, any] => [v.scene, v.camera])];
+  const textures = new Set<any>();
+  const collect = (m: any) => {
+    if (!m) return;
+    for (const k of Object.keys(m)) if (m[k]?.isTexture) textures.add(m[k]);
+    if (m.uniforms) for (const u of Object.values(m.uniforms) as any[]) if (u?.value?.isTexture) textures.add(u.value);
+  };
+  for (const [scene, camera] of scenes) {
+    guard(() => renderer.compile(scene, camera), undefined);
+    scene.traverse((o: any) => (Array.isArray(o.material) ? o.material : [o.material]).forEach(collect));
+  }
+  // Only textures with their data in hand: a render target's texture, or one still decoding, uploads when it is ready.
+  for (const t of textures) if (!t.isRenderTargetTexture && t.image && t.version > 0) guard(() => renderer.initTexture(t), undefined);
+}
+
+/**
+ * A context lost while the GL boot runs (round-6 must-fix one-loss-costs-restore (a), (c)): nothing is built on it and
+ * GL is not reported ready on it; the boot waits here for the restore (W-D017 prices one loss at its restore).
+ * Resolves true once the context is back, false when the boot must stop waiting: the page opted out of GL (a Swup
+ * visit to the 404, `stop`) or the tier dropped to static (a second loss within 60 s). Event-driven: nothing polls.
+ */
+function untilRestored(stop: () => boolean): Promise<boolean> {
+  // The context can read lost before its lost event is dispatched (a loss queued as the boot's task ended).
+  const isLost = () => lost || Boolean(bootContext?.isContextLost());
+  if (!isLost()) return Promise.resolve(true);
+  return new Promise((resolve) => {
+    const done = (back: boolean) => {
+      canvas.removeEventListener('webglcontextrestored', onBack);
+      mo.disconnect();
+      offTier();
+      waitingRestore = false;
+      resolve(back && !isLost());
+    };
+    // Added after onRestored (and three's own listener), so the loss is already cleared when this runs.
+    const onBack = () => done(true);
+    const mo = new MutationObserver(() => {
+      if (stop()) done(false);
+    });
+    const offTier = onTier((t) => {
+      if (t === 'static') done(false);
+    });
+    canvas.addEventListener('webglcontextrestored', onBack);
+    mo.observe(document.documentElement, { attributes: true, attributeFilter: ['data-gl-page'] });
+    waitingRestore = true;
+  });
+}
+
+/** A drop to static: GL goes for the visit, and so does its wiring (the scan and step hooks, listeners), as abandon(). */
 function teardown(): void {
   if (dead) return;
   dead = true;
+  for (const off of wired.splice(0)) guard(off, undefined);
+  dprWatch++;
+  canvas.removeEventListener('webglcontextlost', onLost);
+  canvas.removeEventListener('webglcontextrestored', onRestored);
   giveAll();
   setRender(null);
-  for (const e of entities.values()) e.dispose();
+  for (const e of entities.values()) guard(() => e.dispose(), undefined);
   entities.clear();
+  boundTo.clear();
   views.clear();
   renderer?.dispose();
 }
@@ -274,12 +444,15 @@ function wireAnime(): void {
     wake();
     return engine;
   };
-  onBefore(() => engine.update());
-  onActive(() => Boolean(animeHead()));
+  wired.push(onBefore(() => engine.update()));
+  wired.push(onActive(() => Boolean(animeHead())));
 }
 /** Reduced motion: every anime timeline jumps to its end. */
 function completeAnime(): void {
-  for (let t = animeHead(); t; t = t._next) t.complete?.();
+  for (let t = animeHead(); t; t = t._next) {
+    const tick = t;
+    guard(() => tick.complete?.(), undefined);
+  }
 }
 
 // ---------------------------------------------------------------- the API crews use
@@ -298,14 +471,17 @@ const api: GLApi = {
     return probeResult;
   },
   createStageView(slotId, opts = {}) {
-    const v = new StageViewImpl(slotId, opts.fov ?? stageTokens.fovDeg);
+    const aspect = opts.aspect !== undefined && Number.isFinite(opts.aspect) && opts.aspect > 0 ? opts.aspect : null;
+    const v = new StageViewImpl(slotId, opts.fov ?? stageTokens.fovDeg, aspect);
     views.add(v);
     invalidate();
     return v;
   },
   registerEntityFactory(f) {
     factories.push(f);
-    for (const s of allSlots()) if (!entities.has(s.id) && f.match(s)) bindSlot(s);
+    // match() is crew code: under guard() per slot (Breaker 3.1 #3), so one that throws is counted in hookErrors and
+    // the other slots are still offered to the factory. Nothing binds while GL is gone or lost (bindSlot).
+    for (const s of allSlots()) if (!dead && !lost && !entities.has(s.id) && guard(() => f.match(s), false)) bindSlot(s);
   },
   entity: (id) => entities.get(id),
   info: () => ({
@@ -319,76 +495,209 @@ const api: GLApi = {
   forceContextRestore: () => renderer?.forceContextRestore(),
 };
 
-export async function boot(): Promise<GLApi | null> {
+/** Undo functions for everything boot() wired (hooks, listeners): abandon() runs them. */
+const wired: (() => void)[] = [];
+/** Bumped by abandon(): a DPR watcher armed by an abandoned boot does nothing. */
+let dprWatch = 0;
+
+/**
+ * A boot that finds its page opted out of GL (W-D029: the 404, reached by a Swup visit while the boot was in flight)
+ * stands down: the renderer, the canvas listeners and any wiring go, the view is reset so the next boot measures the
+ * canvas afresh, and nothing is bound. The context the canvas may already hold is left as it is (it draws nothing),
+ * and the next boot on a page with GL reuses it. boot.ts also calls this when the page changed after boot() resolved.
+ */
+export function abandon(): void {
+  for (const off of wired.splice(0)) guard(off, undefined);
+  dprWatch++;
+  setRender(null);
+  giveAll();
+  for (const e of entities.values()) guard(() => e.dispose(), undefined);
+  entities.clear();
+  boundTo.clear();
+  views.clear();
+  factories.length = 0;
+  wiredUp = false;
+  canvas.removeEventListener('webglcontextlost', onLost);
+  canvas.removeEventListener('webglcontextrestored', onRestored);
+  const st = (window as unknown as { __stage?: Record<string, unknown> }).__stage;
+  if (st) st.fixtures = undefined;
+  renderer?.dispose();
+  renderer = null;
+  probeResult = null;
+  name = '';
+  lost = false;
+  dead = false;
+  represent = 0;
+  presentedClear = false;
+  resetView();
+}
+
+/**
+ * The GL boot. `stop` is read after every await (W-D029, round-2 and round-3 must-fix s2-404-gl-boot): a Swup visit can
+ * land on a page that opts out of GL during any of them (the chunk import is boot.ts's), so the boot stands down there
+ * (abandon) and resolves 'stood-down'. Everything that wires the stage into the page runs after the last await, so a
+ * stand-down only ever has the renderer and the canvas listeners to undo.
+ */
+export async function boot(stop: () => boolean = () => false): Promise<GLApi | null | 'stood-down'> {
+  const standDown = (): 'stood-down' => {
+    abandon();
+    return 'stood-down';
+  };
+  if (stop()) return standDown();
   const tier = getTier();
+  // The context first, with the attributes three would ask for: where WebGL2 exists but no context can be made
+  // (Chromium --disable-3d-apis, a blocklisted GPU), three's constructor logs console errors before it throws, so it
+  // only ever gets a context that exists. The head script (Base.astro) has usually found this before first paint
+  // (#61); this covers ?tier= overrides and a context that fails later than the head's probe.
+  const attrs: WebGLContextAttributes = { alpha: true, depth: true, stencil: false, antialias: tier === 'full', premultipliedAlpha: true, preserveDrawingBuffer: false, powerPreference: 'high-performance', failIfMajorPerformanceCaveat: false };
+  let context: WebGL2RenderingContext | null = null;
   try {
-    renderer = new WebGLRenderer({ canvas, alpha: true, antialias: tier === 'full', powerPreference: 'high-performance', stencil: false });
+    context = canvas.getContext('webgl2', attrs);
   } catch {
+    context = null;
+  }
+  if (!context) {
+    // Later full loads in this session start static before first paint (the head script reads this).
+    try {
+      sessionStorage.setItem('ion.webgl2', '0');
+    } catch {
+      /* storage blocked: the head script probes again */
+    }
+    demote('static', 'no-webgl2');
+    return null;
+  }
+  // The loss listeners go on as soon as the context exists (round-6 must-fix one-loss-costs-restore (a)): a loss in the
+  // boot's task gaps is prevented, counted and waited out like any other (W-D017: one loss costs its restore), never
+  // read as no WebGL2. A context reused from an abandoned boot may already be lost.
+  bootContext = context;
+  lost = context.isContextLost();
+  canvas.addEventListener('webglcontextlost', onLost);
+  canvas.addEventListener('webglcontextrestored', onRestored);
+  const unlisten = () => {
+    canvas.removeEventListener('webglcontextlost', onLost);
+    canvas.removeEventListener('webglcontextrestored', onRestored);
+  };
+  // The boot stops waiting for a restore: the page opted out (stand down) or the tier went static (GL goes).
+  const gone = (): 'stood-down' | null => {
+    if (stop()) return standDown();
+    teardown();
+    return null;
+  };
+  // The boot's synchronous work goes in three tasks, not one (ruling 6049539219 item 3: on a mobile load of / the context,
+  // three's renderer and the first measure ran as one main-thread task of 16 to 40 ms, 4x that under Lighthouse's
+  // simulated CPU): the context, then the renderer, then the measure. Each await reads the page's opt-out again.
+  await nextTask();
+  if (stop()) return standDown();
+  if (!(await untilRestored(stop))) return gone();
+  try {
+    renderer = new WebGLRenderer({ canvas, context, alpha: true, antialias: tier === 'full', powerPreference: 'high-performance', stencil: false });
+  } catch {
+    unlisten();
     demote('static', 'no-webgl2');
     return null;
   }
   const gl = renderer.getContext();
   if (typeof WebGL2RenderingContext === 'undefined' || !(gl instanceof WebGL2RenderingContext)) {
+    unlisten();
     renderer.dispose();
     demote('static', 'no-webgl2');
     return null;
   }
+  // After three's own listeners, as before the boot split: three re-initialises its state on a restore first, then
+  // onRestored re-uploads and redraws through it.
+  unlisten();
+  canvas.addEventListener('webglcontextlost', onLost);
+  canvas.addEventListener('webglcontextrestored', onRestored);
   name = rendererName(gl);
   mark('stage:renderer', name);
   renderer.setClearColor(0x000000, 0);
   renderer.autoClear = false;
   renderer.info.autoReset = false;
-  canvas.addEventListener('webglcontextlost', onLost);
-  canvas.addEventListener('webglcontextrestored', onRestored);
+  await nextTask();
+  if (stop()) return standDown();
   resize();
   await nextTask();
+  if (stop()) return standDown();
 
-  // The boot probe (W-D017): full needs 3 wet hero-size prints at <= 8 ms median, else lite.
+  // The boot probe (W-D017): full needs 3 wet hero-size prints at <= 8 ms median, else lite. A probe that saw its context
+  // lost timed nothing (S7): the boot waits for the restore and probes again, so one loss costs only its restore
+  // (ruling 6049539219 item 2; round-6 must-fix one-loss-costs-restore (c)). A second loss within 60 s is static.
   if (tier === 'full' && !new URLSearchParams(location.search).has('tier')) {
-    probeResult = await runProbe(renderer, view);
+    for (let attempt = 1; ; attempt++) {
+      probeResult = await runProbe(renderer, view);
+      if (stop()) return standDown();
+      if (!probeResult.lost || attempt >= PROBE_ATTEMPTS) break;
+      stats.probeRetries++;
+      if (!(await untilRestored(stop))) return gone();
+      resize();
+    }
     if (!probeResult.pass) demote('lite', 'probe');
     resize();
     await nextTask();
+    if (stop()) return standDown();
   }
   if (getTier() === 'static') {
     teardown();
     return null;
   }
 
+  // Test fixtures and the GPU bench load only on the pages that ask for them (/bench/). They are imported before
+  // anything is wired.
+  const fixtures = document.querySelector('[data-gl-fixture]') || flags.debug ? await import('./fixtures.ts') : null;
+  const bench = document.querySelector('[data-bench]') ? await import('./bench.ts') : null;
+  if (stop()) return standDown();
+  // The boot's last await: GL is never reported ready, and nothing is built, on a lost context (round-6 must-fix
+  // one-loss-costs-restore (c): crews that built on it at gl-ready freed pre-loss objects after the restore, and the
+  // console logged 'delete: object does not belong to this context').
+  if (!(await untilRestored(stop))) return gone();
+  if (stop()) return standDown();
+  // A drop to static while those chunks loaded: bind nothing, and say so.
+  if (dead || getTier() === 'static') {
+    teardown();
+    return null;
+  }
+
+  // From here to the return nothing awaits: the stage is wired into the page in one task.
+  wired.push(onBefore(flushPending));
   wireAnime();
-  onScan((found) => found.forEach(bindSlot));
-  onUnscan(unbindSlots);
-  onStep(() => scrollState.moved && hasContent());
-  onStep((dt, time) => {
+  wired.push(onScan((found) => found.forEach(bindSlot)));
+  wired.push(onUnscan(unbindSlots));
+  wired.push(onStep(() => scrollState.moved && hasContent()));
+  wired.push(onStep((dt, time) => {
     let moving = false;
-    for (const e of entities.values()) if (e.step?.(dt, time)) moving = true;
+    for (const e of entities.values()) if (guard(() => Boolean(e.step?.(dt, time)), false)) moving = true;
     return moving;
-  });
-  onTier((t) => {
+  }));
+  wired.push(onTier((t) => {
     if (t === 'static') teardown();
     else resize();
-  });
-  onMotion((m) => {
+  }));
+  wired.push(onMotion((m) => {
     if (m !== 'reduced') return;
     completeAnime();
-    for (const e of entities.values()) e.snap?.();
-  });
+    for (const e of entities.values()) guard(() => e.snap?.(), undefined);
+  }));
   addEventListener('resize', resize, { passive: true });
+  wired.push(() => removeEventListener('resize', resize));
+  const token = dprWatch;
   const watchDpr = () => {
     matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`).addEventListener('change', () => {
+      if (token !== dprWatch) return;
       resize();
       watchDpr();
     }, { once: true });
   };
   watchDpr();
-  addEventListener('scroll', () => {
+  const onScroll = () => {
     if (hasContent()) wake();
-  }, { passive: true });
+  };
+  addEventListener('scroll', onScroll, { passive: true });
+  wired.push(() => removeEventListener('scroll', onScroll));
   setRender(render);
 
-  // Test fixtures and the GPU bench load only on the pages that ask for them (/bench/).
-  if (document.querySelector('[data-gl-fixture]') || flags.debug) (await import('./fixtures.ts')).install(api);
-  if (document.querySelector('[data-bench]')) (await import('./bench.ts')).install(api);
+  wiredUp = true;
+  fixtures?.install(api);
+  bench?.install(api);
   for (const s of allSlots()) bindSlot(s);
 
   mark('stage:tier', `${getTier()}:${tierReason()}`);

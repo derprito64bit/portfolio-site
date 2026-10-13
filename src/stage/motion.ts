@@ -2,6 +2,7 @@
 // and the site's Motion switch (localStorage 'ion.motion', which the Manor also reads). A stored choice wins; the
 // OS setting applies when nothing is stored. Subscribers end timelines, snap springs and drop Lenis at once.
 import { MOTION_KEY } from '../lib/tokens.js';
+import { guard } from './state.ts';
 
 export type Motion = 'full' | 'reduced';
 const html = document.documentElement;
@@ -31,7 +32,9 @@ function apply(): void {
   if (next === current) return;
   current = next;
   html.dataset.motion = next;
-  for (const fn of listeners) fn(next);
+  // Each listener on its own (guard): one that throws must not keep the others (finish the timelines, drop Lenis, snap
+  // the springs) from running.
+  for (const fn of listeners) guard(() => fn(next), undefined);
 }
 media.addEventListener('change', apply);
 addEventListener('storage', (e) => {

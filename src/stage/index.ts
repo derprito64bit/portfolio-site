@@ -20,10 +20,13 @@ if (flags.debug) html.dataset.debug = flags.debug;
 
 // ---------------------------------------------------------------- motion axis: applied live (W-D017)
 let lenisMod: typeof import('./lenis.ts') | null = null;
+let lenisLoad: Promise<typeof import('./lenis.ts')> | null = null;
+const wantLenis = (): boolean => getTier() === 'full' && !isReduced() && glState() === 'ready';
 async function syncLenis(): Promise<void> {
-  const want = getTier() === 'full' && !isReduced() && glState() === 'ready';
-  if (want && !lenisMod) lenisMod = await import('./lenis.ts');
-  if (want) lenisMod?.enableLenis();
+  if (wantLenis() && !lenisMod) lenisMod = await (lenisLoad ??= import('./lenis.ts'));
+  // Read again after the await (Breaker 2.3 #1): a motion or tier change while the chunk loaded wins, so Lenis never
+  // comes on under reduced motion, lite or static. enableLenis checks both axes again too (W-D014).
+  if (wantLenis()) lenisMod?.enableLenis();
   else lenisMod?.disableLenis();
 }
 onMotion((m) => {
@@ -55,7 +58,7 @@ document.addEventListener('visibilitychange', () => {
 });
 
 // ---------------------------------------------------------------- settled (capture waits for this)
-const SETTLED_GL = new Set(['off', 'deferred', 'ready', 'failed']);
+const SETTLED_GL = new Set(['off', 'deferred', 'lost', 'ready', 'failed']);
 function isSettled(): boolean {
   return fontsReady && !isRunning() && !anyActive() && SETTLED_GL.has(glState());
 }
@@ -107,6 +110,8 @@ const hooks = {
     return s ? { id, kind: s.kind, slot: slotRect(id), gl: gl?.entity(id)?.bounds?.() ?? null } : null;
   },
   seek: flags.manualClock ? seek : undefined,
+  /** The test-only switches (state.ts flags); a check may set busyMs mid-visit (the governor after a restore). */
+  flags,
   slots: () =>
     allSlots().map((s) => ({ id: s.id, kind: s.kind, fixture: s.fixture, cx: s.cx, cy: s.cy, w: s.w, h: s.h, near: s.near, isGl: s.el.classList.contains('is-gl') })),
   marks: () =>
@@ -115,10 +120,21 @@ const hooks = {
       .filter((m) => m.name.startsWith('stage:'))
       .map((m) => ({ name: m.name, t: Math.round(m.startTime), detail: (m as PerformanceMark).detail ?? null })),
   effects,
+  /** Plug a real effect in behind effects.develop() and the others (#54): callers of __stage.effects never change. */
+  registerEffect,
   requestFlash,
   announce,
   setMotion,
   invalidate,
+  /** Layout moved a slot without resizing it: re-measure every slot on the next frame, then render (#54). */
+  markDirty,
+  /**
+   * GL borrows a slot's pixels (take: .is-gl hides its poster image) and hands them back (give), for an effect impl
+   * registered through registerEffect that serves its own ids (#54 item 2, #14 ruling 2): take, then give, without
+   * importing src/stage.
+   */
+  take,
+  give,
   raise,
   lower,
   demote,
