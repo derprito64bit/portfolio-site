@@ -3,8 +3,8 @@
 **MACHINE RULES (owner, 2026-10-02: "my computer is getting eaten")**
 - **Blender renders on the GPU only (AMD RX 6700 XT, HIP), never the CPU.**
   - In every Blender MCP session and every background script, first run
-    `exec(open(r"C:\Users\Aaron\Documents\GitHub\project.ion\.claude\worktrees\overhaul\scripts\fork\blender_gpu.py").read())`.
-    It sets HIP, enables only the GPU device and sets every scene's `cycles.device = 'GPU'`. It also forces the GPU
+    `exec(open(r"<worktree root>/scripts/fork/blender_gpu.py").read())`, where `<worktree root>` is the root of your
+    checkout of the game repo. It sets HIP, enables only the GPU device and sets every scene's `cycles.device = 'GPU'`. It also forces the GPU
     again at every render start, and a background job (`-b`) with no GPU stops with an error instead of using the CPU.
   - Never write `cycles.device = "CPU"`.
   - Use EEVEE for quick previews. Use Cycles at 64 samples or fewer, with denoising, for stills. Preview renders
@@ -41,7 +41,7 @@ missing, or another skill would materially help, you may install it after vettin
 | three.js and shaders | `threejs-fundamentals`, `threejs-shaders`, `threejs-postprocessing`, `threejs-loaders`, `threejs-textures`; Context7 for the current API. These skills have no licence: use them as guidance, never copy their code |
 | Typography | `better-typography` |
 | Accessibility | `better-accessibility`, `a11y-debugging`; `npx @axe-core/playwright` in your own browser session |
-| Performance | `web-quality-skills`, `debug-optimize-lcp`, `memory-leak-debugging`; `npx lighthouse@13`, `npx size-limit`; the **Chrome DevTools MCP** (`lighthouse_audit`, `performance_start_trace` / `performance_analyze_insight`, heap snapshots), taking the `devtools` lane. Measure performance only while no Blender build or render is running, because CPU load skews the numbers |
+| Performance | `web-quality-skills`, `debug-optimize-lcp`, `memory-leak-debugging`; `npx lighthouse@13`, `npx size-limit`; the **Chrome DevTools MCP** (`lighthouse_audit`; traces with `performance_start_trace`, `performance_stop_trace` and `performance_analyze_insight`; heap snapshots with `take_heapsnapshot`), taking the `devtools` lane. Measure performance only while no Blender build or render is running, because CPU load skews the numbers. No Blender job is running when `powershell -File scripts/fleet/lane.ps1 status` shows the `blender` lane free and `Get-Process blender -ErrorAction SilentlyContinue` returns nothing |
 | Design tokens | `design-system` |
 | Seeing the page (every gate) | `playwright-cli` in your own session, or `node scripts/crew.mjs shoot` once it exists. By hand: `playwright-cli -s=<id> open <url>`, `resize 1440 900`, `screenshot --filename=<path>`, `resize 390 844`, `screenshot`, `console`, then **`close`**. Run `playwright-cli list` at the end and close anything of yours still open. Gate on console text containing `ERROR`, not only the error level |
 | 3D models and animation | **Blender MCP** (take the `blender` lane): model, rig, animate, export GLB. `npx @gltf-transform/cli optimize` (meshopt or Draco, KTX2/WebP textures). three.js `GLTFLoader` and `AnimationMixer`, with Context7 for the current API. GSAP ScrollTrigger for scroll-driven 3D. Poly Haven, Sketchfab and Poly Pizza through Blender MCP, CC0 or CC-BY only, credited |

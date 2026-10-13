@@ -4,7 +4,7 @@ These are the owner's own words, quoted verbatim (spelling kept). Agents read th
 - If anything in a plan, brief or decision contradicts these words, these words win.
 - Do not paraphrase them into stronger or weaker claims.
 
-Owner: **derprito64bit**. Collected 2026-10-01 → 2026-10-04.
+Owner: **derprito64bit**. Collected 2026-10-01 → 2026-10-08.
 
 ## What the portfolio is
 
@@ -60,6 +60,16 @@ They do not retract the game's own gallery of projects.
 - The same day the owner also accepted the darkroom translation of the moodboard (D-025) and calm grain that forms
   once (D-026). Those were picked from options, not said in quotable words, so they are recorded in `decisions.md`
   only.
+
+## The references: quality, not a copy (2026-10-08)
+
+Said about portfolio-zxc and Jesper Landberg, the two sites quoted under "The 2D site".
+
+> "it's not that i want a copy of thos websites but the quality of the animations and layout they have"
+
+- The bar is the quality of animation and layout of those sites, never their look. The orchestrator's motion
+  benchmark (2026-10-08; portfolio-evidence `research-motion/2026-10-08/MOTION-BENCHMARK.md`) is the test for W-S2,
+  W-S3, W-C2, W-C3 and W-C14.
 
 ## Content
 
