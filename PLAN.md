@@ -54,17 +54,17 @@ The rules are the review's "Proposed operating model".
    - The global CLAUDE.md token rules apply: Opus at xhigh only for crew, gate, judge and jury; sonnet or haiku at low or medium for search, mechanical and verify stages; the muse-worker agent for routine scripting while its router runs.
 
 ## NEXT STAGE: the leaner loop, then W-S2
-1. **Tooling PR** (#91 slot 2). Make the crew-loop template match the model above:
+1. **Tooling PR** (#91 slot 2; read #91's body for the full checklist). Branch it like the earlier orchestrator PRs: `git -C <repo> worktree add ..\portfolio-site.wt\<name> -b tooling/<name> origin/main`. Use `docs/...` for docs-only changes. Make the crew-loop template match the model above:
    - Start from `portfolio-evidence/loop-audit/crew-loop.proposed.js`; it holds the wfm2, ws2 and ws3 configs.
    - Update `crew-loop.check.js` to match; prior-from-journal and check.js stay, but don't grow their scenarios.
    - Add `crew-config.json` knobs (caps, breaker passes, perf scope, must-fix taxonomy, design rows) that the launch script reads, so rulings can change behaviour.
-   - Clamp `waitfor.mjs` and every wait to 270 s or less.
+   - Clamp every wait to 270 s or less. Past perf agents wrote their own `waitfor.mjs` and queue scripts per gate (for example `portfolio-evidence/wave3a/W-F/f3d50b5/perf-r6/scripts/`). Make a shared clamped helper in `scripts/fleet/`, and put the 270 s rule in every role prompt.
    - Run detached perf queues with the PID in the lane file, killed when their agent dies, resuming from finished sets.
    - Build once per SHA; verifiers reuse the dist, checked by hash.
    - Add the open-items digest and the per-round cost line.
    - Make `scripts/check/run.mjs` check orchestrator branches against an orchestrator glob list (today it skips ownership on non-`crew/*` branches).
    - Add a `decisions.md` row for W-F-m3's one-off camera globs.
-   - Add the hostload `-Watch` foreign-GPU check, quoting budgets.md R2 **word for word**.
+   - Add the hostload `-Watch` foreign-GPU check. Quote **word for word** the R2 sentence in `docs/agents/budgets.md` that starts "A timed run is also host-suspect when the summed GPU 3D load of all other processes": the median of the **summed** foreign load, not of each process.
    - Reviewer: 1 verifier. Quote rulings word for word in specs, and give every "check passes" claim a negative control.
 2. **W-S2 launch (#14, work index / contact sheet), on launch day only:**
    - Refresh the ws2 config against #69's merged API: `__stage.seek` now sets animation currentTime; registerEffect chains `impl(id, opts, next)`; `__stage.take/give` (#14 comment 6019795919).
@@ -113,7 +113,11 @@ The rules are the review's "Proposed operating model".
   - `C:\Users\Aaron\Documents\GitHub\project.ion\scripts\fork\reap-browsers.ps1` (`-List` or `-Kill` after workflows).
 - **Blender:** GPU only (RX 6700 XT, HIP) through `project.ion\scripts\fork\blender_gpu.py`.
 - **Backup:** `python C:\Users\Aaron\Documents\GitHub\portfolio-backup\backup.py`, run at every stage stop.
-- **Preview:** `C:\Users\Aaron\Documents\GitHub\portfolio-preview\preview.py`, serving main on :4400 and the newest crew PR on :4401. Start it only if the owner wants to watch.
+- **Preview:** `C:\Users\Aaron\Documents\GitHub\portfolio-preview\preview.py`, serving main on :4400 and the newest crew PR on :4401.
+  - The owner wants to watch the build live (memory: owner-watches-build-live), so start it when a crew stage starts.
+  - Skip it if the PC is low on memory; it was stopped for that reason on 2026-10-09.
+  - It rebuilds only while the perf lane is free.
+  - **Private build-log page:** the source is in `portfolio-evidence/buildlog/`. The first artifact is gone. Republish it as a new Artifact at milestones (crew round end, merge), tell the owner the link, and read its comments.
 
 ## Standing rules
 - **Never SendMessage or TaskStop a workflow's agents**; doing so spawns duplicates. Amend the issue or PR, or relaunch from a continuation.
