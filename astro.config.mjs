@@ -96,8 +96,8 @@ export default defineConfig({
   vite: {
     plugins: [chunkManifest()],
     build: {
-      // One stylesheet for every page (see the header comment).
-      cssCodeSplit: false,
+      // Concept prototype (direction reset): per-page CSS, so the old Darkroom globals never reach the concept at /.
+      cssCodeSplit: true,
     },
   },
 });

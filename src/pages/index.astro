@@ -1,16 +1,219 @@
 ---
-// Home (W-D004, D-023): hero, Selected work, Proof sheet, Awards and medals; the footer (contact) comes from the layout.
-// W-F mounts the sections in their fixed order; each section belongs to its crew.
-import Base from '../layouts/Base.astro';
-import Hero from '../sections/hero/Hero.astro';
-import Work from '../sections/work/Work.astro';
-import Sheet from '../sections/sheet/Sheet.astro';
-import Honours from '../sections/honours/Honours.astro';
-import { content } from '../lib/content/index.ts';
+// Direction reset concept prototype: Viewfinder (docs/direction/concepts/viewfinder.md). Built from src/concept only.
+import '@fontsource-variable/archivo/wdth.css';
+import '@fontsource-variable/chivo-mono/wght.css';
+import '../concept/style.css';
+import { OWNER_NAME, OWNER_NAME_PLACEHOLDER, HANDLE, GITHUB_URL, projects, honours } from '../concept/data';
+
+const pad = (n: number) => String(n).padStart(2, '0');
+const ticks = Array.from({ length: 19 }, (_, i) => i - 9); // -3 EV .. +3 EV in thirds
+const sims = ['Standard', 'Chrome', 'Mono', 'Soft', 'Bleach'];
+// focus distance scale: depth z for a distance m (inverse of distanceLabel in scenes.ts)
+const zOf = (m: number) => Math.min(0.95, (1 - 0.3 / m) / 1.02);
+const dist = [{ l: '∞', z: 0.95 }, ...[3, 1.5, 1, 0.7, 0.5, 0.3].map((m) => ({ l: m < 1 ? String(m).replace('0.', '.') : String(m), z: zOf(m) }))];
 ---
-<Base title="Portfolio" path="/" page="home" noindex={content.hasPlaceholders}>
-  <Hero />
-  <Work />
-  <Sheet />
-  <Honours />
-</Base>
+<!doctype html>
+<html lang="en" class="vf is-loading">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>derprito64bit · Personal portfolio</title>
+    <meta name="description" content="Personal portfolio of derprito64bit (concept prototype: Viewfinder)." />
+    <meta name="robots" content="noindex" />
+    <meta name="theme-color" content="#050505" />
+    <script is:inline>
+      (() => {
+        const d = document.documentElement;
+        d.classList.add('js');
+        if (matchMedia('(prefers-reduced-motion: reduce)').matches) d.classList.add('calm');
+      })();
+    </script>
+  </head>
+  <body>
+    <a class="skip" href="#evf" data-skip>Skip the intro</a>
+    <canvas class="gl" aria-hidden="true"></canvas>
+
+    <!-- The intro is also the preloader: the same page, underexposed until everything is loaded. -->
+    <header class="intro" id="intro">
+      <div class="marks" aria-hidden="true">
+        <i class="mk mk--tl" data-snap="box"></i><i class="mk mk--tr" data-snap="box"></i>
+        <i class="mk mk--bl" data-snap="box"></i><i class="mk mk--br" data-snap="box"></i>
+      </div>
+      <p class="intro__handle mono" data-snap="text">{HANDLE}</p>
+      <p class="intro__clock num" aria-hidden="true"><span data-clock data-snap="text">00:00</span></p>
+
+      <div class="lm" aria-hidden="true">
+        <div class="lm__row">
+          <span class="lm__k mono" data-snap="text" data-lm-label>Metering</span>
+          <span class="lm__ev num" data-snap="text" data-lm-ev>EV −3.0</span>
+        </div>
+        <div class="meter-home" data-meter-home>
+          <div class="meter" data-meter>
+            <div class="meter__scale">
+              {ticks.map((t) => (
+                <i class:list={['tk', { 'tk--maj': t % 3 === 0, 'tk--zero': t === 0 }]} data-snap="fill"></i>
+              ))}
+            </div>
+            <div class="meter__nums">
+              {[-3, -2, -1, 0, 1, 2, 3].map((n) => <span data-snap="text">{n > 0 ? `+${n}` : n === 0 ? '0' : `−${-n}`}</span>)}
+            </div>
+            <div class="meter__needle" data-needle><i data-snap="fill"></i></div>
+          </div>
+        </div>
+        <p class="lm__step mono" data-snap="text" data-lm-step>Fonts</p>
+      </div>
+
+      <div class="intro__meta">
+        <p class="intro__kind mono" data-snap="text">Personal portfolio</p>
+        <span class="ph intro__ph" data-snap="text">{OWNER_NAME_PLACEHOLDER}</span>
+        <p class="intro__count mono" data-snap="text">{pad(projects.length)} projects · {pad(honours.length)} honours · Contact</p>
+      </div>
+      <h1 class="name" data-name>
+        <span class="sr">{OWNER_NAME}</span>
+        {OWNER_NAME.split(' ').map((w) => <span class="name__w" aria-hidden="true">{w}</span>)}
+      </h1>
+      <button class="raise" type="button" data-raise disabled>
+        <span class="raise__br" aria-hidden="true"><i data-snap="box"></i><i data-snap="box"></i><i data-snap="box"></i><i data-snap="box"></i></span>
+        <span class="raise__t mono" data-snap="text">Raise to eye</span>
+        <span class="raise__k mono" aria-hidden="true" data-snap="text">↵ / scroll</span>
+      </button>
+      <div class="loadbar" role="progressbar" aria-label="Loading" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" data-progress></div>
+    </header>
+
+    <!-- The electronic viewfinder: the site's interface after the raise. -->
+    <main class="evf" id="evf" tabindex="-1" aria-label="Viewfinder" inert>
+      <div class="evf__top">
+        <nav class="idx pw" aria-label="Frames">
+          <div class="idx__grp" data-grp="work">
+            <span class="idx__lbl mono">Work</span>
+            <ol>
+              {projects.map((p, i) => (
+                <li><button class="idx__b num" type="button" data-go={i} aria-label={`${p.label}: ${p.title}`}>{pad(i + 1)}</button></li>
+              ))}
+            </ol>
+          </div>
+          <div class="idx__grp" data-grp="play">
+            <span class="idx__lbl mono">Honours</span>
+            <ol>
+              {honours.map((h, i) => (
+                <li><button class="idx__b num" type="button" data-go={projects.length + i} aria-label={`${h.label}: ${h.title}`}>{`H${i + 1}`}</button></li>
+              ))}
+            </ol>
+          </div>
+          <div class="idx__grp" data-grp="info">
+            <span class="idx__lbl mono">Contact</span>
+            <ol><li><button class="idx__b num" type="button" data-go={projects.length + honours.length} aria-label="Contact">i</button></li></ol>
+          </div>
+        </nav>
+        <div class="ro ro--mode pw mono" aria-hidden="true"><span class="ro__icon" data-mode-icon></span><span data-mode-label>Shoot</span></div>
+        <div class="ro ro--fl pw num" aria-hidden="true"><span data-fl>23</span><small>mm</small></div>
+        <div class="ro ro--clock pw num" aria-hidden="true" data-clock>00:00</div>
+        <div class="ro ro--count pw num" aria-hidden="true"><span data-count>01</span><small data-count-of>/08</small></div>
+      </div>
+
+      <div class="frame" data-frame>
+        <div class="frame__cover" aria-hidden="true"></div>
+        <div class="af pw" data-af aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+        <div class="level" data-level aria-hidden="true"><i></i><i></i></div>
+        <p class="frame__ph mono pw" aria-hidden="true" data-ph-media>Placeholder media · generated in code</p>
+      </div>
+
+      <div class="dial pw" role="radiogroup" aria-label="Film simulation" data-dial>
+        <span class="dial__lbl mono" aria-hidden="true">Film</span>
+        <div class="dial__win">
+          <div class="dial__drum" data-drum>
+            {sims.map((s, i) => (
+              <button class="dial__o mono" type="button" role="radio" aria-checked={i === 0 ? 'true' : 'false'} tabindex={i === 0 ? 0 : -1} data-sim={i}>{s}</button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div class="dist pw" aria-hidden="true">
+        <span class="dist__lbl mono" data-af-mode>AF</span>
+        <div class="dist__scale">
+          {dist.map((d) => <span class="dist__t num" style={`--z:${d.z.toFixed(3)}`}>{d.l}</span>)}
+          <i class="dist__mk" data-dist-mk></i>
+        </div>
+        <span class="dist__v num" data-dist>1.2m</span>
+      </div>
+
+      <div class="evf__bottom">
+        <div class="cap pw" data-cap>
+          <p class="cap__k mono"><span data-kicker>Work</span><span class="cap__of" data-cap-of> · 01/08</span></p>
+          <h2 class="cap__t" id="cap-title" data-title-label>Project 01</h2>
+          <p class="cap__ph"><span class="ph" data-title-ph>[PLACEHOLDER: project title]</span></p>
+          <button class="cap__open mono" type="button" data-open>
+            <span>Open frame</span><kbd aria-hidden="true">↵</kbd>
+          </button>
+        </div>
+        <div class="expo pw" aria-hidden="true">
+          <div class="tri num"><span data-ss>1/250</span><span data-fn>F2</span><span data-iso>ISO 400</span></div>
+          <div class="meter-slot" data-meter-evf></div>
+        </div>
+        <div class="histo pw" aria-hidden="true">
+          <canvas data-hist width="256" height="96"></canvas>
+          <div class="histo__row"><span class="mono">Histogram</span><span class="num" data-ev>EV 0.0</span></div>
+        </div>
+      </div>
+
+      <section class="play" data-screen="play" aria-labelledby="play-h" hidden>
+        <h2 id="play-h" class="play__h"><span class="mono">Playback</span><span class="play__ttl">Honours</span></h2>
+        <p class="play__k mono" data-play-k>Glass award · H1/2</p>
+        <p class="play__ttl2"><span class="ph" data-play-title></span></p>
+        <dl class="play__dl">
+          <div><dt class="mono">Event</dt><dd><span class="ph" data-play-event></span></dd></div>
+          <div><dt class="mono">Placing</dt><dd><span class="ph" data-play-place></span></dd></div>
+          <div><dt class="mono">Year</dt><dd><span class="ph" data-play-year></span></dd></div>
+          <div><dt class="mono">Photo</dt><dd><span class="ph">[PLACEHOLDER: photo of the piece]</span></dd></div>
+          <div><dt class="mono">Status</dt><dd class="mono play__status">Details to confirm with the owner</dd></div>
+        </dl>
+        <p class="play__note mono">The image is a generated stand-in, not the award.</p>
+      </section>
+
+      <section class="info" data-screen="info" aria-labelledby="info-h" hidden>
+        <p class="info__k mono">Set-up · Owner information</p>
+        <h2 id="info-h" class="info__h">Contact</h2>
+        <ul class="menu">
+          <li><div class="menu__row"><span class="menu__k mono">Author</span><span class="menu__v"><span class="ph">{OWNER_NAME_PLACEHOLDER}</span></span></div></li>
+          <li><div class="menu__row"><span class="menu__k mono">Handle</span><span class="menu__v">{HANDLE}</span></div></li>
+          <li><a class="menu__a" href={GITHUB_URL} rel="me noopener" target="_blank"><span class="menu__k mono">GitHub</span><span class="menu__v">github.com/{HANDLE} <span class="menu__tc mono">to confirm</span></span><span class="menu__go" aria-hidden="true">↗</span></a></li>
+          <li><div class="menu__row"><span class="menu__k mono">Email</span><span class="menu__v"><span class="ph">[PLACEHOLDER: email]</span></span></div></li>
+          <li><button class="menu__a" type="button" data-lower><span class="menu__k mono">Exit</span><span class="menu__v">Lower the camera</span><span class="menu__go" aria-hidden="true">↑</span></button></li>
+        </ul>
+      </section>
+
+      <p class="sr" aria-live="polite" data-live></p>
+      <p class="hint mono pw" aria-hidden="true" data-hint>Scroll or drag to advance · hover to focus · ↵ to open</p>
+      <div class="calm-nav" data-calm-nav>
+        <button class="mono" type="button" data-prev>← Previous</button>
+        <button class="mono" type="button" data-next>Next →</button>
+      </div>
+    </main>
+
+    <!-- Open project: the frame becomes the page. -->
+    <article class="proj" id="proj" role="dialog" aria-modal="true" aria-labelledby="proj-title" hidden>
+      <div class="proj__bar">
+        <button class="proj__back mono" type="button" data-close><span aria-hidden="true">←</span> Back <span class="num proj__fl" aria-hidden="true">23mm</span></button>
+        <span class="num proj__fl2" aria-hidden="true" data-fl2>56mm</span>
+      </div>
+      <div class="proj__col" data-proj-col>
+        <p class="proj__k mono" data-proj-k>Project 01 · Frame 01/08</p>
+        <h2 class="proj__t" id="proj-title" data-proj-title>Project 01</h2>
+        <p class="proj__ph"><span class="ph" data-proj-ph></span></p>
+        <dl class="proj__exif" data-proj-exif></dl>
+        <p class="proj__blurb" data-proj-blurb></p>
+        <div class="proj__body" data-proj-body></div>
+        <ul class="proj__media" data-proj-media></ul>
+        <nav class="proj__nav" aria-label="Projects">
+          <button class="mono" type="button" data-proj-prev>← Previous frame</button>
+          <button class="mono" type="button" data-proj-next>Next frame →</button>
+        </nav>
+      </div>
+    </article>
+
+    <script>
+      import '../concept/main';
+    </script>
+  </body>
+</html>
