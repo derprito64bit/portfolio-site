@@ -1,5 +1,5 @@
 {
-  "$comment": "Crew -> owned globs (Wave 2 lock). A crew may only change files matching its globs. D-023 (2026-10-04): W-C7 is merged into W-C5 and its door globs are retired. W-F's follow-up (crew/w-f-m2) takes the door off / before the content step and G3a, deleting the door and handoff stubs through its one-off globs; W-C2 takes the one-off drip removal and removes the door tokens after that follow-up. D-023 also gives W-S3 the content validator's sourced-field exception (W-D005) and the teaser field's retirement, and W-R the fork's FORK.md / and /manor/ rows and the deletion of the fork's site/index.html; D-024 gives W-S1 the hero drawing durations and heroTimelineMs; content/*.json is otherwise the orchestrator's, including the game's entry (the plan's content step). W-S3's day-one one-offs (#15 comment 5995441183) overlap W-F (src/layouts/Base.astro), W-S2 then W-C4 (src/gl/prints/**) and W-C3 (src/styles/motion.css); none of those crews is active while W-S3 runs, and each heir inherits the changes. W-F-m3's one-offs (#11 comment 6144848501, ruling 4) overlap W-S1 and W-C14 (src/gl/camera/index.ts and src/gl/camera/look.js), limited to the context-loss and restore paths; neither crew is active while W-F-m3 runs (one track at a time), W-F-m3 posts each root cause before its code, and W-C14 inherits the changes.",
+  "$comment": "Crew -> owned globs (Wave 2 lock). A crew may only change files matching its globs. D-023 (2026-10-04): W-C7 is merged into W-C5 and its door globs are retired. W-F's follow-up (crew/w-f-m2) takes the door off / before the content step and G3a, deleting the door and handoff stubs through its one-off globs; W-C2 takes the one-off drip removal and removes the door tokens after that follow-up. D-023 also gives W-S3 the content validator's sourced-field exception (W-D005) and the teaser field's retirement, and W-R the fork's FORK.md / and /manor/ rows and the deletion of the fork's site/index.html; D-024 gives W-S1 the hero drawing durations and heroTimelineMs; content/*.json is otherwise the orchestrator's, including the game's entry (the plan's content step). W-S3's day-one one-offs (#15 comment 5995441183) overlap W-F (src/layouts/Base.astro), W-S2 then W-C4 (src/gl/prints/**) and W-C3 (src/styles/motion.css); none of those crews is active while W-S3 runs, and each heir inherits the changes. W-F-m3's one-offs (#11 comment 6144848501, ruling 4) overlap W-S1 and W-C14 (src/gl/camera/index.ts and src/gl/camera/look.js), limited to the context-loss and restore paths; neither crew is active while W-F-m3 runs (one track at a time), W-F-m3 posts each root cause before its code, and W-C14 inherits the changes. O (2026-10-27, the tooling PR for #91 slot 2): the orchestrator's own branches (docs/*, tooling/*, orchestrator/*) are checked against ORCHESTRATOR's globs (scripts/check/run.mjs passes --crew ORCHESTRATOR for them): the agent docs, direction docs and the plan files, the fleet and check tooling, CI, and content/*.json with the two token outputs scripts/build/tokens.mjs generates from content/tokens.json (only a regeneration); never site code, public assets or tests, which go through a crew.",
   "W": {
     "W-F": [
       "package.json",
@@ -254,6 +254,22 @@
       "Assets/Portfolio/Models/**",
       "scripts/fork/blender/**",
       "Assets/Portfolio/Tests/PlayMode/Authored*.cs"
+    ]
+  },
+  "O": {
+    "ORCHESTRATOR": [
+      "docs/**",
+      "PLAN.md",
+      "LOG.md",
+      "CLAUDE.md",
+      "README.md",
+      "scripts/fleet/**",
+      "scripts/check/**",
+      ".github/**",
+      "content/*.json",
+      "src/styles/tokens.css (generated from content/tokens.json by scripts/build/tokens.mjs; only a regeneration)",
+      "src/lib/tokens.js (generated from content/tokens.json by scripts/build/tokens.mjs; only a regeneration)",
+      "content/owner-facts.md (the content step, from the owner's word only)"
     ]
   }
 }

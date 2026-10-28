@@ -95,9 +95,13 @@ Agents cannot message each other. Issues are the channel.
    `review:approved` or `review:changes-requested` (labels, because one account cannot approve its own PR).
    The verdict lists each finding with file:line or a screenshot path, and what must change.
 4. On `changes-requested`, the crew fixes, pushes, posts a checkpoint and swaps back to `status:needs-review`.
-5. At most 4 code rounds, 2 evidence-only rounds and 3 re-gates (a re-gate checks the same head again without crew
-   work, for example after a host-blocked or missing row). A round counts once its review completes. When a cap is
-   reached, the manager adds `needs:orchestrator` and `status:blocked`; the orchestrator may grant more rounds.
+5. The lean loop (owner, 2026-10-27; PLAN.md "Operating model"; `scripts/fleet/loop/`): a round is the crew, then the
+   functional gate, the breaker passes and, on slices, the design/motion jury in parallel, then the judge. Timed rows
+   run once, from the detached perf queue, at the approval candidate. The caps, breaker passes, jury rows, perf sets and
+   the must-fix taxonomy come from `scripts/fleet/loop/crew-config.json` (W-S2: 3 code rounds and 1 evidence round). A
+   round counts once its judge completes, and the loop stops early when the must-fix count has not fallen for 2
+   rounds. A busy host means blocked, rerun. At a cap the orchestrator asks the owner (merge with follow-ups, one more
+   round, or hold).
 6. Only the orchestrator merges. After the merge the issue is `status:done`.
 
 ## 7. Resuming from an issue
@@ -138,5 +142,20 @@ Every agent shares one PC: 6 cores / 12 threads and one RX 6700 XT. A timed numb
   passes the `scripts/fleet/hostload.ps1` precheck (R1). A lane or precheck timeout makes the row blocked (host),
   never pass or fail. Renew both lanes every 20 minutes and release both when done.
 - Agents that only read, write and call GitHub are not heavy jobs.
+- Build each commit once: verifiers run harnesses from `node scripts/fleet/build-once.mjs <sha>`'s tree (checked by
+  its dist hash with `--verify`), never their own `npm ci` and build of the same SHA.
+- Timed sets run detached through `scripts/fleet/perfq.mjs` (lanes renewed before every set, the queue's pid in the
+  lane file, a fail re-run as a second clean set, and the queue stopping itself when its agent's heartbeat stops).
 - After every workflow, `lane.ps1 status` shows every lane free, and the fork's `scripts/fork/reap-browsers.ps1`
   reaps leftover automation browsers.
+
+## 10. Waits (the 270 s rule)
+
+No single tool call blocks longer than 270 s (owner, 2026-10-27): the prompt cache lives 5 minutes, and a longer
+block makes the agent's next step re-read its whole context.
+
+- Never run `gh pr checks --watch`, `gh run watch`, a sleep over 240 s, or a lane acquire over 4 minutes
+  (`lane.ps1` clamps `-TimeoutMinutes` to 4).
+- Wait with `node scripts/fleet/waitfor.mjs <file|pid|exists|checks|cmd> ... --max 240` (clamped to 270) and call it
+  again while it exits 75.
+- Anything longer runs detached: builds through `build-once.mjs`, timed sets through `perfq.mjs`.

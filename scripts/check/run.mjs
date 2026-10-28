@@ -14,9 +14,11 @@ const skip = new Set(args.flatMap((a, i) => (a === '--skip' ? args[i + 1].split(
 const opt = (k) => (args.includes(k) ? args[args.indexOf(k) + 1] : null);
 const node = (script, ...rest) => [process.execPath, [join(ROOT, script), ...rest]];
 
-// In a GitHub pull request the checkout is detached; the crew comes from the head branch name.
+// In a GitHub pull request the checkout is detached; the crew comes from the head branch name. The orchestrator's own
+// branches (docs/*, tooling/*, orchestrator/*) are checked against ORCHESTRATOR's globs in docs/agents/ownership.json.
+const ORCHESTRATOR_BRANCH = /^(docs|tooling|orchestrator)\//;
 const headRef = process.env.GITHUB_HEAD_REF || '';
-const ownershipArgs = headRef.startsWith('crew/') ? ['--crew', headRef.slice(5).toUpperCase()] : [];
+const ownershipArgs = headRef.startsWith('crew/') ? ['--crew', headRef.slice(5).toUpperCase()] : ORCHESTRATOR_BRANCH.test(headRef) ? ['--crew', 'ORCHESTRATOR'] : [];
 
 const STEPS = [
   ['build', ...node('node_modules/astro/bin/astro.mjs', 'build'), { pre: [node('scripts/build/tokens.mjs'), node('scripts/build/images.mjs')] }],
@@ -48,8 +50,8 @@ for (const [name, cmd, argv, extra] of STEPS) {
   if (skip.has(name.split(' ')[0])) continue;
   const t0 = Date.now();
   let res;
-  if (name === 'ownership' && !/^crew\//.test(branch)) {
-    res = { code: 0, out: `skipped: ${branch} is not a crew/<id> branch` };
+  if (name === 'ownership' && !/^crew\//.test(branch) && !ORCHESTRATOR_BRANCH.test(branch)) {
+    res = { code: 0, out: `skipped: ${branch} is neither a crew/<id> nor an orchestrator (docs/, tooling/, orchestrator/) branch` };
   } else {
     for (const [c, a] of extra?.pre ?? []) {
       const pre = await run(c, a);

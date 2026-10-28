@@ -53,6 +53,9 @@ jobs:
         if: hashFiles('tests/w-c13/**/*.test.mjs') != ''
         run: npm run test:w-c13
 
+      - name: Crew-loop self-test (the lean loop's rules on a stubbed loop, each with a negative control; no agents)
+        run: node scripts/fleet/loop/crew-loop.check.cjs --self-test --offline
+
       - name: Keep the logs
         if: always()
         uses: actions/upload-artifact@v4

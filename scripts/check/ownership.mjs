@@ -15,11 +15,13 @@ const opt = (k, d) => (args.includes(k) ? args[args.indexOf(k) + 1] : d);
 const git = (...a) => execFileSync('git', a, { cwd: ROOT, encoding: 'utf8' }).trim();
 
 const branch = git('rev-parse', '--abbrev-ref', 'HEAD');
-// A crew's milestone branches (crew/w-c13-m2, or --crew W-C13-M2 from CI) use the crew's own globs.
-const crew = opt('--crew', branch.startsWith('crew/') ? branch.slice(5).toUpperCase() : null)?.replace(/-M\d+$/, '') ?? null;
+// A crew's milestone branches (crew/w-c13-m2, or --crew W-C13-M2 from CI) use the crew's own globs; the orchestrator's
+// own branches (docs/*, tooling/*, orchestrator/*) use ORCHESTRATOR's.
+const ORCHESTRATOR_BRANCH = /^(docs|tooling|orchestrator)\//;
+const crew = opt('--crew', branch.startsWith('crew/') ? branch.slice(5).toUpperCase() : ORCHESTRATOR_BRANCH.test(branch) ? 'ORCHESTRATOR' : null)?.replace(/-M\d+$/, '') ?? null;
 const base = opt('--base', 'origin/main');
 if (!crew) {
-  console.error(`ownership: not on a crew/<id> branch (${branch}); pass --crew <id>`);
+  console.error(`ownership: not on a crew/<id> or orchestrator (docs/, tooling/, orchestrator/) branch (${branch}); pass --crew <id>`);
   process.exit(2);
 }
 
