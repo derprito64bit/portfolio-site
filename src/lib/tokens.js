@@ -68,6 +68,7 @@ export const durations = /*#__PURE__*/ Object.freeze({
   "posterFade": 200,
   "glHandback": 120,
   "listToggle": 160,
+  "swapMinGap": 500,
   "swell": 180,
   "meshReveal": 700,
   "meshRevealLite": 500,
