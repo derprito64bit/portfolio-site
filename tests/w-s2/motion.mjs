@@ -11,7 +11,8 @@
 //                pointer.
 //   M1           the lay-down: pitched under 35% visible, flat from 35%, one-way, flat under reduced motion.
 //   L4           at rest no slot is .is-gl and the stage stops drawing.
-// --plant <name> breaks one thing from outside the product (page-side), and its row must FAIL: duration (develops 20%
+// --plant <name> breaks one thing from outside the product (page-side), and its row must FAIL: flash (the page shows a
+// group developed at its trigger, before GL takes it), duration (develops 20%
 // short), early (the IO trigger fires at 10%), twice (the session forgets), handback (give() does nothing), swap (no
 // swap window: timers fire at once), focuslift (focus lifts), tilt (the card stays pitched), rest (a slot keeps .is-gl).
 // Usage: node tests/w-s2/motion.mjs [--only l3,once,toggle,swap,hover,m1,rest] [--browser chromium|webkit]
@@ -33,6 +34,15 @@ const results = {};
 const evidence = {};
 
 const PLANT_INIT = {
+  // The page shows a group developed at its trigger, before GL takes it (the veil drops and the still flashes).
+  flash: () => {
+    const m = performance.mark.bind(performance);
+    performance.mark = (n, op) => {
+      const r = m(n, op);
+      if (n === 'prints:develop') document.documentElement.dataset.dev = `${document.documentElement.dataset.dev ?? ''} ${op.detail.group}`.trim();
+      return r;
+    };
+  },
   // The session forgets what developed: every load develops again.
   twice: () => sessionStorage.removeItem('ion.dev'),
   // A defect that fires the develop trigger at 10% visible.
@@ -82,6 +92,9 @@ async function reveal(p, sel, frac) {
   await p.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
   await sleep(120);
 }
+/** Ids whose still shows developed while wet: not taken by GL (.is-gl) and its veil not fully up. */
+const unveiled = (p, ids) =>
+  p.evaluate((ids) => ids.filter((id) => { const el = document.querySelector(`[data-gl-id="${id}"][data-gl]`); return el.hasAttribute('data-wet') && !el.classList.contains('is-gl') && getComputedStyle(el.querySelector('.print-veil')).opacity !== '1'; }), ids);
 const state = (p, ids) =>
   p.evaluate((ids) => ids.map((id) => { const el = document.querySelector(`[data-gl-id="${id}"][data-gl]`); return { id, gl: el.classList.contains('is-gl'), wet: el.hasAttribute('data-wet') }; }), ids);
 async function plantPage(p) {
@@ -120,6 +133,7 @@ try {
     await reveal(p, `[data-gl-id="${id}"] .print-card`, 0.4);
     const triggered = await waitMark(p, 'prints:develop', 3000);
     await sleep(400); // the texture is built in real time before the develop's first frame
+    const flashEnl = await unveiled(p, [id]);
     const [enl] = await seekRun(p, [id], 10000, 200);
     const enlMs = enl.give !== null && enl.take !== null ? (enl.give - (enl.take - 1)) * FRAME : null;
     // The sheet wave.
@@ -129,10 +143,12 @@ try {
     const t0 = Date.now();
     while ((await p.evaluate(() => performance.getEntriesByName('prints:develop').length)) === n0 && Date.now() - t0 < 3000) await sleep(50);
     await sleep(400);
+    const flashSheet = await unveiled(p, sheetIds);
     const preWave = await p.evaluate(() => ({ marks: performance.getEntriesByName('prints:develop').map((m) => m.detail.group), dev: document.documentElement.dataset.dev, s: [...document.querySelectorAll('[data-print="sheet"]')].map((e) => `${e.dataset.dev ?? '-'}${e.hasAttribute('data-wet') ? 'W' : ''}${e.classList.contains('is-gl') ? 'G' : ''}`).join(' ') }));
     const wave = await seekRun(p, sheetIds, 20000, 160);
     preWave.after = await p.evaluate(() => ({ tierLog: window.__stage.tierLog, losses: window.__stage.stats.losses, governor: window.__stage.stats.governorSteps, hookErrors: window.__stage.stats.hookErrors, motion: window.__stage.motion }));
     const focus1 = await p.evaluate(() => document.activeElement?.tagName);
+    const devEnd = await p.evaluate((g) => ({ dev: document.documentElement.dataset.dev ?? '', g }), await p.evaluate((i) => document.querySelector(`[data-gl-id="${i}"][data-gl]`).dataset.devGroup, id));
     const lastGive = Math.max(...wave.map((w) => w.give ?? Infinity));
     const starts = wave.map((w) => (w.take ?? NaN) - 1);
     const stagger = starts.slice(1).map((s, k) => (s - starts[k]) * FRAME);
@@ -146,9 +162,12 @@ try {
     if (durs.some((d) => d < durations.developSheet - FRAME - 0.01 || d > durations.developSheet + 2 * FRAME)) fails.push(`sheet print develops ${durs.map((d) => d.toFixed(0)).join(',')} ms, want ${durations.developSheet}`);
     if (stagger.some((s) => Math.abs(s - durations.sheetStagger) > FRAME)) fails.push(`stagger ${stagger.map((s) => s.toFixed(0)).join(',')} ms, want ${durations.sheetStagger}`);
     if (focus0 !== focus1) fails.push(`focus moved ${focus0} -> ${focus1}`);
+    // Between the trigger and GL's take a wet print shows its veil (the undeveloped look), never its developed still.
+    if (flashEnl.length || flashSheet.length) fails.push(`developed still shown before GL took it: ${[...flashEnl, ...flashSheet].join(',')}`);
+    if (![devEnd.g, 's'].every((g) => devEnd.dev.split(' ').includes(g))) fails.push(`html[data-dev] "${devEnd.dev}" after both develops, want ${devEnd.g} and s`);
     if (preWave.after.tierLog.length !== 1) fails.push(`the tier changed during the run (instrument invalid): ${JSON.stringify(preWave.after.tierLog)}`);
     if (errors.length) fails.push(`console: ${errors.slice(0, 2).join(' | ')}`);
-    results.L3 = { pass: !fails.length, fails, enlargement: { id, ...enl, ms: enlMs }, sheet: { lastGiveMs: lastGive * FRAME, durationsMs: durs, staggerMs: stagger, wave, preWave } };
+    results.L3 = { pass: !fails.length, fails, flash: { enlargement: flashEnl, sheet: flashSheet }, devEnd, enlargement: { id, ...enl, ms: enlMs }, sheet: { lastGiveMs: lastGive * FRAME, durationsMs: durs, staggerMs: stagger, wave, preWave } };
     await ctx.close();
   }
 

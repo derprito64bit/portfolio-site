@@ -36,12 +36,17 @@ const reduced = () => html.dataset.motion === 'reduced';
 
 // ---------------------------------------------------------------- the session's developed groups
 const done = new Set((html.dataset.dev ?? '').split(' ').filter(Boolean));
-function flag(group: string): void {
-  if (done.has(group)) return;
+/**
+ * The session remembers a group from its trigger on (a reload never develops it again). The page shows it developed
+ * (html[data-dev]: its veils off, the pencil drawn) only when `show`: at an arrival, or once its prints are dry, so a
+ * still never shows developed before GL has taken it.
+ */
+function flag(group: string, show = true): void {
   done.add(group);
-  html.dataset.dev = [...done].join(' ');
+  const on = (html.dataset.dev ?? '').split(' ').filter(Boolean);
+  if (show && !on.includes(group)) html.dataset.dev = [...on, group].join(' ');
   try {
-    sessionStorage.setItem(KEY, html.dataset.dev);
+    sessionStorage.setItem(KEY, [...done].join(' '));
   } catch {
     /* private mode: this page still remembers */
   }
@@ -115,17 +120,18 @@ function trigger(g: string, els: HTMLElement[]): void {
 function start(g: string, els: HTMLElement[]): void {
   const st = stage();
   if (!st || done.has(g) || !els.some((el) => el.hasAttribute('data-wet'))) return;
-  flag(g);
+  flag(g, false);
   const sheet = g === 's';
   const ids = els.map((el) => el.dataset.glId as string);
   performance.mark('prints:develop', { detail: { group: g, ids } });
-  els.forEach((el, k) => {
+  const runs = els.map((el, k) => {
     el.dataset.dev = 'run';
     const delay = sheet ? k * durations.sheetStagger : 0;
-    void st.effects
+    return st.effects
       .develop(el.dataset.glId as string, { duration: sheet ? durations.developSheet : durations.develop, trigger: sheet ? 'sheet' : 'scroll', delay })
       .finally(() => dry(el));
   });
+  void Promise.allSettled(runs).then(() => flag(g));
 }
 
 /** Visible enough to develop: 35% of the print, or 35% of the viewport when the print is taller than that. */

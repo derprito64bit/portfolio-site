@@ -22,6 +22,7 @@ const steps = [
   ['motion-chromium', [t('motion.mjs'), '--out', out]],
   ['motion-webkit', [t('motion.mjs'), '--browser', 'webkit', '--only', 'l3,once,toggle,swap,rest', '--out', out]],
   ['strip', [t('strip.mjs'), '--out', out]],
+  ['filmstrip', [t('filmstrip.mjs'), '--out', join(out, 'filmstrip')]],
   ['fixtures', [t('fixtures.mjs'), '--out', out]],
   ['fixtures-tokens-alt', [t('fixtures.mjs'), '--tokens', 'alt', '--out', out]],
   ['harness-drift', [join(ROOT, 'tests/harness/drift/run.mjs'), '--browsers', 'chromium,webkit', '--out', join(out, 'drift.json')]],
@@ -31,7 +32,8 @@ const steps = [
 // Negative controls: each must exit 1.
 const plants = [
   ...[['share', 'D1'], ['cols', 'D2'], ['track', 'D2'], ['offset', 'P2'], ['tilt', 'D2'], ['caption', 'D2'], ['swell', 'P2'], ['overflow', 'D2'], ['contact', 'P2'], ['names', 'D2']].map(([p, prof]) => [`plant-layout-${p}`, [t('layout.mjs'), '--plant', p, '--profiles', prof, '--out', out]]),
-  ...[['duration', 'l3'], ['early', 'l3'], ['twice', 'once'], ['handback', 'toggle'], ['swap', 'swap'], ['focuslift', 'hover'], ['tilt', 'm1'], ['rest', 'rest']].map(([p, step]) => [`plant-motion-${p}`, [t('motion.mjs'), '--plant', p, '--only', step, '--out', out]]),
+  ...[['flash', 'l3'], ['duration', 'l3'], ['early', 'l3'], ['twice', 'once'], ['handback', 'toggle'], ['swap', 'swap'], ['focuslift', 'hover'], ['tilt', 'm1'], ['rest', 'rest']].map(([p, step]) => [`plant-motion-${p}`, [t('motion.mjs'), '--plant', p, '--only', step, '--out', out]]),
+  ['plant-filmstrip-frozen', [t('filmstrip.mjs'), '--plant', 'frozen', '--out', join(out, 'filmstrip-plant-frozen')]],
   ['plant-strip-canvas', [t('strip.mjs'), '--plant', 'canvas', '--out', out]],
   ['plant-strip-bytes', [t('strip.mjs'), '--plant', 'bytes', '--out', out]],
   ['plant-fixtures-cover', [t('fixtures.mjs'), '--plant', 'cover', '--out', out]],
