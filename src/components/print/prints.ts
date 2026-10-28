@@ -81,6 +81,8 @@ whenMark('stage:gl-start')
     const st = stage();
     if (!st?.gl) return;
     gl = mod.install(st, st.gl);
+    if (!gl) return dryAll();
+    performance.mark('prints:ready');
     for (const [g, els] of pending) start(g, els);
     pending.clear();
   })
@@ -227,10 +229,13 @@ function onToggle(): void {
     apply(v);
     return;
   }
+  // The window's end applies the last state; it opens a new window only when it changes the view.
   windowTimer = window.setTimeout(() => {
     windowTimer = 0;
+    const last = checked() ?? shown;
+    if (last === shown) return;
     lastApply = performance.now();
-    apply(checked() ?? shown);
+    apply(last);
   }, durations.swapMinGap - (now - lastApply));
 }
 function initView(): void {

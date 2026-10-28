@@ -65,7 +65,7 @@ const flag = `(function(h){try{if(/[?&]t=/.test(location.search))h.setAttribute(
   /* The content box (ruling 1c): built from --content-max and --gutter, never .wrap's max. */
   .work-frame { max-inline-size: var(--content-max); margin-inline: auto; container: work / inline-size; }
   .enl-list { display: grid; grid-template-columns: minmax(0, 1fr); row-gap: var(--space-6); }
-  .enl { --s: var(--s12); min-inline-size: 0; }
+  .enl { --s: var(--s12); --enl-tl: view(); min-inline-size: 0; }
   /* Each card is its share of the content box: clamp(minPrintPx, share x W, min(W, maxPx)). */
   .enl :global(.print) {
     --w: clamp(var(--min), calc(var(--s) * 100cqi), min(100cqi, var(--max)));
@@ -126,12 +126,14 @@ const flag = `(function(h){try{if(/[?&]t=/.test(location.search))h.setAttribute(
     :root[data-prints='wet']:not([data-motion='reduced']):not([data-seek]) .enl :global([data-wet]:not([data-dev]) .print-card) {
       transform-origin: 50% 100%;
       animation: enl-lay linear both;
-      animation-timeline: view();
+      /* Through a custom property, so the minifier cannot fold the timeline into the animation shorthand (where it
+         is not allowed and the whole declaration would drop). */
+      animation-timeline: var(--enl-tl);
       animation-range: entry 0% entry 35%;
     }
     :root[data-prints='wet']:not([data-motion='reduced']):not([data-seek]) .enl :global([data-wet]:not([data-dev]) .print-card::after) {
       animation: enl-shadow linear both;
-      animation-timeline: view();
+      animation-timeline: var(--enl-tl);
       animation-range: entry 0% entry 35%;
     }
   }
