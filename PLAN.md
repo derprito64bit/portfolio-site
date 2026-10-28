@@ -15,6 +15,7 @@
   - **the lean crew loop #95** (d1ba6cd), W-S2's launch config #96, owner decision D-035 #99 (the GL budget is now 187.6 kB);
   - **W-S2, the work index, #97** (be3049f). The owner chose to merge it with mobile TBT deferred: the timed set was blocked five times by a busy host. TBT is measured at W-F-m3's approval candidate and before G3a (a must-fix before G3a if it fails). Its follow-ups are #91 comment 6476370307.
 - **Owner redirection (2026-10-28, #101, D-036):** the site's direction is reopened from scratch (sleek, dark, immersive; a preloader; intro, then an EVF transition, then galleries, then achievements; the X-T5 camera removed for now). The queue after W-S2 is paused until the direction reset's concept is chosen.
+- **Direction reset, steps 1 to 3 done (2026-10-28): three working concepts wait for the owner's pick.** Viewfinder (jury 7.9), Refraction (7.7) and Flux (7.6) are on `concept/*` branches; see the stage below.
 - **The queue is issue #91.** Its body lists the slots in order; slots 1 to 3 are done.
 - **Lean-loop cost:** W-S2 took 4 rounds (3 code plus 1 granted) for about $140 in crew runs, and this orchestrator session about $70. For comparison, W-S1 was about $362 and #69 about $1,987.
 - **System review:** `portfolio-evidence/loop-audit/SYSTEM-REVIEW-2026-10-13.md`.
@@ -56,8 +57,30 @@ The rules are the review's "Proposed operating model".
    - No budget pause; the owner cares that spend buys visible quality.
    - The global CLAUDE.md token rules apply: Opus at xhigh only for crew, gate, judge and jury; sonnet or haiku at low or medium for search, mechanical and verify stages; the muse-worker agent for routine scripting while its router runs.
 
-## NEXT STAGE: the direction reset (#101, D-036, D-037)
+## NEXT STAGE: the direction reset (#101, D-036, D-037): waiting for the owner's pick
 The owner reopened the site's design from scratch and gave the design **full autonomy** (D-037). Their words are first in `docs/agents/owner-voice.md`. The ideas in #101 are guidelines, taken lightly: keep what flows and drop or reshape what doesn't. The portfolio is a **standalone** project, not connected to [project]ion. Don't stall on questions: decide, build, and show the owner.
+
+### Where the reset is (2026-10-28)
+Steps 1 to 3 below are done; the stage stopped for the owner's pick. Everything is in `portfolio-evidence/research-reset/2026-10-28/`: `TECHNIQUES.md` and `LIBRARIES.md` (research), `BRIEF-common.md` (the builders' shared brief), `JURY-brief.md`, `JURY.md` (rounds 1 and 2, with each concept's open items), `concepts/<name>/` (the builders' shots and opening webm) and `jury/<name>/`.
+
+| Concept | Branch @ head | Jury r1 → r2 | The idea |
+|---|---|---|---|
+| Viewfinder | `concept/viewfinder` @ e53a047 | 7.4 → 7.9 | The owner's EVF idea as the whole site: a precise name intro, the "raise to eye" through an eyepiece shader to black, then an original EVF HUD (live histogram, meter, AF, focus pulls, a film-grade dial, playback for honours). The soundest engineering |
+| Refraction | `concept/refraction` @ 8faa8a8 | 7.1 → 7.7 | Liquid glass (OGL refraction of DOM-mirrored type) as the one material: droplets merge into the lens that bends the name, grows into an EVF moment, then sweeps the work as a slab |
+| Flux | `concept/flux` @ 528a30f | 7.1 → 7.6 | A real fluid sim of ink on dark water; a variable-font name that swells at the cursor; an endless throwable gallery. A name-response fix landed after the jury's round 2 (weight 280 to 700, measured by the builder) |
+
+- **Stack in all three:** GSAP 3.15 (free, every plugin), OGL 1.0.11, Lenis; OFL fonts (Mona Sans, Roboto Flex, Archivo with Chivo Mono). Each branch adds its rows to `deps.md` and sets `cssCodeSplit: true` in `astro.config.mjs`, so the old Darkroom CSS stays off `/`. Code lives under `src/concept/` plus a new `src/pages/index.astro`. Old code is untouched.
+- **Ruled out by the research:** Spline and Unicorn Studio (badges on free tiers), lygia (Prosperity licence), bklit ui and Kokonut UI (React kits: ideas only), manus.im (an AI agent product, not a library).
+- **The owner sees them at** `http://127.0.0.1:4420` (a chooser page), with the builds at 4421 (Refraction), 4422 (Flux) and 4423 (Viewfinder), served from each worktree's `dist/` by `python C:\Users\Aaron\Documents\GitHub\portfolio-preview\concepts_serve.py`. The worktrees are `portfolio-site.wt/concept-<name>`. Leftover dev servers from a builder sit on 4412 and 4415 (pids 27664, 30944); stopping them was denied in the builder's session, so they are left for the owner (their to-do).
+- **Cost:** about $126 in agents (builders $31 to $39 each over two rounds, the jury $18 over two, research about $4), not counting the orchestrator session.
+- **The real name** is still not in `owner-facts.md`; every concept reads one `OWNER_NAME` constant with a visible placeholder tag.
+
+### When the owner picks (or asks for a blend)
+1. Record the pick as **D-038** in `decisions.md`, with the owner's words in `owner-voice.md`.
+2. Fold the chosen concept's open items (JURY.md "Round 2"; the build log's "Known gaps") into the first crew's spec.
+3. Then do step 4 below. The concept branch is the starting point, not merged as-is: the new plan decides whether the crew builds on it or ports it into a clean slice structure.
+4. Keep the other two branches and worktrees until the new plan merges. They are never merged; delete them only after checking that nothing in them is still needed.
+
 1. **Start:**
    - read `owner-voice.md` ("The redirection"), #101, #65, `CLAUDE.md` and `content/owner-facts.md`;
    - ask the owner one thing only if needed: their real name for the intro, when `owner-facts.md` lacks it (else a visible placeholder).
@@ -149,6 +172,7 @@ The owner reopened the site's design from scratch and gave the design **full aut
 - **Blender:** GPU only (RX 6700 XT, HIP) through `project.ion\scripts\fork\blender_gpu.py`.
 - **Backup:** `python C:\Users\Aaron\Documents\GitHub\portfolio-backup\backup.py`, run at every stage stop.
 - **Preview:** `C:\Users\Aaron\Documents\GitHub\portfolio-preview\preview.py`, serving main on :4400 and the newest crew PR on :4401.
+  - The direction-reset concepts: `portfolio-preview\concepts_serve.py` (a chooser on :4420; builds on :4421 to :4423 from each concept worktree's `dist/`).
   - The owner wants to watch the build live (memory: owner-watches-build-live), so start it when a crew stage starts.
   - Skip it if the PC is low on memory; it was stopped for that reason on 2026-10-09.
   - It rebuilds only while the perf lane is free.
