@@ -56,28 +56,27 @@ The rules are the review's "Proposed operating model".
    - No budget pause; the owner cares that spend buys visible quality.
    - The global CLAUDE.md token rules apply: Opus at xhigh only for crew, gate, judge and jury; sonnet or haiku at low or medium for search, mechanical and verify stages; the muse-worker agent for routine scripting while its router runs.
 
-## NEXT STAGE: the direction reset (#101, D-036)
-The owner reopened the site's direction from scratch. Their words are first in `docs/agents/owner-voice.md`: "The redirection (2026-10-28)".
-1. **At the start, ask the owner to confirm #101's readings:**
-   - the camera: no X-T5 model on the page, with the EVF as a full-screen UI moment;
-   - "projection theme": the Darkroom prints, light table and X-T5 opening go, and W-S2's sections stay as content structure;
-   - the real name, from `content/owner-facts.md` only;
-   - and ask for a PC window for timed sets.
-2. **Research** (one lean workflow: Sonnet for search, Opus for the synthesis):
-   - Awwwards-level references for each asked effect: liquid glass, trippy shader transitions, preloaders that load everything, animated type, EVF and viewfinder UI, dark sleek layouts;
-   - #65's libraries (GSAP with ScrollTrigger and SplitText, Motion, anime.js, Spline, bklit ui, Kokonut UI, manus) and Unicorn Studio (owner-voice.md, 'The 2D site'): what each is, its licence and free tier, its size in kB gz, and its fit;
-   - the installed skills to use (the GSAP set, three.js shaders and post-processing, animate, design-motion-principles, emil-design-eng, design-taste-frontend, frontend-design).
-3. **Concepts:** 2 or 3 directions as working prototypes on a scratch branch (never main).
-   - Each runs preloader, then intro, then EVF transition, then a gallery, then achievements, dark, with placeholder content.
-   - A design jury (Opus, xhigh) scores them against the references and the owner's bar (owner-voice.md, 'The references').
-   - Show them on the local preview (`portfolio-preview/preview.py`, :4400 and :4401), and the owner picks one.
-4. **New plan:**
-   - decisions that replace D-001's look, D-024 and W-D002;
-   - budgets re-set where the concept needs it (with the owner);
-   - new crew briefs and order;
-   - what carries over: the stage, Lenis and Swup, the content model, W-S2's sections as layout, the lean loop and its tools;
-   - what goes: the X-T5 hero, the print develop and the darkroom tokens.
-   - W-F-m3 is re-scoped then; its camera items may be moot.
+## NEXT STAGE: the direction reset (#101, D-036, D-037)
+The owner reopened the site's design from scratch and gave the design **full autonomy** (D-037). Their words are first in `docs/agents/owner-voice.md`. The ideas in #101 are guidelines, taken lightly: keep what flows and drop or reshape what doesn't. The portfolio is a **standalone** project, not connected to [project]ion. Don't stall on questions: decide, build, and show the owner.
+1. **Start:**
+   - read `owner-voice.md` ("The redirection"), #101, #65, `CLAUDE.md` and `content/owner-facts.md`;
+   - ask the owner one thing only if needed: their real name for the intro, when `owner-facts.md` lacks it (else a visible placeholder).
+2. **Research** (lean, parallel):
+   - Awwwards-level sites and techniques: preloaders, liquid glass, shader transitions, kinetic and split text, viewfinder or EVF UI, dark immersive layouts, galleries;
+   - libraries and tools: #65 and anything better; GSAP with ScrollTrigger and SplitText, Motion, three.js shaders and post-processing, Unicorn Studio and Spline when unbranded;
+   - the installed skills: the GSAP set, threejs-*, animate, design-motion-principles, emil-design-eng, design-taste-frontend, frontend-design.
+   Install what you'll use and record it in `deps.md`.
+3. **Concepts:** 2 or 3 genuinely different directions as working prototypes on `concept/*` branches (never main).
+   - Old byte checks may fail there; that's expected.
+   - A design jury (Opus, xhigh) scores each against the references with the owner's bar: sleek, smooth, immersive, never generic.
+   - Show them on the local preview (`portfolio-preview/preview.py`, or a dev server per branch) and in the build log, and the owner picks one.
+4. **New plan** for the chosen concept:
+   - a new north star (v2) and decisions;
+   - budgets re-set with the owner;
+   - the crew order;
+   - what of the old code carries over: the content model, the stage, the tooling, the lean loop;
+   - hosting (the site stands alone; the Manor is one project linked from the gallery);
+   - W-F-m3 re-scoped or dropped.
 5. Then stop, log, back up, and start the first new crew in a fresh session.
 
 ### Paused: W-F-m3 (#11 follow-up crew), to re-scope after the reset
@@ -124,7 +123,7 @@ The owner reopened the site's direction from scratch. Their words are first in `
 8. **After launch:** W-C2 with optimization pass #82 (the 3D budget D-033 is decided at its launch), W-C3, W-C4 (#78), W-C5, W-C6, W-C8, W-C9, W-C10, and watchlist #65.
 
 ## Owner questions to ask at the right stage (not before)
-- **At the direction reset's start:** confirm #101's readings (the camera, "projection theme", the real name). Also name a PC window for timed sets (no other Claude sessions running tests; Unity, Roblox and most Opera tabs closed), or approve recalibrating the host key. W-S2's TBT was blocked five times without one.
+- **At the direction reset:** only the owner's real name, if `owner-facts.md` lacks it. The design calls are the agent's (D-037). When a timed set is due, ask for a PC window for it (no other Claude sessions running tests; Unity, Roblox and most Opera tabs closed), or approve recalibrating the host key. W-S2's TBT was blocked five times without one.
 - **The EVF:** #101 makes an EVF transition part of the intro, so the reset's concepts replace P6's cells (D-034).
 - **Before W-C14:**
   - camera and print composition, and camera size on laptops;

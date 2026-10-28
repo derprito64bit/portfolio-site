@@ -46,3 +46,8 @@ Newest entries last, dates in UTC. The full 2026-10-02 to 10-13 history (about 1
   - The intro is followed by a Fujifilm-like EVF transition, then the galleries and the achievements.
   - #65's libraries and the installed skills get used, and the X-T5 camera is removed for now.
   - **Next stage:** the direction reset (research, 2 or 3 concept prototypes, the owner's pick, a new plan). W-F-m3 and the later slots are paused.
+- **2026-10-28: the owner gave the reset full design autonomy (D-037).**
+  - #101's ideas are guidelines, taken lightly.
+  - The portfolio is standalone, not connected to [project]ion.
+  - Agents use external libraries and tools and install them themselves.
+  - The reset exceptions are written into CLAUDE.md, owner-voice.md, decisions.md, deps.md, rules.web.md, the north star, budgets.md and PLAN.md.

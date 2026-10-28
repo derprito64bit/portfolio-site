@@ -1,5 +1,7 @@
 # North Star — v1.2 (signed by the owner, 2026-10-02; v1.1 adds the owner's "2D with heavy 3D" clarification; v1.2 applies the owner's D-023 to D-026, 2026-10-04)
 
+> **Suspended for design (owner, 2026-10-28: D-036, D-037, #101).** This page's design direction (the Darkroom light table, prints that develop, the X-T5 camera) no longer binds: the direction reset designs the site from scratch with full autonomy and writes v2. What stands: one person, one portfolio, many projects; the audience; honesty about owner facts; accessibility and reduced motion.
+
 Every agent's output is judged against this page. It changes only with a new version number. Where it conflicts
 with `owner-voice.md`, the owner's words win.
 

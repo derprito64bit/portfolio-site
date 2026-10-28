@@ -3,6 +3,8 @@
 Every W prompt includes a 6–8 line summary of this block and the path to it. When this block and a prompt
 disagree, this block wins; report the conflict in `conflictsWithLocked`.
 
+**During the direction reset (D-037, owner 2026-10-28), rules 1, 3, 4 and 5 are relaxed.** Concept prototypes on `concept/*` branches are allowed. Free tiers are allowed when no third-party branding or watermark shows on the site (paid tiers stay out). The design agent installs the libraries and tools it needs itself and records them in `deps.md` in the same PR. Rule 2 (owner facts, no AI images) and rule 7 (use every tool) stand.
+
 1. **The repo is the source of truth.** Work only in this repo and your crew worktree. Inspect before changing.
    No side projects, parallel demo repos or throwaway prototypes.
 2. **Never invent owner facts.** [`content/owner-facts.md`](../../../content/owner-facts.md) is the only source.

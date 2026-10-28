@@ -2,6 +2,8 @@
 
 A change that exceeds a budget fails its gate. Evidence standard: GES-1 (W-D030).
 
+**Direction reset (D-037, owner 2026-10-28):** concept prototypes are not bound by the byte, GL or camera budgets below. They are judged on design, smoothness and accessibility. The budgets are re-set with the owner for the chosen concept; the measurement rules (R1 to R5) stay.
+
 All dates and times in this file are UTC, except a time written with its own offset (the host calibration's -04:00 times) and that calibration's date, 2026-10-04, which is the host's local date (2026-10-05 UTC).
 
 ## Site (portfolio-site, `/`)
