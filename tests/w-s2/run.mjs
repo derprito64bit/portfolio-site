@@ -3,7 +3,8 @@
 // (drift in Chromium and WebKit, idle, keyboard), one after another (one browser suite at a time), into --out.
 // It needs a built dist/ in this tree (or a build-once tree as the cwd) and, for the byte deltas, --base <a built tree
 // of the merge-base>. Each step writes its own JSON; summary.json lists every step's exit code and its first line.
-// Exit: 0 when every step passed and every plant failed, else 1.
+// Exit: 0 when every step passed and every plant failed (exit 1 exactly: bytes.mjs exits 2 when it broke and 3 when its
+// plant did not land, and neither counts), else 1.
 // Usage: node tests/w-s2/run.mjs --out <dir> [--base <tree>] [--only bytes,layout,...] [--skip harness]
 import { spawnSync } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
@@ -34,6 +35,7 @@ const steps = [
 ];
 // Negative controls: each must exit 1.
 const plants = [
+  ['plant-bytes-glonly', [t('bytes.mjs'), '--plant', 'glonly', '--out', out]],
   ...[['share', 'D1'], ['cols', 'D2'], ['track', 'D2'], ['offset', 'P2'], ['tilt', 'D2'], ['caption', 'D2'], ['swell', 'P2'], ['overflow', 'D2'], ['contact', 'P2'], ['contact', 'WK-P2'], ['names', 'D2'], ['listtrack', 'WK-P2']].map(([p, prof]) => [`plant-layout-${p}${prof.startsWith('WK') ? '-webkit' : ''}`, [t('layout.mjs'), '--plant', p, '--profiles', prof, '--out', prof.startsWith('WK') ? join(out, 'webkit') : out]]),
   ...[['flash', 'l3'], ['duration', 'l3'], ['early', 'l3'], ['early', 'trigger'], ['twice', 'once'], ['handback', 'toggle'], ['swap', 'swap'], ['focuslift', 'hover'], ['tilt', 'm1'], ['rest', 'rest'], ['stack', 'rest']].map(([p, step]) => [`plant-motion-${p}${step === 'trigger' ? '-trigger' : ''}`, [t('motion.mjs'), '--plant', p, '--only', step, '--out', step === 'trigger' ? join(out, 'trigger') : out]]),
   ['plant-selfbreak-handback', [t('selfbreak.mjs'), '--plant', 'handback', '--only', 'throw,rapid', '--out', out]],
