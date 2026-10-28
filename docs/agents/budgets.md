@@ -10,7 +10,7 @@ All dates and times in this file are UTC, except a time written with its own off
 
 - Lighthouse 13.5.0 under the GES-1 protocol (built dist over gzip, 5 runs, median by score, auto tier, valid only on a real renderer and under Measurement validity R1-R5 below): performance >= 90 mobile and >= 95 desktop; accessibility 100; best practices >= 95. SEO is not gated while noindex is on.
 - LCP <= 2.5 s mobile and <= 2.0 s desktop. The LCP element is the h1 on mouse profiles, or the h1 or print 1's still on touch profiles. On `/work/<slug>/` pages it is the h1 or the dock print's still (`data-lcp="dock"`), on mouse and touch profiles (orchestrator ruling 9 on #15, comment 5995441183, W-S3 day one, 2026-10-05). CLS <= 0.02. TBT <= 150 ms, mobile and desktop.
-- JS: pre-GL JS <= 35 kB gz, summed from the network log before the stage:gl-start mark. GL chunk (three, addons, anime, stage GL, effects) <= 187 kB gz (raised 2026-10-06, owner D-027). Effects <= 10 kB gz (6.0 measured; `docs/direction/fx-playbook.md` section 6 books 9.2 kB with D-025's effects, estimate).
+- JS: pre-GL JS <= 35 kB gz, summed from the network log before the stage:gl-start mark. GL chunk (three, addons, anime, stage GL, effects) <= 187.6 kB gz (raised 2026-10-06, owner D-027; raised 2026-10-28, owner D-035). Effects <= 10 kB gz (6.0 measured; `docs/direction/fx-playbook.md` section 6 books 9.2 kB with D-025's effects, estimate).
 - HTML: home `/` HTML at most 14,600 B on the wire (gzip body plus headers, as `serve-dist` sends it), so it fits TCP's first congestion window. Information-level until W-F-m3 adds its build or pre-GL check (with a negative control); Lighthouse mobile stays the judged row. (orchestrator ruling on #11, comment 6055373919, item 2, 2026-10-08)
 - Fonts <= 100 kB woff2 (96.8 planned); preloaded <= 46 kB.
 - 3D: camera LOD0 <= 30k tris and <= 250 kB gz; LOD1 <= 5k and <= 60 kB gz; Manor LOD <= 1.5k tris; cartridge <= 1.5k and 20 kB gz; loupe <= 3k and 40 kB gz; gear <= 4k and 40 kB gz; an owner work model <= 50k and 1 MB gz, on its own project only. 3D per page <= 1.5 MB gz.
@@ -58,7 +58,7 @@ Tests read this block instead of parsing the sentences above (requested in the W
     "clsMax": 0.02,
     "tbtMs": 150,
     "preGlJsKbGz": 35,
-    "glChunkKbGz": 187,
+    "glChunkKbGz": 187.6,
     "effectsKbGz": 10,
     "fontsKbWoff2": 100,
     "fontsPreloadKb": 46,
