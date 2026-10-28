@@ -1,28 +1,124 @@
 ---
-// STUB by W-F (Wave 3a). Owner: W-S2, then W-C4 (ownership.json). Replace freely within the slot contract:
-// a link whose name is '{frame}, {title}', a [data-gl=print] slot with a data-poster still, alt='' on images.
-import Slot from '../slot/Slot.astro';
+// The DOM print (W-D013, W-D022, D-023). Owner: W-S2, then W-C4. One print rule: the cover when it is set, else the
+// seeded test strip (src/lib/teststrip, drawn once per page as a <symbol> by StripDefs). Three variants:
+// - 'enl' and 'sheet': the link is the GL slot ([data-gl=print], data-gl-id), named '{frame}, {title}'. Its card is
+//   the [data-poster] still with the undeveloped veil over the picture window; GL borrows the still only while a print
+//   develops or lifts (.is-gl hides the poster and the veil) and hands back to the identical pixels at d = 1.
+// - 'list': the List row's print, 1lh of the index role tall. It is decorative: no slot, no link, no name (ruling 3).
+// A cover that fails to load leaves the undeveloped print, captioned "Image didn't load." (W-D022), except in a List
+// row, which gains no text (W-D022 as amended). The image is alt="" (the link names it); the strip is aria-hidden.
 import Text from '../../layouts/Text.astro';
 import type { ProjectView } from '../../lib/content/index.ts';
 
 interface Props {
   project: ProjectView;
-  /** GL entity id; the sheet uses the slug so the project page dock can take the same print. */
-  id: string;
+  variant: 'enl' | 'sheet' | 'list';
+  /** GL entity id ('enl' and 'sheet'); the sheet uses the slug so the project page dock can take the same print. */
+  id?: string;
+  /** Seeded tilt in degrees about the card's centre (sheet prints, W-D031). */
+  tilt?: number;
+  /** A rebate token above the card (the sheet, D-025): '▶' beside the frame code, no leading zeros. */
+  rebate?: boolean;
+  /** The develop group (w1, w2, w3: each enlargement; s: the sheet), the unit sessionStorage 'ion.dev' records. */
+  group?: string;
+  class?: string;
+  style?: string;
 }
-const { project, id } = Astro.props;
+const { project: p, variant, id, tilt = 0, rebate = false, group, class: cls, style } = Astro.props;
+const cover = p.cover;
+const fx = Math.round((p.focus?.x ?? 0.5) * 100);
+const fy = Math.round((p.focus?.y ?? 0.5) * 100);
+const lazy = variant === 'list' ? 'lazy' : undefined;
+const tiltStyle = tilt ? `--tilt:${tilt}deg` : '';
 ---
-<Slot as="a" kind="print" id={id} href={project.href} class="print">
-  <svg data-poster class="print-still" viewBox="0 0 54 86" aria-hidden="true" focusable="false">
-    <rect width="54" height="86" rx="1.5" fill="var(--paper)"></rect>
-    <rect x="4" y="5" width="46" height="62" fill={project.tint}></rect>
-  </svg>
-  <span class="print-name"><span class="print-frame">{project.frame}</span>, <Text value={project.title} /></span>
-</Slot>
+{variant === 'list' ? (
+  <span class="print print--list" data-print-list aria-hidden="true">
+    <span class="print-card">
+      {cover ? <img data-poster class="print-still print-cover" src={cover} alt="" width="54" height="86" decoding="async" loading={lazy} style={`object-position:${fx}% ${fy}%`} /> : <svg data-poster class="print-still" viewBox="0 0 54 86" aria-hidden="true" focusable="false"><use href={`#ts-${p.slug}`}></use></svg>}
+      <span class="print-veil"></span>
+    </span>
+  </span>
+) : (
+  <a
+    class:list={['print', `print--${variant}`, cls]}
+    data-gl="print"
+    data-gl-id={id}
+    data-print={variant}
+    data-dev-group={group}
+    data-wet
+    data-tilt={tilt || undefined}
+    data-strip={cover ? undefined : p.slug}
+    href={p.href}
+    style={[style, tiltStyle].filter(Boolean).join(';') || undefined}
+  >
+    {rebate && <span class="print-rebate" aria-hidden="true">▶{p.frame}</span>}
+    <span class="print-card">
+      {cover ? <img data-poster class="print-still print-cover" src={cover} alt="" width="54" height="86" decoding="async" style={`object-position:${fx}% ${fy}%`} /> : <svg data-poster class="print-still" viewBox="0 0 54 86" aria-hidden="true" focusable="false"><use href={`#ts-${p.slug}`}></use></svg>}
+      <span class="print-veil" aria-hidden="true"></span>
+    </span>
+    <span class="print-cap">
+      <span class="print-name"><span class="print-frame">{p.frame}</span>, <Text value={p.title} /></span>
+      <span class="print-failed" hidden>Image didn't load.</span>
+    </span>
+  </a>
+)}
 
-<style>
-  .print { display: grid; gap: var(--space-2); inline-size: 100%; min-inline-size: 140px; text-decoration: none; }
-  .print-still { inline-size: 100%; block-size: auto; aspect-ratio: 54 / 86; border-radius: var(--radius-print); }
-  .print-name { font: 500 var(--type-ui) / 1.3 var(--font-text); }
-  .print-frame { font-family: var(--font-edge); text-transform: uppercase; letter-spacing: 0.04em; }
+<script>
+  import './prints.ts';
+</script>
+
+<style is:global>
+  /* The card: 54:86, its still and its veil in one box. The tilt turns the card about its centre (W-D031), never the
+     slot, so no ancestor of a slot is transformed (W-D013). Untilted cards (the enlargements, the List) compute
+     rotate: none, never 0deg: any other value makes the card a stacking context at rest (M1). */
+  .print { text-decoration: none; color: inherit; }
+  .print-card {
+    position: relative;
+    display: block;
+    aspect-ratio: 54 / 86;
+    rotate: var(--tilt, none);
+  }
+  .print-still {
+    display: block;
+    inline-size: 100%;
+    block-size: 100%;
+    border-radius: var(--radius-print);
+  }
+  /* A cover: the paper border is the image's own padding and background, so the poster is the whole card. Padding
+     percentages resolve against the card's width: 5, 4 and 19 card units of 54. */
+  .print-cover {
+    box-sizing: border-box;
+    padding: 9.259% 7.407% 35.185%;
+    background: #F6F5F1;
+    object-fit: cover;
+  }
+  /* The undeveloped print (the develop shader at d = 0: the veil over UNDEV, rgb 45 69 72) over the picture window. */
+  .print-veil {
+    position: absolute;
+    inset: 5.814% 7.407% 22.093%;
+    background: rgb(45 69 72);
+    opacity: 0;
+  }
+  /* Wet until it develops: only where the Work section's flag says this visit develops (html[data-prints=wet]), and
+     never for a group this session has developed (html[data-dev], sessionStorage 'ion.dev'). Equal specificity
+     throughout, so the order decides: wet, then developed, then failed, then GL borrowing the still. */
+  :root[data-prints="wet"] [data-wet] .print-veil { opacity: 1; }
+  :root[data-dev~="w1"] [data-dev-group="w1"] .print-veil,
+  :root[data-dev~="w2"] [data-dev-group="w2"] .print-veil,
+  :root[data-dev~="w3"] [data-dev-group="w3"] .print-veil,
+  :root[data-dev~="s"] [data-dev-group="s"] .print-veil { opacity: 0; }
+  :root .print[data-failed] .print-veil { opacity: 1; }
+  :root [data-gl].is-gl .print-veil { opacity: 0; }
+  .print[data-failed] .print-cover { opacity: 0; }
+  .print[data-failed] .print-failed { display: block; }
+  .print-cap { display: grid; gap: var(--space-1); }
+  .print-name { font: 500 var(--type-ui) / 1.3 var(--font-text); overflow-wrap: anywhere; }
+  .print-frame { font-family: var(--font-edge); letter-spacing: 0.04em; }
+  .print-failed { font: 500 var(--type-edge) / 1.4 var(--font-edge); color: var(--ink-2); }
+  .print-rebate {
+    font: 500 var(--type-edge) / 1 var(--font-edge);
+    letter-spacing: 0.08em;
+    color: var(--ink-2);
+  }
+  .print--list .print-still { border-radius: 1px; }
 </style>

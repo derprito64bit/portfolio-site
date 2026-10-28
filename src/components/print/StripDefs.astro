@@ -1,0 +1,24 @@
+---
+// The seeded test strips of every placeholder print on the page, once each, as <symbol id="ts-{slug}"> (W-D022).
+// Every Print with cover '' draws its strip with <use>, so a print, its enlargement and its List row share one strip.
+// Owner: W-S2, then W-C4. The <svg> holding them is laid out at 0 x 0 (never display: none, which some engines
+// carry into the <use> clones), out of the accessibility tree.
+import { STRIP_FONT, stripSvgBody } from '../../lib/teststrip/index.ts';
+import type { ProjectView } from '../../lib/content/index.ts';
+
+interface Props {
+  projects: ProjectView[];
+}
+const strips = Astro.props.projects.filter((p) => !p.cover);
+---
+{strips.length > 0 && (
+  <svg class="print-defs" aria-hidden="true" focusable="false" width="0" height="0">
+    {strips.map((p) => (
+      <symbol id={`ts-${p.slug}`} viewBox="0 0 54 86" font-family={STRIP_FONT} font-weight="500" set:html={stripSvgBody(p.slug, p.tint, p.frame)} />
+    ))}
+  </svg>
+)}
+
+<style>
+  .print-defs { position: absolute; inline-size: 0; block-size: 0; overflow: hidden; }
+</style>
