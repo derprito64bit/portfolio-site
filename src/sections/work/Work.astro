@@ -21,7 +21,7 @@ const share = (band: string, i: number) => (pct[band][i] ?? pct[band][pct[band].
 // Two columns where both columns' prints fit side by side with the gap (and the captions beside, at 64rem and wider);
 // the share sum decides it, so altered tokens can never make two prints overlap.
 const GAP = 4; // cqi between the columns
-const CAP = 17; // cqi of a caption beside its print (64rem and wider)
+const CAP = 15; // cqi of a caption beside its print (64rem and wider)
 const INDENT = 7; // cqi the third print sits in from the left at 64rem and wider
 const two = (band: string, beside: boolean) => {
   const [a, b, c] = [0, 1, 2].map((i) => share(band, i) * 100);
@@ -80,6 +80,9 @@ const flag = `(function(h){try{if(/[?&]t=/.test(location.search))h.setAttribute(
 
   @media (min-width: 48rem) {
     .enl { --s: var(--s3); }
+  }
+  /* B3 only: its two-column grid must not reach B4-B5, which decides its own. */
+  @media (min-width: 48rem) and (max-width: 63.99rem) {
     [data-b3='two'] .enl-list {
       grid-template-columns: [l] var(--col3) [r] minmax(0, 1fr);
       grid-template-rows: [r1] 26cqi [r2] auto [r3] auto [r4] auto;
