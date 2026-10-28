@@ -6,7 +6,11 @@
 // --plant <name> injects one defect before measuring; every plant must make its row FAIL (the negative controls):
 //   share (an enlargement 1% wider), cols (a fifth sheet column), track (a card 12 px narrower than its track),
 //   offset (no B1-B2 offset), tilt (a 3 degree tilt), caption (a caption pulled over its print), swell (no reserve),
-//   overflow (a 40 px overhang), contact (an 800 px spacer before Awards), names (a duplicate link name).
+//   overflow (a 40 px overhang), contact (an 800 px spacer before Awards), names (a duplicate link name), listtrack (the
+//   List print without its inline size: round 1's WebKit collapse, run it at WK-P2 or WK-T2).
+// L5 and L7 run in WebKit too (WK-P2, WK-T2; the List is iOS Safari's default view): a long title must keep every word
+// whole on one line (overflow-wrap: anywhere hides a squeezed cell by breaking letters), and L7 reads contact on a cold
+// / with no ?view= and no stored toggle, in the view / opens in, at P2 and WK-P2.
 // Usage: node tests/w-s2/layout.mjs [--profiles D1,...] [--plant <name>] [--dist <dir>] [--out <dir>]
 import { join } from 'node:path';
 import { mkdirSync, writeFileSync } from 'node:fs';
@@ -45,7 +49,10 @@ const PLANTS = {
   swell: '.row-res { display: none !important; } .row-title { min-block-size: 0 !important; }',
   overflow: '.sheet-item:nth-child(1) .print-name { margin-inline-end: -40px; white-space: nowrap; display: block; inline-size: 120vw; }',
   contact: '#honours { margin-block-start: 800px !important; }',
+  listtrack: '.row .print--list { inline-size: auto !important; aspect-ratio: 54 / 86 !important; }',
 };
+/** L7 runs on a cold / at these profiles (390 x 844, Chromium and WebKit). */
+const L7_PROFILES = ['P2', 'WK-P2'];
 
 /** Everything measured in the page (one evaluate per profile and view). */
 function measure({ view, offset, tiltMax, minPx, maxPx, shares, colsMax }) {
@@ -97,19 +104,37 @@ function measure({ view, offset, tiltMax, minPx, maxPx, shares, colsMax }) {
       if (overlap(r(card), r(cap))) out.captionsOverImages.push(p.dataset.glId);
       inside(li, `sheet ${p.dataset.glId}`);
       const rotate = getComputedStyle(card).rotate;
-      return { id: p.dataset.glId, col, top: li.offsetTop, marginTop: parseFloat(getComputedStyle(li).marginBlockStart), width: card.offsetWidth, track: tracks[col], tilt: Number(p.dataset.tilt) || 0, rotate, origin: getComputedStyle(card).transformOrigin, cardW: card.offsetWidth, cardH: card.offsetHeight };
+      const pencil = li.querySelector('.pencil');
+      return { id: p.dataset.glId, pencilRotate: pencil ? getComputedStyle(pencil).rotate : null, col, top: li.offsetTop, marginTop: parseFloat(getComputedStyle(li).marginBlockStart), width: card.offsetWidth, track: tracks[col], tilt: Number(p.dataset.tilt) || 0, rotate, origin: getComputedStyle(card).transformOrigin, cardW: card.offsetWidth, cardH: card.offsetHeight };
     });
     const title = document.getElementById('sheet');
     out.sheet = { tracks, gap: g, Wg, columns: lefts.length, derived, cards, headingBeside: r(title).right <= r(grid).left + 0.5 && innerWidth >= 1024, headingOverlap: overlap(r(title), r(grid)) };
   }
   const list = document.querySelector('[data-sheet-list]');
   if (view === 'list' && list && list.offsetParent) {
+    // Words of the shown title that the line breaker split across lines (each word's range spans more than one line).
+    const broken = (el) => {
+      const texts = [];
+      const walk = (n) => (n.nodeType === 3 ? texts.push(n) : n.childNodes.forEach(walk));
+      walk(el);
+      const out = [];
+      for (const t of texts) {
+        for (const m of t.data.matchAll(/\S+/g)) {
+          const rg = document.createRange();
+          rg.setStart(t, m.index);
+          rg.setEnd(t, m.index + m[0].length);
+          const lines = new Set([...rg.getClientRects()].filter((b) => b.width > 0.5).map((b) => Math.round(b.top)));
+          if (lines.size > 1) out.push(m[0]);
+        }
+      }
+      return out;
+    };
     out.list = [...list.querySelectorAll('.row')].map((row) => {
       const pr = row.querySelector('.print--list');
       const title = row.querySelector('.row-title');
       inside(row, `row ${row.dataset.glId}`);
       row.querySelectorAll('.row-t, .row-meta > *, .print--list').forEach((el) => inside(el, `row ${row.dataset.glId} ${el.className}`));
-      return { id: row.dataset.glId, h: row.offsetHeight, printH: pr.offsetHeight, printW: pr.offsetWidth, lh: parseFloat(getComputedStyle(title).lineHeight), name: row.getAttribute('aria-label') };
+      return { id: row.dataset.glId, h: row.offsetHeight, printH: pr.offsetHeight, printW: pr.offsetWidth, titleW: Math.round(title.getBoundingClientRect().width * 10) / 10, brokenWords: broken(title.querySelector('.row-t:not(.row-res)')), lh: parseFloat(getComputedStyle(title).lineHeight), name: row.getAttribute('aria-label') };
     });
   }
   // Accessible names of the print links (the aria-hidden parts left out), with their URLs.
@@ -174,6 +199,25 @@ try {
       res[view] = await page.evaluate(measure, { view, offset: OFFSET, tiltMax: TILT, minPx: layout.minPrintPx, maxPx: layout.enlargementsPctOfContent.maxPx, shares, colsMax });
       res[view].contactTop = asBuilt;
       if (view === 'list') res.swell = await swell(page);
+      res[view].longTitles = view === 'list' && ['P2', 'P1', 'T2', 'WK-P2', 'WK-T2'].includes(p);
+      await ctx.close();
+    }
+    // L7 as built: a cold / (no ?view=, nothing stored), in the view it opens in (not on the tokens-only rebuild, whose
+    // page is not the built site).
+    if (L7_PROFILES.includes(p) && !altTokens) {
+      const ctx = await newContext(p, 'reduced');
+      const page = await ctx.newPage();
+      await page.goto(`${srv.base}/`, { waitUntil: 'load' });
+      await waitSettled(page, 12000);
+      if (plant && PLANTS[plant]) await page.addStyleTag({ content: PLANTS[plant] });
+      res.cold = await page.evaluate(() => {
+        let stored = null;
+        try {
+          stored = localStorage.getItem('ion.view');
+        } catch {}
+        const c = document.getElementById('contact');
+        return { search: location.search, stored, view: document.querySelector('section.sheet')?.dataset.view ?? null, contactTop: c ? c.getBoundingClientRect().top + scrollY : null, innerHeight, door: document.querySelector('[data-door], .door, #door')?.getBoundingClientRect().height ?? 0, titleW: [...document.querySelectorAll('[data-sheet-list] .row-title')].map((t) => Math.round(t.getBoundingClientRect().width)) };
+      });
       await ctx.close();
     }
     // Two fresh loads give the same tilt per slug (seeded).
@@ -224,6 +268,8 @@ for (const r of rows) {
       const [ox, oy] = c.origin.split(' ').map(parseFloat);
       if (Math.abs(ox - c.cardW / 2) > TOL || Math.abs(oy - c.cardH / 2) > TOL) note('L2', tag(`${c.id} turns about ${c.origin}, not its centre`));
       if (r.tiltsAgain[c.id] !== c.tilt) note('L2', tag(`${c.id} tilt ${c.tilt} then ${r.tiltsAgain[c.id]} on a second load`));
+      // A pencil box turns with the card it frames (and is rotate: none, no stacking context, when the card is untilted).
+      if (c.pencilRotate !== null && c.pencilRotate !== c.rotate) note('L2', tag(`${c.id} pencil box turns ${c.pencilRotate}, its card ${c.rotate}`));
     }
     const phoneBand = r.band === 'B1' || r.band === 'B2';
     for (const c of sh.cards) {
@@ -239,6 +285,7 @@ for (const r of rows) {
   if (!r.list.list) note('L5', tag('no List rendered in the List view'));
   else {
     for (const row of r.list.list) {
+      if (r.list.longTitles && row.brokenWords.length) note('L5', tag(`${row.id}: the title cell (${row.titleW} px) breaks ${row.brokenWords.slice(0, 3).join(' ')}`));
       if (row.h < 44) note('L5', tag(`${row.id} row ${row.h} px < 44`));
       if (Math.abs(row.printH - row.lh) > 1) note('L5', tag(`${row.id} print ${row.printH} px tall, 1lh is ${row.lh}`));
       if (Math.abs(row.printW / row.printH - 54 / 86) > 0.02) note('L5', tag(`${row.id} print ${row.printW} x ${row.printH} is not 54:86`));
@@ -254,16 +301,16 @@ for (const r of rows) {
       if (!/^\d+A, \S/.test(n.name)) note('L6', tag(`${v.view}: link name "${n.name}" is not '{frame}, {title}'`));
     }
   }
-  if (r.profile === 'P2') {
-    const screens = r.list.contactTop / 844;
-    report.L7 = { contactTop: r.list.contactTop, screens: Math.round(screens * 100) / 100, doorStubPx: r.list.door, view: 'list (P2 default)' };
-    if (!(screens <= CONTACT_SCREENS_MAX)) note('L7', tag(`contact at ${screens.toFixed(2)} screens > ${CONTACT_SCREENS_MAX}`));
-    report.L7sheet = { screens: Math.round((r.sheet.contactTop / 844) * 100) / 100, view: 'sheet (information)' };
+  if (r.cold) {
+    const screens = r.cold.contactTop / 844;
+    (report.L7 ??= {})[r.profile] = { contactTop: r.cold.contactTop, screens: Math.round(screens * 100) / 100, doorStubPx: r.cold.door, opensIn: r.cold.view, search: r.cold.search, stored: r.cold.stored, sheetScreens: Math.round((r.sheet.contactTop / 844) * 100) / 100 };
+    if (r.cold.view !== 'list' || r.cold.search || r.cold.stored) note('L7', tag(`cold / opens in ${r.cold.view} (search '${r.cold.search}', stored ${r.cold.stored}), want the List with neither`));
+    if (!(screens <= CONTACT_SCREENS_MAX)) note('L7', tag(`contact at ${screens.toFixed(2)} screens on a cold / > ${CONTACT_SCREENS_MAX}`));
   }
 }
 const verdict = Object.fromEntries(['L1', 'L2', 'L5', 'L6', 'L7'].map((k) => [k, fail[k] ? 'fail' : 'pass']));
 const pass = Object.values(verdict).every((v) => v === 'pass');
-const result = { schema: 1, instrument: 'w-s2/layout', plant, tokens: altTokens, profiles, verdict, failures: fail, report, pass, summary: Object.entries(verdict).map(([k, v]) => `${k} ${v}`).join(', ') + (report.L7 ? `; contact ${report.L7.screens} screens at P2` : '') + (report.M2.length ? `; M2 ${report.M2.map((m) => `${m.profile} ${m.ratio}`).join(' ')}` : ''), rows };
+const result = { schema: 1, instrument: 'w-s2/layout', plant, tokens: altTokens, profiles, verdict, failures: fail, report, pass, summary: Object.entries(verdict).map(([k, v]) => `${k} ${v}`).join(', ') + (report.L7 ? `; contact ${Object.entries(report.L7).map(([k, v]) => `${v.screens} screens at ${k}`).join(', ')}` : '') + (report.M2.length ? `; M2 ${report.M2.map((m) => `${m.profile} ${m.ratio}`).join(' ')}` : ''), rows };
 if (o.out) {
   mkdirSync(String(o.out), { recursive: true });
   writeFileSync(join(String(o.out), `layout${plant ? `-plant-${plant}` : ''}${altTokens ? '-tokens-alt' : ''}.json`), JSON.stringify(result, null, 2));

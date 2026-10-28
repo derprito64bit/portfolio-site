@@ -8,8 +8,11 @@
 //   L2   /fixture-n5/ .. /fixture-n8/: 5, 6, 7 and 8 projects, no empty frame, at D2, T2 and P2 (Sheet).
 //   L1   --tokens alt: the same scratch build with fixed altered layout.* values; tests/w-s2/layout.mjs then runs on it
 //        with those tokens (the frames must follow them).
-// Usage: node tests/w-s2/fixtures.mjs [--tokens alt] [--keep] [--out <dir>]
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+//   The tree it runs from is never written: its chunk manifest (node_modules/.cache/portfolio-build, which tests/w-s1
+//   glBytes and bytes.mjs read) must be byte-identical after the run, else the run fails (and puts it back). The plant
+//   'sharedcache' junctions the whole node_modules again (round 1's gate F4) to show that check failing.
+// Usage: node tests/w-s2/fixtures.mjs [--tokens alt] [--keep] [--out <dir>] [--plant cover|literal|sharedcache]
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
@@ -22,12 +25,21 @@ const alt = String(o.tokens ?? '') === 'alt';
 export const ALT_LAYOUT = { enlargementsPctOfContent: { 'B1-B2': [64, 58, 60], B3: [48, 40, 42], 'B4-B5': [30, 25, 22], maxPx: 560 }, sheetColumns: { 'B1-B2': 2, B3: 2, 'B4-B5': 3 }, minPrintPx: 150, phoneSheet: 'alternate columns offset 30px, seeded tilt up to 1deg' };
 
 // ---------------------------------------------------------------- the scratch copy
+const plant = o.plant ? String(o.plant) : null;
+const MANIFEST = join(ROOT, 'node_modules/.cache/portfolio-build/vite-manifest.json');
+const manifestBefore = existsSync(MANIFEST) ? readFileSync(MANIFEST) : null;
 const dir = mkdtempSync(join(tmpdir(), 'w-s2-fixtures-'));
 for (const f of ['src', 'content', 'public', 'scripts', 'assets-src', 'astro.config.mjs', 'package.json', 'tsconfig.json']) if (existsSync(join(ROOT, f))) cpSync(join(ROOT, f), join(dir, f), { recursive: true });
-symlinkSync(join(ROOT, 'node_modules'), join(dir, 'node_modules'), 'junction');
+// The tree's packages, one junction per entry, under the scratch copy's OWN node_modules: the build writes its chunk
+// manifest (node_modules/.cache/portfolio-build) and Vite its cache (.vite) there, so a fixtures run never touches the
+// tree it ran from (a junction of the whole folder rewrote a build-once tree's manifest: gate F4, #14 round 1).
+if (plant === 'sharedcache') symlinkSync(join(ROOT, 'node_modules'), join(dir, 'node_modules'), 'junction');
+else {
+  mkdirSync(join(dir, 'node_modules'));
+  for (const e of readdirSync(join(ROOT, 'node_modules'))) if (e !== '.cache' && e !== '.vite') symlinkSync(join(ROOT, 'node_modules', e), join(dir, 'node_modules', e), 'junction');
+}
 // Negative controls, planted in the scratch copy's source only: 'cover' (the print ignores its cover and always shows the
 // strip; A1 must fail) and 'literal' (the B4-B5 shares are literals, not layout.*; the tokens-only rebuild must fail).
-const plant = o.plant ? String(o.plant) : null;
 if (plant === 'cover') {
   const f = join(dir, 'src/components/print/Print.astro');
   writeFileSync(f, readFileSync(f, 'utf8').replace('const cover = p.cover;', "const cover = '';"));
@@ -187,8 +199,16 @@ if (alt) {
   }
 }
 if (!o.keep) rmSync(dir, { recursive: true, force: true });
+// The tree it ran from is untouched (gate F4).
+const manifestAfter = existsSync(MANIFEST) ? readFileSync(MANIFEST) : null;
+const treeIntact = manifestBefore === null ? manifestAfter === null : manifestAfter !== null && manifestBefore.equals(manifestAfter);
+rows.treeManifest = { path: MANIFEST, intact: treeIntact, bytesBefore: manifestBefore?.length ?? null, bytesAfter: manifestAfter?.length ?? null };
+if (!treeIntact) {
+  note('tree', `the run rewrote ${MANIFEST} (${manifestBefore?.length} -> ${manifestAfter?.length} B); put back`);
+  if (manifestBefore) writeFileSync(MANIFEST, manifestBefore);
+}
 const pass = Object.keys(fails).length === 0;
-const summary = alt ? `tokens-only rebuild: ${pass ? 'the frames follow the altered layout.*' : 'FAIL'}` : `A1 ${fails.A1 ? 'fail' : 'pass'}, L2 counts ${fails.L2 ? 'fail' : 'pass'}`;
+const summary = `${alt ? `tokens-only rebuild: ${fails.L1 ? 'FAIL' : 'the frames follow the altered layout.*'}` : `A1 ${fails.A1 ? 'fail' : 'pass'}, L2 counts ${fails.L2 ? 'fail' : 'pass'}`}; the tree's manifest ${treeIntact ? 'untouched' : 'REWRITTEN (put back)'}`;
 if (o.out) {
   mkdirSync(String(o.out), { recursive: true });
   writeFileSync(join(String(o.out), `fixtures${alt ? '-tokens-alt' : ''}${plant ? `-plant-${plant}` : ''}.json`), JSON.stringify({ schema: 1, instrument: 'w-s2/fixtures', alt, plant, altLayout: alt ? ALT_LAYOUT : null, pass, summary, fails, rows }, null, 2));

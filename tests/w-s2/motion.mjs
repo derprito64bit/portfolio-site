@@ -10,12 +10,20 @@
 //   H1           the lift is GL (.is-gl) on a fine pointer within about 100 ms, never on keyboard focus or a coarse
 //                pointer.
 //   M1           the lay-down: pitched under 35% visible, flat from 35%, one-way, flat under reduced motion.
-//   L4           at rest no slot is .is-gl and the stage stops drawing.
+//   trigger      L3 and M1 at every height: stepped 1% at a time from 30% to 40% of each enlargement visible, the
+//                develop fires at 35% (or 36%: scroll rounding) of the PRINT, never before, also where the print is
+//                taller than the viewport (Z-D2: 734 px in 450; the ruling 5990469145 cell, the gate's F3), and the card
+//                is still pitched at 33% and flat at the step it fires (M1 ends where the develop starts).
+//                Chromium D2, P2, Z-D2; WebKit WK-T2, WK-P2.
+//   L4           at rest no slot is .is-gl and the stage stops drawing; no enlargement card is a stacking context
+//                (M1: rotate and transform none, no lay-down shadow box, and a paint probe: a z-index -1 child of the
+//                card paints inside it only when the card is a stacking context; the gate's F2).
 // --plant <name> breaks one thing from outside the product (page-side), and its row must FAIL: flash (the page shows a
 // group developed at its trigger, before GL takes it), duration (develops 20%
 // short), early (the IO trigger fires at 10%), twice (the session forgets), handback (give() does nothing), swap (no
-// swap window: timers fire at once), focuslift (focus lifts), tilt (the card stays pitched), rest (a slot keeps .is-gl).
-// Usage: node tests/w-s2/motion.mjs [--only l3,once,toggle,swap,hover,m1,rest] [--browser chromium|webkit]
+// swap window: timers fire at once), focuslift (focus lifts), tilt (the card stays pitched), rest (a slot keeps .is-gl),
+// stack (an enlargement card keeps rotate: 0deg, round 1's defect).
+// Usage: node tests/w-s2/motion.mjs [--only l3,once,toggle,swap,hover,m1,trigger,rest] [--browser chromium|webkit]
 //        [--plant <name>] [--dist <dir>] [--out <dir>]
 import { join } from 'node:path';
 import { mkdirSync, writeFileSync } from 'node:fs';
@@ -24,7 +32,7 @@ import { durations } from '../../src/lib/tokens.js';
 
 const o = cliOpts();
 const plant = o.plant ? String(o.plant) : null;
-const only = new Set(String(o.only ?? 'l3,once,toggle,swap,hover,m1,rest').split(','));
+const only = new Set(String(o.only ?? 'l3,once,toggle,swap,hover,m1,trigger,rest').split(','));
 const webkit = String(o.browser ?? 'chromium') === 'webkit';
 const DESK = webkit ? 'WK-T2' : 'D2';
 const FRAME = 1000 / 60;
@@ -78,16 +86,22 @@ async function waitMark(p, name, ms = 15000) {
   }
   return false;
 }
-/** Scroll so `sel`'s box is `frac` visible from the bottom of the viewport; returns once two frames have rendered. */
-async function reveal(p, sel, frac) {
+/**
+ * Scroll so `frac` of `sel`'s own layout height shows above the bottom of the viewport (L3 reads 35% of the print, also
+ * for a print taller than the viewport); `cap` limits it to `frac` of the viewport (the sheet grid's own fallback). The
+ * layout box is the transformed box's bottom edge (the lay-down turns about it) less offsetHeight, so a pitched card is
+ * placed by its flat size. Returns once two frames have rendered.
+ */
+async function reveal(p, sel, frac, cap = false) {
   await p.evaluate(
-    ([s, f]) => {
+    ([s, f, c]) => {
       const el = document.querySelector(s);
       const r = el.getBoundingClientRect();
-      const visible = Math.min(r.height * f, innerHeight * f);
-      window.scrollTo(0, scrollY + r.top - innerHeight + visible);
+      const h = el.offsetHeight || r.height;
+      const visible = c ? Math.min(h * f, innerHeight * f) : h * f;
+      window.scrollTo(0, scrollY + r.bottom - h - innerHeight + visible);
     },
-    [sel, frac],
+    [sel, frac, cap],
   );
   await p.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
   await sleep(120);
@@ -139,7 +153,7 @@ try {
     // The sheet wave.
     const sheetIds = await p.evaluate(() => [...document.querySelectorAll('[data-print="sheet"]')].map((a) => a.dataset.glId));
     const n0 = await p.evaluate(() => performance.getEntriesByName('prints:develop').length);
-    await reveal(p, '[data-sheet-grid]', 0.4);
+    await reveal(p, '[data-sheet-grid]', 0.4, true);
     const t0 = Date.now();
     while ((await p.evaluate(() => performance.getEntriesByName('prints:develop').length)) === n0 && Date.now() - t0 < 3000) await sleep(50);
     await sleep(400);
@@ -239,7 +253,7 @@ try {
     const b = await page(srv, DESK, '/?t=0&view=sheet');
     await waitMark(b.p, 'prints:ready');
     await plantPage(b.p);
-    await reveal(b.p, '[data-sheet-grid]', 0.4);
+    await reveal(b.p, '[data-sheet-grid]', 0.4, true);
     await waitMark(b.p, 'prints:develop', 3000);
     await sleep(400);
     for (let i = 0; i < 20; i++) await b.p.evaluate((m) => window.__stage.seek(m), (clock += FRAME));
@@ -373,14 +387,74 @@ try {
     results.M1 = { pass: !fails.length, fails, pitchDeg: at, reducedPitch };
   }
 
+  // ---------------------------------------------------------------- L3 trigger point and M1's end, at every height
+  if (only.has('trigger')) {
+    const fails = [];
+    const rows = [];
+    const pitchOf = (m) => (m === 'none' ? 0 : (() => { const v = m.match(/matrix3d\(([^)]+)\)/); if (!v) return 0; const a = v[1].split(',').map(Number); return Math.round((Math.atan2(a[6], a[5]) * 180) / Math.PI * 100) / 100; })());
+    for (const prof of webkit ? ['WK-T2', 'WK-P2'] : ['D2', 'P2', 'Z-D2']) {
+      // One fresh visit per enlargement, the other groups already developed this session (sessionStorage 'ion.dev'),
+      // so only this print develops in real time: headless WebKit's tier governor demotes lite to static when two
+      // real-time develops overlap (measured at WK-T2, 7.5 s in), which would dry every later print.
+      for (const g of ['w1', 'w2', 'w3']) {
+        const others = ['w1', 'w2', 'w3', 's'].filter((x) => x !== g).join(' ');
+        const { ctx, p, errors } = await page(srv, prof, '/?view=sheet', { init: [`sessionStorage.setItem('ion.dev', ${JSON.stringify(others)})`] });
+        await waitMark(p, 'prints:ready');
+        const id = await p.evaluate((gr) => document.querySelector(`[data-print="enl"][data-dev-group="${gr}"]`)?.dataset.glId, g);
+        if (!id) {
+          await ctx.close();
+          continue;
+        }
+        const lays = await p.evaluate(() => CSS.supports('animation-timeline: view()'));
+        const sel = `[data-gl-id="${id}"][data-gl] .print-card`;
+        const group = g;
+        const steps = [];
+        let fired = null;
+        for (let k = 30; k <= 40; k++) {
+          await reveal(p, sel, k / 100);
+          const st = await p.evaluate(([q, g]) => {
+            const c = document.querySelector(q);
+            const b = c.getBoundingClientRect();
+            const h = c.offsetHeight;
+            const top = b.bottom - h;
+            return { frac: Math.round(((Math.min(b.bottom, innerHeight) - Math.max(top, 0)) / h) * 10000) / 10000, h, vh: innerHeight, transform: getComputedStyle(c).transform, dev: performance.getEntriesByName('prints:develop').some((m) => m.detail.group === g) };
+          }, [sel, group]);
+          steps.push({ k, frac: st.frac, pitch: pitchOf(st.transform), dev: st.dev });
+          if (st.dev) {
+            fired = k;
+            break;
+          }
+        }
+        const at = steps.find((x) => x.k === fired);
+        // Two steps under 35% the card is still lying down (at 35% itself its pitch has reached 0 by design).
+        const prev = steps.find((x) => x.k === 33);
+        const tierLog = await p.evaluate(() => window.__stage.tierLog);
+        const row = { profile: prof, id, h: steps[0] ? await p.evaluate((q) => document.querySelector(q).offsetHeight, sel) : null, vh: await p.evaluate(() => innerHeight), firedAtPct: fired, firedAtFrac: at?.frac ?? null, pitchBefore: prev?.pitch ?? null, pitchAt: at?.pitch ?? null, layDown: lays, tierLog, steps };
+        rows.push(row);
+        if (tierLog.length !== 1) fails.push(`${prof} ${id}: the tier changed during the steps (instrument invalid): ${JSON.stringify(tierLog)}`);
+        if (fired === null) fails.push(`${prof} ${id}: no develop by 40% of the print visible`);
+        else if (fired < 35 || at.frac < 0.349) fails.push(`${prof} ${id}: developed at ${fired}% of the print (frac ${at.frac}), before 35%`);
+        else if (fired > 36) fails.push(`${prof} ${id}: developed only at ${fired}% of the print, want 35% (36% with rounding)`);
+        if (lays && fired !== null && !(prev?.pitch > 0.1)) fails.push(`${prof} ${id}: not lying down at 33% of the print (${prev?.pitch} deg)`);
+        if (fired !== null && at.pitch !== 0) fails.push(`${prof} ${id}: pitched ${at.pitch} deg when its develop started (GL would borrow a tilted print)`);
+        if (errors.length) fails.push(`${prof} ${id} console: ${errors.slice(0, 2).join(' | ')}`);
+        await ctx.close();
+      }
+    }
+    results.trigger = { pass: !fails.length, fails, rows };
+  }
+
   // ---------------------------------------------------------------- L4 at rest
   if (only.has('rest')) {
     const fails = [];
     const { ctx, p } = await page(srv, DESK, '/?view=sheet');
     await waitSettled(p, 12000);
     await waitMark(p, 'prints:ready');
-    for (const s of ['[data-print="enl"] .print-card', '[data-sheet-grid]']) {
-      await p.evaluate((sel) => document.querySelectorAll(sel).forEach((el) => el.scrollIntoView({ block: 'center' })), s);
+    // Each enlargement, then the sheet, comes into view and develops (one at a time: a synchronous loop of
+    // scrollIntoView never renders the earlier ones).
+    const n = await p.evaluate(() => document.querySelectorAll('[data-print="enl"]').length);
+    for (const k of [...Array(n).keys(), -1]) {
+      await p.evaluate((i) => (i < 0 ? document.querySelector('[data-sheet-grid]') : document.querySelectorAll('[data-print="enl"] .print-card')[i]).scrollIntoView({ block: 'center' }), k);
       await sleep(400);
     }
     await sleep(3500);
@@ -391,7 +465,34 @@ try {
     const b = await p.evaluate(() => ({ draws: window.__stage.stats.draws }));
     if (a.gl.length) fails.push(`at rest .is-gl on ${a.gl.join(', ')}`);
     if (b.draws !== a.draws) fails.push(`the stage drew ${b.draws - a.draws} frames at rest`);
-    results.L4 = { pass: !fails.length, fails, rest: a, drawsLater: b.draws };
+    // M1 at rest: no enlargement card (developed, its lay-down done) is a stacking context.
+    if (plant === 'stack') await p.addStyleTag({ content: '[data-print="enl"] .print-card { rotate: 0deg !important; }' });
+    const stack = [];
+    for (const id of await p.evaluate(() => [...document.querySelectorAll('[data-print="enl"]')].map((x) => x.dataset.glId))) {
+      await p.evaluate((i) => document.querySelector(`[data-gl-id="${i}"][data-gl] .print-card`).scrollIntoView({ block: 'center' }), id);
+      await sleep(150);
+      stack.push(await p.evaluate((i) => {
+        const c = document.querySelector(`[data-gl-id="${i}"][data-gl] .print-card`);
+        const cs = getComputedStyle(c);
+        const still = c.querySelector('[data-poster]');
+        const vis = still.style.visibility;
+        still.style.visibility = 'hidden';
+        const probe = document.createElement('span');
+        probe.style.cssText = 'position:absolute;inset:0;z-index:-1;background:red';
+        c.append(probe);
+        const r = c.getBoundingClientRect();
+        // Below the veil (its inset leaves the bottom 22% of the card), inside the card.
+        const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height * 0.9);
+        probe.remove();
+        still.style.visibility = vis;
+        return { id: i, wet: c.closest('[data-print]').hasAttribute('data-wet'), rotate: cs.rotate, transform: cs.transform, shadowBox: getComputedStyle(c, '::after').content, probeInside: hit === probe };
+      }, id));
+    }
+    for (const x of stack) {
+      if (x.wet) fails.push(`${x.id} still wet at rest`);
+      if (x.rotate !== 'none' || x.transform !== 'none' || (x.shadowBox !== 'none' && x.shadowBox !== 'normal') || x.probeInside) fails.push(`${x.id} is a stacking context at rest: ${JSON.stringify(x)}`);
+    }
+    results.L4 = { pass: !fails.length, fails, rest: a, drawsLater: b.draws, stack };
     await ctx.close();
   }
 } finally {
