@@ -4,7 +4,14 @@ These are the owner's own words, quoted verbatim (spelling kept). Agents read th
 - If anything in a plan, brief or decision contradicts these words, these words win.
 - Do not paraphrase them into stronger or weaker claims.
 
-Owner: **derprito64bit**. Collected 2026-10-01 → 2026-10-08.
+Owner: **derprito64bit**. Collected 2026-10-01 → 2026-10-28.
+
+## The redirection (2026-10-28): read this first
+
+After viewing main with W-S2's work index on the local preview. It reopens the site's direction from scratch (#101, D-036);
+where it differs from anything below (the Darkroom prints, the X-T5 camera opening), it wins.
+
+> "let me just add a few things for todo: make a proper loading page that loads everything before entering, i dont know why but it seems like everything is generic ai design things again hopefully not, this portfolio should be chunked into sections with a fully impressive intro before the showcases of galleies and achievements, if i am going to make the camera functions the main thing of my website atleast show it though different ways such as after the homepage section where i would put my real name and stating it's a personal portfolio, does a smooth transition into a electronic viewfinder mode that is fuji film like with all the ui and then from seeing black turns to something (image, or anything whaever), i also notice the lack of usage of the skills and libaries i recommended and basic things like animated text, remember this website attemp is a complete overhaul/new idea from scratch you still are clinging too hard onto the projection theme which has it's limits, i want a very sleek, smooth, and immersive website, that has things like simulated liquid glass, trippy animations that impress people like awwwards websites, for now remove the fujifilm camera from the website and channge the theme to something darket to match the sleek design i want"
 
 ## What the portfolio is
 

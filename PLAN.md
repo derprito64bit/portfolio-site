@@ -14,6 +14,7 @@
   - docs batch #93 and the orchestrator context #94;
   - **the lean crew loop #95** (d1ba6cd), W-S2's launch config #96, owner decision D-035 #99 (the GL budget is now 187.6 kB);
   - **W-S2, the work index, #97** (be3049f). The owner chose to merge it with mobile TBT deferred: the timed set was blocked five times by a busy host. TBT is measured at W-F-m3's approval candidate and before G3a (a must-fix before G3a if it fails). Its follow-ups are #91 comment 6476370307.
+- **Owner redirection (2026-10-28, #101, D-036):** the site's direction is reopened from scratch (sleek, dark, immersive; a preloader; intro, then an EVF transition, then galleries, then achievements; the X-T5 camera removed for now). The queue after W-S2 is paused until the direction reset's concept is chosen.
 - **The queue is issue #91.** Its body lists the slots in order; slots 1 to 3 are done.
 - **Lean-loop cost:** W-S2 took 4 rounds (3 code plus 1 granted) for about $140 in crew runs, and this orchestrator session about $70. For comparison, W-S1 was about $362 and #69 about $1,987.
 - **System review:** `portfolio-evidence/loop-audit/SYSTEM-REVIEW-2026-10-13.md`.
@@ -55,7 +56,31 @@ The rules are the review's "Proposed operating model".
    - No budget pause; the owner cares that spend buys visible quality.
    - The global CLAUDE.md token rules apply: Opus at xhigh only for crew, gate, judge and jury; sonnet or haiku at low or medium for search, mechanical and verify stages; the muse-worker agent for routine scripting while its router runs.
 
-## NEXT STAGE: W-F-m3 (#11 follow-up crew), on the lean loop
+## NEXT STAGE: the direction reset (#101, D-036)
+The owner reopened the site's direction from scratch. Their words are first in `docs/agents/owner-voice.md`: "The redirection (2026-10-28)".
+1. **At the start, ask the owner to confirm #101's readings:**
+   - the camera: no X-T5 model on the page, with the EVF as a full-screen UI moment;
+   - "projection theme": the Darkroom prints, light table and X-T5 opening go, and W-S2's sections stay as content structure;
+   - the real name, from `content/owner-facts.md` only;
+   - and ask for a PC window for timed sets.
+2. **Research** (one lean workflow: Sonnet for search, Opus for the synthesis):
+   - Awwwards-level references for each asked effect: liquid glass, trippy shader transitions, preloaders that load everything, animated type, EVF and viewfinder UI, dark sleek layouts;
+   - #65's libraries (GSAP with ScrollTrigger and SplitText, Motion, anime.js, Spline, bklit ui, Kokonut UI, manus) and Unicorn Studio (owner-voice.md, 'The 2D site'): what each is, its licence and free tier, its size in kB gz, and its fit;
+   - the installed skills to use (the GSAP set, three.js shaders and post-processing, animate, design-motion-principles, emil-design-eng, design-taste-frontend, frontend-design).
+3. **Concepts:** 2 or 3 directions as working prototypes on a scratch branch (never main).
+   - Each runs preloader, then intro, then EVF transition, then a gallery, then achievements, dark, with placeholder content.
+   - A design jury (Opus, xhigh) scores them against the references and the owner's bar (owner-voice.md, 'The references').
+   - Show them on the local preview (`portfolio-preview/preview.py`, :4400 and :4401), and the owner picks one.
+4. **New plan:**
+   - decisions that replace D-001's look, D-024 and W-D002;
+   - budgets re-set where the concept needs it (with the owner);
+   - new crew briefs and order;
+   - what carries over: the stage, Lenis and Swup, the content model, W-S2's sections as layout, the lean loop and its tools;
+   - what goes: the X-T5 hero, the print develop and the darkroom tokens.
+   - W-F-m3 is re-scoped then; its camera items may be moot.
+5. Then stop, log, back up, and start the first new crew in a fresh session.
+
+### Paused: W-F-m3 (#11 follow-up crew), to re-scope after the reset
 1. **Fill the `wfm3` entry of `scripts/fleet/loop/crew-config.json`** through an orchestrator PR (`docs/...`). It is a draft now; `launch.cjs` refuses drafts. Set:
    - the code paths: W-F's globs, plus the W-F-m3 camera one-offs (decisions.md row 'W-F-m3 one-off globs'), plus a one-off in `src/gl/prints` if it takes the lost-context develop item below;
    - the gate's visitor paths and frame probes;
@@ -85,7 +110,7 @@ The rules are the review's "Proposed operating model".
 5. **Perf needs a quiet PC.** W-S2's TBT failed to get a clean set five times: other sessions' headless browsers and node, and `benchmarkIndex` under 0.9 x the baseline. Ask the owner for a quiet window at launch (see owner questions). Use `quiet-watch.mjs` before a perf continuation, and stop it before launching (its own prechecks add load).
 6. **Continuations** come from `prior-from-journal.cjs <launched file> <journal> --write <next> [--grant code=1] [--refresh crew-config.json]`, then the check. On the result: merge if approved with CI green; at the cap, ask the owner. Then stop, log, back up, and say "fresh session for the next stage".
 
-## After W-F-m3 (the order to go-live)
+## After W-F-m3 (the order to go-live): paused by #101 until the reset's plan replaces it
 1. **TRANSITIONS final pass:** close rev 8's last budget must-fix, add `docs/direction/transitions.md`, amend W-S3 and W-D015, and run prototypes P0-P5, then P6 (the EVF, D-034; it did not run during W-S2), whose numbers go to the owner.
 2. **W-S3 (#15):** the project page.
 3. **W-C13 m3 (#16):** grip leatherette, dial teeth, XF16-50 legends, cartridge and loupe, #84, re-rendered posters.
@@ -99,8 +124,8 @@ The rules are the review's "Proposed operating model".
 8. **After launch:** W-C2 with optimization pass #82 (the 3D budget D-033 is decided at its launch), W-C3, W-C4 (#78), W-C5, W-C6, W-C8, W-C9, W-C10, and watchlist #65.
 
 ## Owner questions to ask at the right stage (not before)
-- **At W-F-m3's launch:** name a PC window for timed sets (no other Claude sessions running tests; Unity, Roblox and most Opera tabs closed), or approve recalibrating the host key. W-S2's TBT was blocked five times without one.
-- **At the TRANSITIONS pass:** pick the EVF cell after the P6 numbers.
+- **At the direction reset's start:** confirm #101's readings (the camera, "projection theme", the real name). Also name a PC window for timed sets (no other Claude sessions running tests; Unity, Roblox and most Opera tabs closed), or approve recalibrating the host key. W-S2's TBT was blocked five times without one.
+- **The EVF:** #101 makes an EVF transition part of the intro, so the reset's concepts replace P6's cells (D-034).
 - **Before W-C14:**
   - camera and print composition, and camera size on laptops;
   - the strap style;

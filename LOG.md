@@ -40,4 +40,9 @@ Newest entries last, dates in UTC. The full 2026-10-02 to 10-13 history (about 1
   - **W-S2 merged as be3049f.** Follow-ups: #91 comment 6476370307.
   - Costs: W-S2 crew runs about $140, the orchestrator about $70, reviews about $3.
   - **Next stage:** W-F-m3 on the lean loop.
-
+- **2026-10-28: the owner redirected the site (#101, D-036).**
+  - After seeing main on the local preview, the owner found it generic.
+  - They asked for a from-scratch overhaul: sleek, dark and immersive at an Awwwards level (liquid glass, trippy animation, animated text), a real preloader, and an intro with the real name.
+  - The intro is followed by a Fujifilm-like EVF transition, then the galleries and the achievements.
+  - #65's libraries and the installed skills get used, and the X-T5 camera is removed for now.
+  - **Next stage:** the direction reset (research, 2 or 3 concept prototypes, the owner's pick, a new plan). W-F-m3 and the later slots are paused.
