@@ -134,7 +134,9 @@ const offsetCss = `@media ${listMq}{@container sheet (min-width: ${twoCols}px){.
   .view-opt { position: relative; display: inline-grid; place-items: center; min-inline-size: 44px; min-block-size: 44px; padding-inline: var(--space-2); cursor: pointer; }
   /* The radio is the label's whole box (transparent, not hidden), so the site's focus ring draws around it. */
   .view-opt input { position: absolute; inset: 0; margin: 0; appearance: none; background: none; border: 0; border-radius: var(--radius-ui); cursor: pointer; }
-  .view-opt span { text-decoration: underline transparent; text-decoration-thickness: 2px; text-underline-offset: 0.35em; transition: text-decoration-color var(--dur-panel-out) var(--ease-out); }
+  /* The word paints above the transparent radio (positioned, later in the tree) and lets the pointer through to it, so
+     its own background is the section's: contrast stays measurable (axe found it overlapped). */
+  .view-opt span { position: relative; pointer-events: none; text-decoration: underline transparent; text-decoration-thickness: 2px; text-underline-offset: 0.35em; transition: text-decoration-color var(--dur-panel-out) var(--ease-out); }
   .view-opt input:checked + span { text-decoration-color: var(--accent); }
   .view-sep { color: var(--ink-2); }
 
