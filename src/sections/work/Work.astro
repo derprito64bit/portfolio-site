@@ -42,9 +42,9 @@ const frameStyle = [
 // The develop-once flag before any print paints (L3): the stage head script has set the tier and motion axes; this
 // marks the prints wet unless the visit arrives by an anchor, the tier is static or motion is reduced, and carries the
 // session's developed groups (sessionStorage 'ion.dev'), so a print developed this session never paints wet again.
-// Under ?t= (the manual clock) the scroll-driven lay-down is off: seek() sets currentTime on every animation, which a
+// Under ?t (the manual clock: the stage's URLSearchParams.has('t'), so ?t, ?t= and ?t=0 alike) the scroll-driven lay-down is off: seek() sets currentTime on every animation, which a
 // scroll timeline rejects.
-const flag = `(function(h){try{if(/[?&]t=/.test(location.search))h.setAttribute('data-seek','');h.dataset.dev=sessionStorage.getItem('ion.dev')||'';if(h.classList.contains('js')&&h.dataset.tier!=='static'&&h.dataset.motion!=='reduced'&&!location.hash)h.dataset.prints='wet'}catch(e){}})(document.documentElement)`;
+const flag = `(function(h){try{if(/[?&]t(=|&|$)/.test(location.search))h.setAttribute('data-seek','');h.dataset.dev=sessionStorage.getItem('ion.dev')||'';if(h.classList.contains('js')&&h.dataset.tier!=='static'&&h.dataset.motion!=='reduced'&&!location.hash)h.dataset.prints='wet'}catch(e){}})(document.documentElement)`;
 ---
 <section class="work" data-ground aria-labelledby="work">
   <script is:inline set:html={flag}></script>
