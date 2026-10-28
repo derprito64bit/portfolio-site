@@ -1,21 +1,262 @@
 ---
-// STUB by W-F (Wave 3a). Owner: W-S2, then W-C4. The proof sheet of every project (2, 3 and 4 columns by band,
-// prints >= 140 px) and its List view (W-D024, W-D031).
+// The proof sheet (beat 3): every project as a print on one sheet, or as the numbered List (W-D024, W-D031, D-001).
+// Owner: W-S2, then W-C4.
+// - Columns are maxima (ruling 1b): the largest n <= layout.sheetColumns[band] with n x minPrintPx + (n - 1) x g <= W,
+//   derived in CSS (auto-fill over max(minPrintPx, the n-column track)); each card fills its track (inset i = 0).
+// - B1 and B2: alternate columns sit lower by the phone sheet's offset wherever 2 or more columns render; every card
+//   carries a seeded tilt (<= the phone sheet's tilt, the same per slug on every load) about its centre.
+// - Rebate tokens above each print (D-025): '▶' beside the frame code, no leading zeros, no arrows. The enlarged
+//   projects carry an amber pencil box and 'Enlarged above'.
+// - View: Sheet / List, a two-option radio group. The default is computed at load (List below 48rem, on the static
+//   tier and with Save-Data; Sheet otherwise); ?view= and localStorage only after the visitor toggles (prints.ts).
+// - The List: one row per project, led by its one print (ruling 3), meta line above the title below 64rem, four
+//   columns at 64rem and wider; the title swells wght 320 to 700 (W-D025) inside a reserve of its widest state.
 import Print from '../../components/print/Print.astro';
-import { content } from '../../lib/content/index.ts';
+import StripDefs from '../../components/print/StripDefs.astro';
+import Text from '../../layouts/Text.astro';
+import { content, type ProjectView } from '../../lib/content/index.ts';
+import { layout, breakpoints } from '../../lib/tokens.js';
+import { rng, seedOf } from '../../lib/teststrip/index.ts';
+import tokensJson from '../../../content/tokens.json';
+
+interface Props {
+  /** Every project, in sheet order; the default is content.projects (fixtures pass their own). */
+  projects?: ProjectView[];
+  /** The enlarged projects (pencil boxes); the default is the first three featured. */
+  enlarged?: ProjectView[];
+}
+const projects = Astro.props.projects ?? content.projects;
+const enlarged = new Set((Astro.props.enlarged ?? content.featured.slice(0, 3)).map((p) => p.slug));
+const cols = layout.sheetColumns as Record<string, number>;
+// The phone sheet's offset and tilt live in layout.phoneSheet as prose; read them, or fail the build loudly.
+const phone = String(layout.phoneSheet);
+const offsetPx = Number(phone.match(/offset\s+([\d.]+)px/)?.[1]);
+const tiltMax = Number(phone.match(/tilt up to\s+([\d.]+)deg/)?.[1]);
+if (!(offsetPx >= 0) || !(tiltMax >= 0)) throw new Error(`Sheet: layout.phoneSheet "${phone}" has no offset px or tilt deg`);
+const space = tokensJson.space.scale as number[];
+// The column gap is one --space-* step per band (B1-B2: --space-4; B3 and wider: --space-5). The 2-column condition
+// for the offset (W >= 2 x minPrintPx + g) is a container query, so it is written from the same tokens here.
+const g12 = space[3];
+const twoCols = 2 * layout.minPrintPx + g12;
+const tiltOf = (slug: string) => Math.round((rng(seedOf(`${slug}:tilt`))() * 2 - 1) * tiltMax * 100) / 100;
+const listMq = String(breakpoints.listDefault).split(' or ')[0];
+const pencil = (slug: string) => {
+  // A grease-pencil box, hand-drawn: each corner a little off, seeded by slug, about one card unit (of 54) outside
+  // the card, so it clears the rebate token above and the caption below.
+  const r = rng(seedOf(`${slug}:pencil`));
+  const j = () => (r() - 0.5) * 0.8;
+  const pts = [[-1.2 + j(), -1 + j()], [55.2 + j(), -1.1 + j()], [55 + j(), 87 + j()], [-1 + j(), 87.1 + j()]];
+  const f = (n: number) => Math.round(n * 100) / 100;
+  return `M${pts.map(([x, y]) => `${f(x)} ${f(y)}`).join('L')}Z`;
+};
+let pencilIndex = 0;
+const sheetStyle = [`--min:${layout.minPrintPx}px`, `--n12:${cols['B1-B2']}`, `--n3:${cols.B3}`, `--n45:${cols['B4-B5']}`, `--offset:${offsetPx}px`].join(';');
+const viewScript = `(function(s){try{var h=document.documentElement,v=new URLSearchParams(location.search).get('view');if(v!=='sheet'&&v!=='list'){try{v=localStorage.getItem('ion.view')}catch(e){}}if(v!=='sheet'&&v!=='list'){var c=navigator.connection;v=matchMedia('${listMq}').matches||h.dataset.tier==='static'||(c&&c.saveData)?'list':'sheet'}s.dataset.view=v;var r=s.querySelector('input[value="'+v+'"]');if(r)r.checked=true}catch(e){}})(document.currentScript.closest('section'))`;
+const offsetCss = `@media ${listMq}{@container sheet (min-width: ${twoCols}px){.sheet-grid>li:nth-child(even){margin-block-start:var(--offset)}}}`;
 ---
-<section class="sheet wrap" data-ground aria-labelledby="sheet">
-  <h2 id="sheet" class="sheet-title">Proof sheet</h2>
-  <ol class="sheet-grid" role="list">
-    {content.projects.map((p) => <li><Print project={p} id={p.slug} /></li>)}
-  </ol>
+<section class="sheet" data-ground aria-labelledby="sheet" style={sheetStyle}>
+  <StripDefs projects={projects} />
+  <div class="sheet-frame">
+    <h2 id="sheet" class="sheet-title">Proof sheet</h2>
+    <fieldset class="view-toggle" data-view-toggle>
+      <legend class="view-legend">View</legend>
+      <label class="view-opt"><input type="radio" name="sheet-view" value="sheet" /><span>Sheet</span></label>
+      <span class="view-sep" aria-hidden="true">/</span>
+      <label class="view-opt"><input type="radio" name="sheet-view" value="list" /><span>List</span></label>
+    </fieldset>
+    <script is:inline set:html={viewScript}></script>
+    <ol class="sheet-grid" role="list" data-sheet-grid>
+      {projects.map((p) => {
+        const marked = enlarged.has(p.slug);
+        const i = marked ? pencilIndex++ : 0;
+        return (
+          <li class:list={['sheet-item', { 'is-enlarged': marked }]} style={marked ? `--pi:${i}` : undefined}>
+            <span class="sheet-rebate" aria-hidden="true">▶{p.frame}</span>
+            <Print variant="sheet" project={p} id={p.slug} group="s" tilt={tiltOf(p.slug)} />
+            {marked && (
+              <>
+                <svg class="pencil" viewBox="0 0 54 86" aria-hidden="true" focusable="false"><path d={pencil(p.slug)} pathLength="1" /></svg>
+                <span class="sheet-note">Enlarged above</span>
+              </>
+            )}
+          </li>
+        );
+      })}
+    </ol>
+    <ol class="sheet-list" role="list" data-sheet-list>
+      {projects.map((p) => (
+        <li>
+          <a class="row" href={p.href} data-gl-id={p.slug} aria-label={p.linkName}>
+            <Print variant="list" project={p} />
+            <span class="row-meta">
+              <span class="row-code">{p.frame}</span>
+              {p.kind && <span class="row-kind"><Text value={p.kind} /></span>}
+              {p.year && <span class="row-year"><Text value={p.year} /></span>}
+            </span>
+            <span class="row-title"><span class="row-t"><Text value={p.title} /></span><span class="row-t row-res" aria-hidden="true"><Text value={p.title} /></span></span>
+          </a>
+        </li>
+      ))}
+    </ol>
+  </div>
 </section>
+<style is:inline set:html={offsetCss}></style>
 
 <style>
-  .sheet { padding-block: var(--space-7); --ground: var(--table-lit); }
-  .sheet-title { font-size: var(--type-display); margin-block-end: var(--space-6); }
-  /* Two columns when two 140 px prints fit; one at 200% zoom on a phone (195 CSS px), so nothing overflows. */
-  .sheet-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(140px, 100%), 1fr)); gap: var(--space-5); }
-  @media (min-width: 48rem) { .sheet-grid { grid-template-columns: repeat(3, minmax(140px, 1fr)); } }
-  @media (min-width: 64rem) { .sheet-grid { grid-template-columns: repeat(4, minmax(140px, 1fr)); } }
+  .sheet { --ground: var(--table-lit); padding: var(--space-8) var(--gutter); }
+  /* The content box (ruling 1c), from --content-max and --gutter. Heading, toggle and both views are siblings, so
+     the views are '#sheet ~ ol' (the keyboard instrument's sheet). */
+  .sheet-frame {
+    max-inline-size: var(--content-max);
+    margin-inline: auto;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: 'title' 'toggle' 'views';
+    align-items: start;
+  }
+  .sheet-title { grid-area: title; font-size: var(--type-display); }
+  .view-toggle { grid-area: toggle; }
+  .sheet-grid, .sheet-list { grid-area: views; margin-block-start: var(--space-6); }
+
+  /* ---------- View: Sheet / List ---------- */
+  .view-toggle {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0 var(--space-1);
+    margin: var(--space-4) 0 0;
+    padding: 0;
+    border: 0;
+    font: 500 var(--type-ui) / 1 var(--font-edge);
+  }
+  .view-legend { float: left; padding: 0; margin-inline-end: var(--space-2); color: var(--ink-2); }
+  .view-legend::after { content: ':'; }
+  .view-opt { position: relative; display: inline-grid; place-items: center; min-inline-size: 44px; min-block-size: 44px; padding-inline: var(--space-2); cursor: pointer; }
+  .view-opt input { position: absolute; inset: 0; margin: 0; opacity: 0; cursor: pointer; }
+  .view-opt span { text-decoration: underline transparent; text-decoration-thickness: 2px; text-underline-offset: 0.35em; transition: text-decoration-color var(--dur-panel-out) var(--ease-out); }
+  .view-opt input:checked + span { text-decoration-color: var(--accent); }
+  .view-opt input:focus-visible + span { outline: var(--focus-ring-width) solid var(--focus); outline-offset: var(--focus-offset); box-shadow: 0 0 0 calc(var(--focus-offset) + var(--focus-ring-width) + var(--focus-halo-width)) var(--focus-halo); }
+  .view-sep { color: var(--ink-2); }
+
+  /* Which view shows: data-view (the load default or the visitor's toggle, prints.ts), else the checked radio, else
+     the CSS default (List below 48rem). During the crossfade both views share the cell. */
+  .sheet[data-view='list'] .sheet-grid,
+  .sheet[data-view='sheet'] .sheet-list { display: none; }
+  .sheet[data-fading] .sheet-grid,
+  .sheet[data-fading] .sheet-list { display: grid; }
+  .sheet:not([data-view]) .sheet-list { display: none; }
+  .sheet:not([data-view]):has(input[value='list']:checked) .sheet-grid { display: none; }
+  .sheet:not([data-view]):has(input[value='list']:checked) .sheet-list { display: grid; }
+  @media (max-width: 47.99rem) {
+    .sheet:not([data-view]):not(:has(input:checked)) .sheet-grid { display: none; }
+    .sheet:not([data-view]):not(:has(input:checked)) .sheet-list { display: grid; }
+  }
+
+  /* ---------- The sheet ---------- */
+  .sheet-grid {
+    --n: var(--n12);
+    --g: var(--space-4);
+    container: sheet / inline-size;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(max(var(--min), calc((100% - (var(--n) - 1) * var(--g)) / var(--n))), 1fr));
+    gap: var(--space-6) var(--g);
+    align-items: start;
+  }
+  .sheet-item { position: relative; display: grid; gap: var(--space-2); min-inline-size: 0; }
+  .sheet-rebate { font: 500 var(--type-edge) / 1 var(--font-edge); letter-spacing: 0.08em; color: var(--ink-2); }
+  .sheet-item :global(.print) { display: grid; gap: var(--space-3); }
+  .sheet-item :global(.print-name) { font-size: var(--type-edge); font-family: var(--font-edge); line-height: 1.4; }
+  .sheet-note { font: 500 var(--type-edge) / 1.4 var(--font-edge); color: var(--accent-text); }
+  /* The pencil box rides the card's box: same width, the card's 54:86, 6% outside it, behind nothing. */
+  .pencil {
+    position: absolute;
+    inset-inline-start: 0;
+    inset-block-start: calc(var(--type-edge) + var(--space-2));
+    inline-size: 100%;
+    aspect-ratio: 54 / 86;
+    overflow: visible;
+    pointer-events: none;
+    rotate: var(--tilt, 0deg);
+  }
+  .pencil path {
+    fill: none;
+    stroke: var(--accent);
+    stroke-width: 0.5;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-dasharray: 1;
+    stroke-dashoffset: 0;
+    transition: stroke-dashoffset var(--dur-pencil-draw) var(--ease-out) calc(var(--pi, 0) * var(--dur-pencil-stagger));
+  }
+  /* Drawn once the sheet has developed (the pencil follows the prints, never leads them). */
+  :root[data-prints='wet']:not([data-dev~='s']) .sheet-item:has([data-wet]) .pencil path { stroke-dashoffset: 1; }
+  :root[data-motion='reduced'] .pencil path { transition: none; }
+  @media (min-width: 48rem) {
+    .sheet-grid { --n: var(--n3); --g: var(--space-5); row-gap: var(--space-7); }
+  }
+  @media (min-width: 64rem) {
+    /* The heading sits beside the sheet; it comes out of W, and the maximum still fits (ruling 1b). */
+    .sheet-frame {
+      grid-template-columns: clamp(12rem, 18%, 20rem) minmax(0, 1fr);
+      grid-template-areas: 'title views' 'toggle views' '. views';
+      grid-template-rows: auto auto 1fr;
+      column-gap: var(--space-7);
+    }
+    .sheet-grid, .sheet-list { margin-block-start: 0; }
+    .sheet-grid { --n: var(--n45); }
+  }
+
+  /* ---------- The List (D-001: a typographic numbered index, no card chrome) ---------- */
+  .sheet-list { display: grid; }
+  .sheet-list li { border-block-start: 1px solid var(--rule); }
+  .sheet-list li:last-child { border-block-end: 1px solid var(--rule); }
+  .row {
+    --lh: var(--type-index);
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-areas: '. meta' 'print title';
+    column-gap: var(--space-3);
+    row-gap: var(--space-1);
+    align-items: start;
+    min-block-size: 44px;
+    padding-block: var(--space-3) var(--space-4);
+    text-decoration: none;
+    color: inherit;
+  }
+  .row :global(.print--list) { grid-area: print; font-size: var(--type-index); line-height: 1; block-size: 1lh; aspect-ratio: 54 / 86; }
+  .row :global(.print--list .print-card) { block-size: 100%; }
+  .row-meta { grid-area: meta; display: flex; flex-wrap: wrap; gap: 0 var(--space-3); font: 500 var(--type-edge) / 1.5 var(--font-edge); letter-spacing: 0.06em; color: var(--ink-2); }
+  .row-title {
+    grid-area: title;
+    display: grid;
+    min-inline-size: 0;
+    font: 320 var(--type-index) / 1 var(--font-display);
+    letter-spacing: -0.026em;
+    min-block-size: 2lh;
+  }
+  /* The swell's reserve (W-D025, ruling 3): the title and its wght 700 twin share one cell, so the cell is always as
+     tall as the widest state and the row never changes height. */
+  .row-t { grid-area: 1 / 1; overflow-wrap: anywhere; text-wrap: balance; }
+  .row-res { visibility: hidden; font-weight: 700; }
+  .row-t:not(.row-res) { transition: font-weight var(--dur-swell) var(--ease-out); }
+  .row:hover .row-t:not(.row-res),
+  .row:focus-visible .row-t:not(.row-res) { font-weight: 700; }
+  @media (hover: none) {
+    .row:active .row-t:not(.row-res) { font-weight: 560; }
+  }
+  :root[data-motion='reduced'] .row-t { transition: none; }
+  @media (min-width: 64rem) {
+    .row {
+      grid-template-columns: auto 5ch minmax(0, 1fr) minmax(0, 12rem) minmax(0, 10rem);
+      grid-template-areas: 'print code title kind year';
+      column-gap: var(--space-5);
+      align-items: start;
+    }
+    .row-meta { display: contents; }
+    .row-code { grid-area: code; }
+    .row-kind { grid-area: kind; }
+    .row-year { grid-area: year; justify-self: end; text-align: end; }
+    .row-code, .row-kind, .row-year { padding-block-start: calc((var(--type-index) - 1.5 * var(--type-edge)) / 2); }
+    .row-title { min-block-size: 1lh; }
+  }
 </style>

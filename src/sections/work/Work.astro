@@ -1,19 +1,153 @@
 ---
-// STUB by W-F (Wave 3a). Owner: W-S2, then W-C4. Selected work: the first 3 featured projects as enlargements
-// (W-D031 band table). The section heading is visually hidden (W-D004).
+// Selected work (beat 2): the first three featured projects as enlargements on the light table (W-D031, D-023).
+// Owner: W-S2, then W-C4. Every size comes from layout.* through src/lib/tokens.js: each card is its band's share of
+// the content box (min(contentMax, viewport - 2 x gutter), ruling 1c), at least minPrintPx and at most the content box
+// and maxPx. The frame is the query container, so 1cqi is 1% of that content box. Captions go below under 64rem and
+// beside the print at 64rem and wider, never over it. Bands: B1-B2 stacked with alternating offsets; B3 and B4-B5
+// two columns, the second print starting lower, when the shares fit (else stacked). Each enlargement lies down as it
+// enters (M1: 5 degrees of pitch at entry to none at 35% visible, CSS scroll-driven) and develops there (L3).
+// The section heading is visually hidden (W-D004).
 import Print from '../../components/print/Print.astro';
-import { content } from '../../lib/content/index.ts';
-const picks = content.featured.slice(0, 3);
+import { content, type ProjectView } from '../../lib/content/index.ts';
+import { layout } from '../../lib/tokens.js';
+
+interface Props {
+  /** The three picks; the default is the first three featured projects (fixtures pass their own). */
+  picks?: ProjectView[];
+}
+const picks = (Astro.props.picks ?? content.featured).slice(0, 3);
+const pct = layout.enlargementsPctOfContent as Record<string, number[]> & { maxPx: number };
+const share = (band: string, i: number) => (pct[band][i] ?? pct[band][pct[band].length - 1]) / 100;
+// Two columns where both columns' prints fit side by side with the gap (and the captions beside, at 64rem and wider);
+// the share sum decides it, so altered tokens can never make two prints overlap.
+const GAP = 4; // cqi between the columns
+const CAP = 17; // cqi of a caption beside its print (64rem and wider)
+const INDENT = 7; // cqi the third print sits in from the left at 64rem and wider
+const two = (band: string, beside: boolean) => {
+  const [a, b, c] = [0, 1, 2].map((i) => share(band, i) * 100);
+  const left = Math.max(a + (beside ? GAP / 2 + CAP : 0), (beside ? INDENT + GAP / 2 + CAP : 0) + c);
+  return { ok: left + GAP + b + (beside ? GAP / 2 + CAP : 0) <= 100, left };
+};
+const b3 = two('B3', false);
+const b45 = two('B4-B5', true);
+const frameStyle = [
+  `--min:${layout.minPrintPx}px`,
+  `--max:${pct.maxPx}px`,
+  `--col3:${b3.left}cqi`,
+  `--col45:${b45.left}cqi`,
+  `--gap:${GAP}cqi`,
+  `--cap:${CAP}cqi`,
+  `--indent:${INDENT}cqi`,
+].join(';');
+// The develop-once flag before any print paints (L3): the stage head script has set the tier and motion axes; this
+// marks the prints wet unless the visit arrives by an anchor, the tier is static or motion is reduced, and carries the
+// session's developed groups (sessionStorage 'ion.dev'), so a print developed this session never paints wet again.
+// Under ?t= (the manual clock) the scroll-driven lay-down is off: seek() sets currentTime on every animation, which a
+// scroll timeline rejects.
+const flag = `(function(h){try{if(/[?&]t=/.test(location.search))h.setAttribute('data-seek','');h.dataset.dev=sessionStorage.getItem('ion.dev')||'';if(h.classList.contains('js')&&h.dataset.tier!=='static'&&h.dataset.motion!=='reduced'&&!location.hash)h.dataset.prints='wet'}catch(e){}})(document.documentElement)`;
 ---
-<section class="work wrap" data-ground aria-labelledby="work">
+<section class="work" data-ground aria-labelledby="work">
+  <script is:inline set:html={flag}></script>
   <h2 id="work" class="sr-only">Work</h2>
-  <ol class="enlargements" role="list">
-    {picks.map((p) => <li><Print project={p} id={`${p.slug}-enl`} /></li>)}
-  </ol>
+  <div class="work-frame" style={frameStyle} data-b3={b3.ok ? 'two' : 'stack'} data-b45={b45.ok ? 'two' : 'stack'}>
+    <ol class="enl-list" role="list">
+      {picks.map((p, i) => (
+        <li class={`enl enl-${i + 1}`} style={`--s12:${share('B1-B2', i)};--s3:${share('B3', i)};--s45:${share('B4-B5', i)}`}>
+          <Print variant="enl" project={p} id={`${p.slug}-enl`} group={`w${i + 1}`} />
+        </li>
+      ))}
+    </ol>
+  </div>
 </section>
 
 <style>
-  .work { padding-block: var(--space-7); }
-  .enlargements { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(160px, 100%), 1fr)); gap: var(--space-6); }
-  .enlargements li { max-inline-size: 360px; }
+  .work { padding: var(--space-8) var(--gutter) var(--space-7); }
+  /* The content box (ruling 1c): built from --content-max and --gutter, never .wrap's max. */
+  .work-frame { max-inline-size: var(--content-max); margin-inline: auto; container: work / inline-size; }
+  .enl-list { display: grid; grid-template-columns: minmax(0, 1fr); row-gap: var(--space-6); }
+  .enl { --s: var(--s12); min-inline-size: 0; }
+  /* Each card is its share of the content box: clamp(minPrintPx, share x W, min(W, maxPx)). */
+  .enl :global(.print) {
+    --w: clamp(var(--min), calc(var(--s) * 100cqi), min(100cqi, var(--max)));
+    display: grid;
+    grid-template-columns: var(--w);
+    row-gap: var(--space-3);
+    inline-size: fit-content;
+  }
+  /* B1 and B2: stacked, alternating sides. */
+  .enl-2 :global(.print) { margin-inline-start: auto; }
+  .enl-3 :global(.print) { margin-inline-start: calc((100cqi - var(--w)) * 0.12); }
+
+  @media (min-width: 48rem) {
+    .enl { --s: var(--s3); }
+    [data-b3='two'] .enl-list {
+      grid-template-columns: [l] var(--col3) [r] minmax(0, 1fr);
+      grid-template-rows: [r1] 26cqi [r2] auto [r3] auto [r4] auto;
+      column-gap: var(--gap);
+      row-gap: var(--space-5);
+    }
+    [data-b3='two'] .enl-1 { grid-column: l; grid-row: r1 / r3; }
+    [data-b3='two'] .enl-2 { grid-column: r; grid-row: r2 / r4; }
+    [data-b3='two'] .enl-3 { grid-column: l; grid-row: r3 / span 2; }
+    [data-b3='two'] .enl-3 :global(.print) { margin-inline-start: 0; }
+  }
+
+  @media (min-width: 64rem) {
+    .enl { --s: var(--s45); }
+    /* Captions beside the print, set against its foot (W-D031: never over the image). */
+    .enl :global(.print) {
+      grid-template-columns: var(--w) var(--cap);
+      column-gap: calc(var(--gap) / 2);
+      align-items: end;
+    }
+    .enl-2 :global(.print) { grid-template-columns: var(--cap) var(--w); }
+    .enl-2 :global(.print-card) { grid-column: 2; grid-row: 1; }
+    .enl-2 :global(.print-cap) { grid-column: 1; grid-row: 1; text-align: end; }
+    [data-b45='two'] .enl-list {
+      grid-template-columns: [l] var(--col45) [r] minmax(0, 1fr);
+      grid-template-rows: [r1] 17cqi [r2] auto [r3] auto [r4] auto;
+      column-gap: var(--gap);
+      row-gap: var(--space-6);
+    }
+    [data-b45='two'] .enl-1 { grid-column: l; grid-row: r1 / r3; }
+    [data-b45='two'] .enl-2 { grid-column: r; grid-row: r2 / r4; }
+    [data-b45='two'] .enl-3 { grid-column: l; grid-row: r3 / span 2; }
+    [data-b45='two'] .enl-3 :global(.print) { margin-inline-start: var(--indent); }
+    [data-b45='stack'] .enl-3 :global(.print) { margin-inline-start: var(--indent); }
+  }
+
+  /* M1: each enlargement lies down as it enters, tied to scroll: 5 degrees of pitch at entry to none at 35% visible,
+     where its develop starts, its contact shadow tightening with it. One-way: once the develop starts (data-dev) the
+     card is flat for good. Flat under reduced motion, under the manual clock, in Firefox and wherever unsupported. */
+  @supports (animation-timeline: view()) {
+    :root[data-prints='wet']:not([data-motion='reduced']):not([data-seek]) .enl :global([data-wet]:not([data-dev]) .print-card) {
+      transform-origin: 50% 100%;
+      animation: enl-lay linear both;
+      animation-timeline: view();
+      animation-range: entry 0% entry 35%;
+    }
+    :root[data-prints='wet']:not([data-motion='reduced']):not([data-seek]) .enl :global([data-wet]:not([data-dev]) .print-card::after) {
+      animation: enl-shadow linear both;
+      animation-timeline: view();
+      animation-range: entry 0% entry 35%;
+    }
+  }
+  .enl :global(.print-card::after) {
+    content: '';
+    position: absolute;
+    inset: 4% 3% 0;
+    z-index: -1;
+    border-radius: var(--radius-print);
+    box-shadow: 0 1.6cqi 3.2cqi rgb(19 23 26 / 0.3);
+    opacity: 0;
+    pointer-events: none;
+  }
+  @keyframes enl-lay {
+    from { transform: perspective(160cqi) rotateX(5deg); }
+    to { transform: none; }
+  }
+  @keyframes enl-shadow {
+    from { opacity: 1; transform: translateY(1.2cqi); }
+    to { opacity: 0; transform: none; }
+  }
 </style>
