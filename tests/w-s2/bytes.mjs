@@ -1,8 +1,12 @@
 #!/usr/bin/env node
 // W-S2 bytes (B1, B2, B3), GPU-free, from a built dist/ and its chunk manifest:
 //   B1 GL: the spec's instrument, tests/w-s1 glBytes (every GL chunk a first D2 visit loads up to hero:readable, the
-//      larger of delivered and gzip -9, 3 cold loads), run from the tree on its own dist; cap 186,700 B (#14 D-027).
-//      The per-file gzip sum over the manifest's GL chunks is kept as information (glFiles).
+//      larger of delivered and gzip -9, 3 cold loads), run from the tree on its own dist. W-S2's cap is 186,700 B; a
+//      figure from there to 187,000 B is accepted, and W-S3's 300 B reserve shrinks by the difference; over 187,000 B
+//      fails (Orchestrator ruling 6462781328, item 1). glVerdict is pass, accepted or fail; glReserveLeft is what is
+//      left of W-S3's reserve. The per-file gzip sum over the manifest's GL chunks is kept as information (glFiles),
+//      and so is every non-GL chunk a GL chunk imports (glImportsUncounted: glBytes' module filter leaves them out,
+//      the judge's queue item glbytes-helper-split).
 //   B2 pre-GL on /: the spec's instrument, tests/w-f/pregl.mjs (the encoded script bytes the network delivered before
 //      stage:gl-start, at D2 and P2), run from each tree on its own dist; W-S2 adds at most 3.0 kB over its merge-base.
 //      (Round 1 summed gzip -9 per file instead and read +2,775 B where pregl.mjs read +3,052 B: breaker 1.1.) The
@@ -21,6 +25,7 @@ const opt = (k, d) => (args.includes(k) ? args[args.indexOf(k) + 1] : d);
 const ROOT = resolve(opt('--root', join(import.meta.dirname, '../..')));
 const BASE = opt('--base', null);
 export const GL_CAP = 186700;
+export const GL_CEILING = 187000;
 export const PREGL_DELTA_MAX = 3000;
 
 const GL_MOD = (m) => /^(node_modules\/(three|animejs)\/|src\/stage\/gl\/|src\/gl\/)/.test(m) && !/src\/stage\/gl\/(bench|fixtures)\.ts$/.test(m);
@@ -32,6 +37,13 @@ export function measure(root) {
     return { file: c.file, gzip6: gzipSync(b, { level: 6 }).length, gzip9: gzipSync(b, { level: 9 }).length };
   });
   const sum = (k) => files.reduce((n, f) => n + f[k], 0);
+  // Non-GL chunks that only GL chunks import (the manifest's imports name files, as `file` does).
+  const all = Object.values(manifest);
+  const isGl = (c) => c.modules.some(GL_MOD);
+  const uncounted = all.filter((c) => !isGl(c) && !c.isEntry && all.some((i) => (i.imports ?? []).includes(c.file)) && all.every((i) => !(i.imports ?? []).includes(c.file) || isGl(i))).map((c) => {
+    const b = readFileSync(join(root, 'dist', c.file));
+    return { file: c.file, modules: c.modules, gzip6: gzipSync(b, { level: 6 }).length };
+  });
   const glFiles = Math.max(sum('gzip6'), sum('gzip9'));
   const require = createRequire(join(root, 'package.json'));
   // size-limit's own group arithmetic, without running size-limit: the pre-GL closure of / gzipped as one file each.
@@ -40,7 +52,7 @@ export function measure(root) {
   const home = groups.preGL.find((g) => g.name === '/' || g.name.startsWith('/ ') || g.name === '/index.html') ?? groups.preGL[0];
   const preGl = home.files.reduce((n, f) => n + gzipSync(readFileSync(join(root, 'dist', f)), { level: 9 }).length, 0);
   const html = gzipSync(readFileSync(join(root, 'dist/index.html')), { level: 6 }).length;
-  return { glFiles, files, preGlGzip9: preGl, preGlGroup: home.name, homeHtmlBytes: html, ...pregl(root), ...glBytes(root) };
+  return { glFiles, files, uncounted, preGlGzip9: preGl, preGlGroup: home.name, homeHtmlBytes: html, ...pregl(root), ...glBytes(root) };
 }
 
 /** tests/w-s1 glBytes from that tree on that tree's dist. */
@@ -91,7 +103,11 @@ const out = {
   glRuns: now.glRuns,
   glBase: base?.glBytes ?? null,
   glDelta: base ? now.glBytes - base.glBytes : null,
-  glPass: now.glBytes <= GL_CAP,
+  glCeiling: GL_CEILING,
+  glVerdict: now.glBytes <= GL_CAP ? 'pass' : now.glBytes <= GL_CEILING ? 'accepted' : 'fail',
+  glReserveLeft: Math.min(300, GL_CEILING - now.glBytes),
+  glPass: now.glBytes <= GL_CEILING,
+  glImportsUncounted: now.uncounted,
   glFiles: now.glFiles,
   preGlInstrument: 'tests/w-f/pregl.mjs (delivered, before stage:gl-start; the larger of D2 and P2)',
   preGl: now.preGlBytes,
@@ -109,7 +125,7 @@ const out = {
   files: now.files,
 };
 out.pass = out.glPass && out.preGlPass !== false;
-out.summary = `GL ${out.gl} B of ${GL_CAP}; pre-GL / ${out.preGl} B${base ? ` (${out.preGlDelta >= 0 ? '+' : ''}${out.preGlDelta} over the base, max +${PREGL_DELTA_MAX})` : ''}; home HTML ${out.homeHtml} B${base ? ` (${out.homeHtmlDelta >= 0 ? '+' : ''}${out.homeHtmlDelta})` : ''}`;
+out.summary = `GL ${out.gl} B (${out.glVerdict}: cap ${GL_CAP}, ceiling ${GL_CEILING}; W-S3's reserve left ${out.glReserveLeft} B; uncounted GL imports ${now.uncounted.reduce((n, u) => n + u.gzip6, 0)} B); pre-GL / ${out.preGl} B${base ? ` (${out.preGlDelta >= 0 ? '+' : ''}${out.preGlDelta} over the base, max +${PREGL_DELTA_MAX})` : ''}; home HTML ${out.homeHtml} B${base ? ` (${out.homeHtmlDelta >= 0 ? '+' : ''}${out.homeHtmlDelta})` : ''}`;
 const dir = opt('--out', null);
 if (dir) {
   mkdirSync(dir, { recursive: true });
