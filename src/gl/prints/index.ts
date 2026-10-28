@@ -10,10 +10,14 @@
 //   moves.
 // - The hover lift (H1) is GL only: the pre-GL script asks for it on a fine pointer, never on focus.
 // Written as closures, not classes, so the minifier can shorten its state (the GL budget, #14 B1).
-import { LinearFilter, Mesh, NoColorSpace, PlaneGeometry, Texture, WebGLRenderer } from 'three';
+import { LinearFilter, Mesh, PlaneGeometry, Texture, WebGLRenderer } from 'three';
 import { createDevelopMaterial, developCurve, grainScale } from '../effects/develop/index.ts';
 import type { Entity, FrameInfo, GLApi } from '../../stage/gl/index.ts';
 import type { Slot } from '../../stage/slots.ts';
+// The chunk graph, not a feature: this chunk is loaded from a pre-GL script that has not loaded three, so rolldown
+// would split three out of the chunk it shares with the posters' stage helpers (gl and the camera). Depending on that
+// helper too keeps that one chunk as it is on main (#14 B1: about 0.15 kB GL).
+export { containRect } from '../../../scripts/build/posters/stage.js';
 
 export interface PrintsGL {
   /** Every developing print (or those of `ids`) jumps to d = 1 and hands back now (A4, reduced motion, a loss). */
@@ -59,8 +63,7 @@ function print(id: string, gl: GLApi, st: Hooks): PrintEntity {
   let lift = 0;
   let liftTo = 0;
   const res: Done = { id, d: 1, developed: true };
-  const card = () => slot?.el.querySelector<HTMLElement>('.print-card') ?? null;
-  const tilt = () => Number(slot?.el.dataset.tilt) || 0;
+  const card = () => slot?.el.querySelector<HTMLElement>('.print-card');
   const measure = () => {
     const el = card();
     if (!slot || !el) return;
@@ -107,12 +110,13 @@ function print(id: string, gl: GLApi, st: Hooks): PrintEntity {
     URL.revokeObjectURL(img.src); // a strip's blob; a no-op for a cover's URL
     const [iw, ih] = [img.naturalWidth, img.naturalHeight];
     const k = Math.max(ww / iw, wh / ih);
-    const [fx, fy] = (img.style.objectPosition || '50% 50%').split(' ').map(parseFloat);
+    // A strip fills the card exactly, so its position is moot ('0 0'); a cover carries its focus inline.
+    const [fx, fy] = (img.style.objectPosition || '0 0').split(' ').map(parseFloat);
     x.drawImage(img, wx + ((ww - iw * k) * fx) / 100, wy + ((wh - ih * k) * fy) / 100, iw * k, ih * k);
     if (!slot) return false;
     drop(true);
     const tex = new Texture(cv);
-    tex.colorSpace = NoColorSpace; // display-space maths: the still's sRGB bytes as they are (W-D016)
+    // colorSpace stays NoColorSpace (three's default): display-space maths on the still's sRGB bytes (W-D016).
     tex.minFilter = LinearFilter;
     tex.generateMipmaps = false;
     tex.needsUpdate = true;
@@ -154,7 +158,7 @@ function print(id: string, gl: GLApi, st: Hooks): PrintEntity {
       if (done || !(await build().catch(() => false))) return res;
       t0 = -1;
       delay = o?.delay ?? 0;
-      dur = o?.duration ?? 2400;
+      dur = o?.duration as number; // always a token duration (prints.ts); without one, NaN progress resolves at once
       d = frames = 0;
       on = false;
       st.invalidate();
@@ -213,7 +217,7 @@ function print(id: string, gl: GLApi, st: Hooks): PrintEntity {
       u.uRadius.value = 3 / cw;
       mesh.position.set(slot.cx - slot.w / 2 - scrollX + cx + cw / 2 - f.W / 2, f.H / 2 - (slot.cy - slot.h / 2 - f.sy + cy + ch / 2) + 5 * lift, 0);
       mesh.scale.set((cw * k) / (1 - 2 * px), (ch * k) / (1 - 2 * py), 1);
-      mesh.rotation.z = (-tilt() * Math.PI) / 180;
+      mesh.rotation.z = (-(Number(slot.el.dataset.tilt) || 0) * Math.PI) / 180;
     },
     visible,
     snap: () => e.finish(),
@@ -230,7 +234,7 @@ function print(id: string, gl: GLApi, st: Hooks): PrintEntity {
 
 /** Bind the prints and register the develop; the pre-GL script calls this once GL is ready. */
 export function install(st: Hooks, gl: GLApi): PrintsGL | null {
-  // The stage's own renderer (importing it also keeps three in the stage's chunk instead of splitting it out).
+  // The stage's own renderer (a WebGL2 one: the develop material is GLSL).
   if (!(gl.renderer instanceof WebGLRenderer)) return null;
   gl.registerEntityFactory({
     match: (s) => s.kind === 'print' && !s.fixture && 'print' in s.el.dataset,

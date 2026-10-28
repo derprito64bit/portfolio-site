@@ -69,13 +69,14 @@ const tiltStyle = tilt ? `--tilt:${tilt}deg` : '';
 
 <style is:global>
   /* The card: 54:86, its still and its veil in one box. The tilt turns the card about its centre (W-D031), never the
-     slot, so no ancestor of a slot is transformed (W-D013). */
+     slot, so no ancestor of a slot is transformed (W-D013). Untilted cards (the enlargements, the List) compute
+     rotate: none, never 0deg: any other value makes the card a stacking context at rest (M1). */
   .print { text-decoration: none; color: inherit; }
   .print-card {
     position: relative;
     display: block;
     aspect-ratio: 54 / 86;
-    rotate: var(--tilt, 0deg);
+    rotate: var(--tilt, none);
   }
   .print-still {
     display: block;
@@ -119,6 +120,5 @@ const tiltStyle = tilt ? `--tilt:${tilt}deg` : '';
     letter-spacing: 0.08em;
     color: var(--ink-2);
   }
-  .print--list .print-card { rotate: none; }
   .print--list .print-still { border-radius: 1px; }
 </style>

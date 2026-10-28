@@ -69,10 +69,12 @@ const offsetCss = `@media ${listMq}{@container sheet (min-width: ${twoCols}px){.
       {projects.map((p) => {
         const marked = enlarged.has(p.slug);
         const i = marked ? pencilIndex++ : 0;
+        const tilt = tiltOf(p.slug);
+        // A marked item carries its print's tilt too, so the pencil box turns with the card it frames.
         return (
-          <li class:list={['sheet-item', { 'is-enlarged': marked }]} style={marked ? `--pi:${i}` : undefined}>
+          <li class:list={['sheet-item', { 'is-enlarged': marked }]} style={marked ? `--pi:${i}${tilt ? `;--tilt:${tilt}deg` : ''}` : undefined}>
             <span class="sheet-rebate" aria-hidden="true">▶{p.frame}</span>
-            <Print variant="sheet" project={p} id={p.slug} group="s" tilt={tiltOf(p.slug)} />
+            <Print variant="sheet" project={p} id={p.slug} group="s" tilt={tilt} />
             {marked && (
               <>
                 <svg class="pencil" viewBox="0 0 54 86" aria-hidden="true" focusable="false"><path d={pencil(p.slug)} pathLength="1" /></svg>
@@ -169,7 +171,8 @@ const offsetCss = `@media ${listMq}{@container sheet (min-width: ${twoCols}px){.
   .sheet-item :global(.print) { display: grid; gap: var(--space-3); }
   .sheet-item :global(.print-name) { font-size: var(--type-edge); font-family: var(--font-edge); line-height: 1.4; }
   .sheet-note { font: 500 var(--type-edge) / 1.4 var(--font-edge); color: var(--accent-text); }
-  /* The pencil box rides the card's box: same width, the card's 54:86, 6% outside it, behind nothing. */
+  /* The pencil box rides the card's box: same width, the card's 54:86, 6% outside it, behind nothing, turned with the
+     card's tilt about the same centre (rotate: none when untilted, so it is no stacking context at rest). */
   /* z-index auto: the pencil paints under the content layer, so a focused print's ring (z 2) is never covered by it. */
   .pencil {
     position: absolute;
@@ -180,7 +183,7 @@ const offsetCss = `@media ${listMq}{@container sheet (min-width: ${twoCols}px){.
     aspect-ratio: 54 / 86;
     overflow: visible;
     pointer-events: none;
-    rotate: var(--tilt, 0deg);
+    rotate: var(--tilt, none);
   }
   .pencil path {
     fill: none;
@@ -227,7 +230,9 @@ const offsetCss = `@media ${listMq}{@container sheet (min-width: ${twoCols}px){.
     text-decoration: none;
     color: inherit;
   }
-  .row :global(.print--list) { grid-area: print; font-size: var(--type-index); line-height: 1; block-size: 1lh; aspect-ratio: 54 / 86; }
+  /* Both sizes definite: the auto track sizes from them, never from the still (its inline-size: 100% is cyclic there,
+     and WebKit fell back to the svg's 300 px default, which squeezed the title to 45 px at 390). */
+  .row :global(.print--list) { grid-area: print; font-size: var(--type-index); line-height: 1; block-size: 1lh; inline-size: calc(1lh * 54 / 86); }
   .row :global(.print--list .print-card) { block-size: 100%; }
   .row-meta { grid-area: meta; display: flex; flex-wrap: wrap; gap: 0 var(--space-3); font: 500 var(--type-edge) / 1.5 var(--font-edge); letter-spacing: 0.06em; color: var(--ink-2); }
   .row-title {

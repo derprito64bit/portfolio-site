@@ -5,7 +5,8 @@
 // and maxPx. The frame is the query container, so 1cqi is 1% of that content box. Captions go below under 64rem and
 // beside the print at 64rem and wider, never over it. Bands: B1-B2 stacked with alternating offsets; B3 and B4-B5
 // two columns, the second print starting lower, when the shares fit (else stacked). Each enlargement lies down as it
-// enters (M1: 5 degrees of pitch at entry to none at 35% visible, CSS scroll-driven) and develops there (L3).
+// enters (M1: 5 degrees of pitch at entry to none at 35% of the print visible, CSS scroll-driven) and develops there
+// (L3).
 // The section heading is visually hidden (W-D004).
 import Print from '../../components/print/Print.astro';
 import { content, type ProjectView } from '../../lib/content/index.ts';
@@ -119,9 +120,13 @@ const flag = `(function(h){try{if(/[?&]t(=|&|$)/.test(location.search))h.setAttr
     [data-b45='stack'] .enl-3 :global(.print) { margin-inline-start: var(--indent); }
   }
 
-  /* M1: each enlargement lies down as it enters, tied to scroll: 5 degrees of pitch at entry to none at 35% visible,
-     where its develop starts, its contact shadow tightening with it. One-way: once the develop starts (data-dev) the
-     card is flat for good. Flat under reduced motion, under the manual clock, in Firefox and wherever unsupported. */
+  /* M1: each enlargement lies down as it enters, tied to scroll: 5 degrees of pitch at entry to none at 35% of the print
+     visible, where its develop starts (L3), its contact shadow tightening with it. entry-crossing, not entry: for a
+     print taller than the viewport, entry 35% is 35% of the viewport. One-way: once the develop starts (data-dev) the
+     card is flat for good. Flat under reduced motion, under the manual clock, in Firefox and wherever unsupported. The
+     perspective is twice the card's own width, so the pitch reads the same at every band (the top edge about 6.5%
+     narrower at entry). The shadow exists only while the card can lie down, so nothing keeps a stacking context at
+     rest. */
   @supports (animation-timeline: view()) {
     :root[data-prints='wet']:not([data-motion='reduced']):not([data-seek]) .enl :global([data-wet]:not([data-dev]) .print-card) {
       transform-origin: 50% 100%;
@@ -129,26 +134,23 @@ const flag = `(function(h){try{if(/[?&]t(=|&|$)/.test(location.search))h.setAttr
       /* Through a custom property, so the minifier cannot fold the timeline into the animation shorthand (where it
          is not allowed and the whole declaration would drop). */
       animation-timeline: var(--enl-tl);
-      animation-range: entry 0% entry 35%;
+      animation-range: entry-crossing 0% entry-crossing 35%;
     }
     :root[data-prints='wet']:not([data-motion='reduced']):not([data-seek]) .enl :global([data-wet]:not([data-dev]) .print-card::after) {
+      content: '';
+      position: absolute;
+      inset: 4% 3% 0;
+      z-index: -1;
+      border-radius: var(--radius-print);
+      box-shadow: 0 1.6cqi 3.2cqi rgb(19 23 26 / 0.3);
+      pointer-events: none;
       animation: enl-shadow linear both;
       animation-timeline: var(--enl-tl);
-      animation-range: entry 0% entry 35%;
+      animation-range: entry-crossing 0% entry-crossing 35%;
     }
   }
-  .enl :global(.print-card::after) {
-    content: '';
-    position: absolute;
-    inset: 4% 3% 0;
-    z-index: -1;
-    border-radius: var(--radius-print);
-    box-shadow: 0 1.6cqi 3.2cqi rgb(19 23 26 / 0.3);
-    opacity: 0;
-    pointer-events: none;
-  }
   @keyframes enl-lay {
-    from { transform: perspective(160cqi) rotateX(5deg); }
+    from { transform: perspective(calc(var(--w) * 2)) rotateX(5deg); }
     to { transform: none; }
   }
   @keyframes enl-shadow {

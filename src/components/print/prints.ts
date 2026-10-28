@@ -23,11 +23,6 @@ interface StageHooks {
   give(id: string): void;
   invalidate(): void;
 }
-declare global {
-  interface Navigator {
-    connection?: { saveData?: boolean };
-  }
-}
 const html = document.documentElement;
 const stage = () => (window as unknown as { __stage?: StageHooks }).__stage;
 const KEY = 'ion.dev';
@@ -69,20 +64,16 @@ const dryAll = () => allGroups().forEach(dryGroup);
 // ---------------------------------------------------------------- GL (src/gl/prints, after stage:gl-start)
 let gl: PrintsGL | null = null;
 const pending = new Map<string, HTMLElement[]>();
+/** Resolves at the mark; without PerformanceObserver it throws, which rejects, and the visit ends dry (the catch). */
 function whenMark(name: string): Promise<void> {
   return new Promise((res) => {
     if (performance.getEntriesByName(name, 'mark').length) return res();
-    try {
-      const po = new PerformanceObserver((l) => {
-        if (l.getEntries().some((e) => e.name === name)) {
-          po.disconnect();
-          res();
-        }
-      });
-      po.observe({ type: 'mark', buffered: true });
-    } catch {
-      /* no PerformanceObserver: GL never develops; the visit ends dry (failed()) */
-    }
+    new PerformanceObserver((l, po) => {
+      if (l.getEntries().some((e) => e.name === name)) {
+        po.disconnect();
+        res();
+      }
+    }).observe({ type: 'mark', buffered: true });
   });
 }
 whenMark('stage:gl-start')
@@ -98,7 +89,7 @@ whenMark('stage:gl-start')
     pending.clear();
   })
   .catch((e) => {
-    console.warn('[prints] GL prints unavailable; the stills stay', e);
+    console.warn('[prints]', e); // no GL prints: the stills stay
     dryAll();
   });
 /** GL is not coming this visit (off, failed or torn down): nothing stays wet. */
@@ -134,18 +125,23 @@ function start(g: string, els: HTMLElement[]): void {
   void Promise.allSettled(runs).then(() => flag(g));
 }
 
-/** Visible enough to develop: 35% of the print, or 35% of the viewport when the print is taller than that. */
-const enough = (e: IntersectionObserverEntry) => e.isIntersecting && (e.intersectionRatio >= 0.35 || e.intersectionRect.height >= 0.35 * (e.rootBounds?.height ?? innerHeight));
+/**
+ * Visible enough to develop. An enlargement: 35% of the print (L3), exactly at the 0.35 threshold crossing at every
+ * height, the point where its M1 lay-down ends (entry-crossing 35%); a print too tall ever to show 35% (over 2.3
+ * viewports) develops once it fills 80% of the viewport instead. The sheet: 35% of the grid or of the viewport.
+ */
+const enough = (e: IntersectionObserverEntry, k: number) => e.isIntersecting && (e.intersectionRatio >= 0.35 || e.intersectionRect.height >= k * (e.rootBounds?.height ?? innerHeight));
 let io: IntersectionObserver | null = null;
 function observe(): void {
   io?.disconnect();
   io = new IntersectionObserver(
     (entries) => {
       for (const e of entries) {
-        if (!enough(e)) continue;
         const el = e.target as HTMLElement;
+        const grid = el.matches('[data-sheet-grid]');
+        if (!enough(e, grid ? 0.35 : 0.8)) continue;
         io?.unobserve(el);
-        if (el.matches('[data-sheet-grid]')) trigger('s', groupEls('s').filter((p) => p.offsetParent !== null));
+        if (grid) trigger('s', groupEls('s').filter((p) => p.offsetParent !== null));
         else {
           const p = el.closest<HTMLElement>('[data-print]');
           if (p?.dataset.devGroup) trigger(p.dataset.devGroup, [p]);
@@ -239,7 +235,8 @@ function onToggle(): void {
   try {
     const u = new URL(location.href);
     u.searchParams.set('view', v);
-    history.replaceState(history.state, '', u);
+    // The router's state keeps its own url, which Back revisits: it carries ?view= too.
+    history.replaceState({ ...history.state, url: u.href }, '', u);
     localStorage.setItem(VIEW_KEY, v);
   } catch {
     /* storage off: the view still follows */
@@ -263,20 +260,13 @@ function onToggle(): void {
 function initView(): void {
   const s = section();
   if (!s) return;
-  // A Swup arrival brought markup the inline default never ran on: compute it the same way.
-  if (!s.dataset.view) {
-    const q = new URLSearchParams(location.search).get('view');
-    let v = q === 'sheet' || q === 'list' ? q : null;
-    try {
-      v ??= ['sheet', 'list'].includes(localStorage.getItem(VIEW_KEY) ?? '') ? localStorage.getItem(VIEW_KEY) : null;
-    } catch {
-      /* no storage */
-    }
-    // A plain dotted read of navigator.connection (scripts/check/lint.mjs: no cast or alias of navigator).
-    v ??= matchMedia('(max-width: 47.99rem)').matches || html.dataset.tier === 'static' || navigator.connection?.saveData ? 'list' : 'sheet';
-    s.dataset.view = v;
-    const r = s.querySelector<HTMLInputElement>(`input[value="${v}"]`);
-    if (r) r.checked = true;
+  // A Swup arrival brought markup whose inline default never ran (the router inserts scripts inert): run that same
+  // script again, as a new element, so there is one source for the default.
+  const sc = s.querySelector('script');
+  if (!s.dataset.view && sc) {
+    const n = document.createElement('script');
+    n.text = sc.text;
+    sc.replaceWith(n);
   }
   shown = s.dataset.view as string;
   order(s, shown);
@@ -288,7 +278,7 @@ document.addEventListener(
   'error',
   (e) => {
     const img = e.target as HTMLElement;
-    if (!(img instanceof HTMLImageElement) || !img.matches('[data-poster]')) return;
+    if (!img.matches?.('img[data-poster]')) return;
     const p = img.closest<HTMLElement>('.print');
     if (!p) return;
     p.dataset.failed = '';
