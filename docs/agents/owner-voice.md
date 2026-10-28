@@ -13,6 +13,10 @@ where it differs from anything below (the Darkroom prints, the X-T5 camera openi
 
 > "let me just add a few things for todo: make a proper loading page that loads everything before entering, i dont know why but it seems like everything is generic ai design things again hopefully not, this portfolio should be chunked into sections with a fully impressive intro before the showcases of galleies and achievements, if i am going to make the camera functions the main thing of my website atleast show it though different ways such as after the homepage section where i would put my real name and stating it's a personal portfolio, does a smooth transition into a electronic viewfinder mode that is fuji film like with all the ui and then from seeing black turns to something (image, or anything whaever), i also notice the lack of usage of the skills and libaries i recommended and basic things like animated text, remember this website attemp is a complete overhaul/new idea from scratch you still are clinging too hard onto the projection theme which has it's limits, i want a very sleek, smooth, and immersive website, that has things like simulated liquid glass, trippy animations that impress people like awwwards websites, for now remove the fujifilm camera from the website and channge the theme to something darket to match the sleek design i want"
 
+Then, the same day, before the next stage started (D-037):
+
+> "ensure that the new chat has pretty much full autonomy in making the desiggn from scratch the suggestions i made are only gguidelines and should be taken lightly and dnot fully to oheart if it doesn't flow well, ensure that it understands its making a portfolio as a standalone project not a connected one have all of those setup first then ill  startup the newchat ensure that it understands it should use external librariies and tools and can automatically download them to not have the generic ai made website feel"
+
 ## What the portfolio is
 
 > "i intend for this game to be very much like a portfolio for people"

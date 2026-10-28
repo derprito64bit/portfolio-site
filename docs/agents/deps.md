@@ -2,6 +2,8 @@
 
 Only the foundation crew (W-F) edits `package.json` and the lockfile. Everyone else files a `depRequests[]` request.
 
+**Direction reset (D-037, owner 2026-10-28):** the agent designing the new site installs the free libraries and tools it needs itself (`npm install`, skills). That lifts the W-F-only rule above and the REJECTED row below: GSAP with ScrollTrigger and SplitText, shader and post-processing packages, and the rest. Add a row per package in the same PR: the package, version, licence, size in kB gz, and why. `scripts/check/deps.mjs` (CI) needs three things. Install with an exact version (`npm install --save-exact <pkg>`). Add a table row `| <pkg> | <the same exact version> | <licence> | <kB gz> | <why> |` above the REJECTED row. And take the package's name off the REJECTED row (gsap, for one, is on it). No paid tiers, no visible third-party branding on the site, no licence that blocks a portfolio. The table below is the Darkroom build's, kept as history.
+
 | Package | Version | Licence | Size (gz) | Why |
 |---|---|---|---|---|
 | astro | 7.3.5 | MIT | 0 (build); Node >=22.12, pin Node 24 | Static pages, content collections, local fonts, image build |
