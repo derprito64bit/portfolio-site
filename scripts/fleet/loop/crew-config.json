@@ -118,11 +118,10 @@
   },
   "crews": {
     "ws2": {
-      "draft": "the W-S2 launch fills the jury rows, the perf sets and the gate rows (PLAN.md, next stage, step 2)",
       "id": "W-S2",
       "issue": 14,
       "branch": "crew/w-s2",
-      "title": "the work index (contact sheet)",
+      "title": "the work index (contact sheet): three enlargements and the proof sheet with its List",
       "slice": true,
       "codePaths": [
         "src/sections/work/**",
@@ -133,7 +132,175 @@
         "tests/w-s2/**"
       ],
       "jury": {
-        "enabled": true
+        "enabled": true,
+        "scale": "0 to 10 against the named references in the motion benchmark: 10 matches the best of them in quality (never their look), 7 is at the bar, 5 is competent but generic",
+        "rows": [
+          {
+            "id": "J1",
+            "row": "Enlargement entry and develop (spec L3, M1): each enlargement lies down with scroll and develops once at 35% visible over 2,400 ms, reading as a print coming up in the tray, not a fade (refs: leo-parpeix scroll.webm 0 to 2.2 s; pensatori-irrazionali scroll_sheet.png)",
+            "target": 7
+          },
+          {
+            "id": "J2",
+            "row": "Proof sheet wave (spec L3): the prints develop as one wave, 60 ms apart, all done by 2.1 s, the grain calm and forming once (refs: portfolio-zxc intro-sheet-wave.png; gionatan-nese intro.webm staggers)",
+            "target": 7
+          },
+          {
+            "id": "J3",
+            "row": "Sheet and List switch (spec T1, T2, L5): one move; wet prints snap to developed in frame 0 before the 160 ms crossfade; the 180 ms swell with no row-height change; rapid toggles follow the swap rate without a flicker (refs: gionatan-nese hover.webm)",
+            "target": 7
+          },
+          {
+            "id": "J4",
+            "row": "The table at rest (spec L1, L2, L6): the enlargements and the sheet read as one darkroom light table at every band, with W-D031 sizes, offsets and tilts and D-025 rebate tokens; never a card grid or a template (refs: jesper-landberg hover.webm at rest; guillaume-colombel scroll-sheet.png)",
+            "target": 7
+          },
+          {
+            "id": "J5",
+            "row": "Hover lift (spec H1): the print answers on itself within about 100 ms (50% by about 90 ms), GL only, fine pointer, never on keyboard focus (refs: jesper-landberg hover.webm)",
+            "target": 7
+          }
+        ]
+      },
+      "perf": {
+        "sets": [
+          {
+            "id": "TBT",
+            "row": "Lighthouse on the built / (10 runs per form factor): mobile TBT, with LCP and CLS again (budgets.md Lighthouse block)",
+            "cmd": [
+              "node",
+              "scripts/crew.mjs",
+              "lighthouse",
+              "--routes",
+              "/",
+              "--runs",
+              "10",
+              "--crew",
+              "W-S2",
+              "--out",
+              "{out}"
+            ],
+            "cwd": "{tree}",
+            "precheck": false,
+            "watch": false,
+            "confirmFails": true,
+            "result": "manifest.json",
+            "paths": [
+              "src/**",
+              "public/**",
+              "content/**",
+              "astro.config.mjs",
+              "package.json",
+              "package-lock.json"
+            ]
+          },
+          {
+            "id": "READ",
+            "row": "the hero's readable time: hero:readable minus stage:gl-ready <= 3300 ms, median of 3 cold loads (budgets.md Hero)",
+            "cmd": [
+              "node",
+              "tests/w-s1/run.mjs",
+              "--only",
+              "readable",
+              "--out",
+              "{out}"
+            ],
+            "cwd": "{tree}",
+            "precheck": true,
+            "watch": true,
+            "confirmFails": true,
+            "result": "summary.json",
+            "paths": [
+              "src/**",
+              "public/**",
+              "content/**",
+              "astro.config.mjs",
+              "package.json",
+              "package-lock.json"
+            ]
+          },
+          {
+            "id": "L8I",
+            "row": "L8's iGPU check at the lite cap (#14 comment 5996745925 item 3; D-028's accepted 'at risk')",
+            "cmd": [
+              "node",
+              "tests/w-s2/gpu.mjs",
+              "--mode",
+              "igpu",
+              "--out",
+              "{out}"
+            ],
+            "cwd": "{tree}",
+            "precheck": true,
+            "watch": true,
+            "confirmFails": true,
+            "result": "gpu.json",
+            "paths": [
+              "src/gl/**",
+              "src/stage/**",
+              "src/sections/**",
+              "src/components/print/**",
+              "content/**",
+              "package-lock.json"
+            ]
+          },
+          {
+            "id": "L8R",
+            "row": "L8's ratio at D2: <= 1.5x the stand-in (#14 comment 5996745925 item 5)",
+            "cmd": [
+              "node",
+              "tests/w-s2/gpu.mjs",
+              "--mode",
+              "ratio",
+              "--out",
+              "{out}"
+            ],
+            "cwd": "{tree}",
+            "precheck": true,
+            "watch": true,
+            "confirmFails": true,
+            "result": "gpu.json",
+            "paths": [
+              "src/gl/**",
+              "src/stage/**",
+              "src/sections/**",
+              "src/components/print/**",
+              "content/**",
+              "package-lock.json"
+            ]
+          },
+          {
+            "id": "HGPU",
+            "row": "the hero GPU ratio against the prototype (tests/w-s1 gpu; budgets.md Hero)",
+            "cmd": [
+              "node",
+              "tests/w-s1/run.mjs",
+              "--only",
+              "gpu",
+              "--out",
+              "{out}"
+            ],
+            "cwd": "{tree}",
+            "precheck": true,
+            "watch": true,
+            "confirmFails": true,
+            "result": "summary.json",
+            "paths": [
+              "src/gl/**",
+              "src/stage/**",
+              "src/sections/hero/**",
+              "package-lock.json"
+            ]
+          }
+        ]
+      },
+      "gate": {
+        "visitorPaths": "the cold first visit of / at D2 and P2 (each in the view it opens in), a scroll through the whole page, a Sheet/List toggle and back, a cold ?view=list and ?view=sheet load, a Swup visit to /work/<slug>/ and Back, reload, and the reduced-motion, static and no-WebGL paths",
+        "frames": "from the build-once tree, 3 runs each: npm run h:drift (Chromium and WebKit, the toolbar-collapse scenario included) and npm run h:idle with the sheet developed; the spec's L3 develop times and T2's swap rate judged on __stage.seek frames and page.clock, never on wall-clock time",
+        "floors": "Judge them on / in Sheet and in List, with an enlargement and the sheet mid-develop, and at the swell."
+      },
+      "breaker": {
+        "how": "Also: rapid Sheet/List toggles (T2, the swap rate) and a toggle mid-develop; Back and bfcache after a toggle; anchor arrivals to the work and the sheet (they arrive developed); resize across a band edge mid-develop; a cover that fails to load (block its URL); 200% zoom and 320 px; Save-Data and the static tier; a WebGL context loss mid-develop; keyboard focus on a print (no lift)."
       }
     },
     "wfm3": {

@@ -82,6 +82,7 @@
   --dur-poster-fade: 200ms;
   --dur-gl-handback: 120ms;
   --dur-list-toggle: 160ms;
+  --dur-swap-min-gap: 500ms;
   --dur-swell: 180ms;
   --dur-mesh-reveal: 700ms;
   --dur-mesh-reveal-lite: 500ms;
