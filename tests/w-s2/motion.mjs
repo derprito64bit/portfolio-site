@@ -13,7 +13,7 @@
 //   L4           at rest no slot is .is-gl and the stage stops drawing.
 // --plant <name> breaks one thing from outside the product (page-side), and its row must FAIL: duration (develops 20%
 // short), early (the IO trigger fires at 10%), twice (the session forgets), handback (give() does nothing), swap (no
-// swap window), focuslift (focus lifts), tilt (the card stays pitched), rest (a slot keeps .is-gl).
+// swap window: timers fire at once), focuslift (focus lifts), tilt (the card stays pitched), rest (a slot keeps .is-gl).
 // Usage: node tests/w-s2/motion.mjs [--only l3,once,toggle,swap,hover,m1,rest] [--browser chromium|webkit]
 //        [--plant <name>] [--dist <dir>] [--out <dir>]
 import { join } from 'node:path';
@@ -40,14 +40,10 @@ const PLANT_INIT = {
     const IO = window.IntersectionObserver;
     window.IntersectionObserver = class extends IO {
       constructor(cb, opts) {
-        super((es, ob) => cb(es.map((e) => (e.isIntersecting && e.intersectionRatio >= 0.1 ? Object.defineProperty(Object.create(e), 'intersectionRatio', { value: 1 }) : e)), ob), opts);
+        const fake = (e) => ({ target: e.target, isIntersecting: e.isIntersecting, intersectionRatio: e.isIntersecting && e.intersectionRatio >= 0.1 ? 1 : e.intersectionRatio, intersectionRect: e.intersectionRect, boundingClientRect: e.boundingClientRect, rootBounds: e.rootBounds, time: e.time });
+        super((es, ob) => cb(es.map(fake), ob), opts);
       }
     };
-  },
-  // No swap window: timers fire at once.
-  swap: () => {
-    const st = window.setTimeout;
-    window.setTimeout = (fn, ms, ...a) => st(fn, 0, ...a);
   },
 };
 async function page(srv, profile, url, { mode = 'auto', init = [], clock = false } = {}) {
@@ -244,6 +240,8 @@ try {
       const q0 = await p.evaluate(() => new URL(location.href).searchParams.get('view'));
       // Stop the clock's natural flow: from here time moves only with runFor.
       await p.clock.pauseAt((await p.evaluate(() => Date.now())) + 1000);
+      // The swap plant (no swap window: every timer fires at once), over the fake clock's own setTimeout.
+      if (plant === 'swap') await p.evaluate(() => { const st = window.setTimeout; window.setTimeout = (fn, ms, ...a) => st(fn, 0, ...a); });
       const steps = [];
       await click('list');
       steps.push({ t: 0, ...(await look()) });
