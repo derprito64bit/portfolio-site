@@ -16,7 +16,7 @@ interface Props {
   picks?: ProjectView[];
 }
 const picks = (Astro.props.picks ?? content.featured).slice(0, 3);
-const pct = layout.enlargementsPctOfContent as Record<string, number[]> & { maxPx: number };
+const pct = layout.enlargementsPctOfContent as unknown as Record<string, number[]> & { maxPx: number };
 const share = (band: string, i: number) => (pct[band][i] ?? pct[band][pct[band].length - 1]) / 100;
 // Two columns where both columns' prints fit side by side with the gap (and the captions beside, at 64rem and wider);
 // the share sum decides it, so altered tokens can never make two prints overlap.

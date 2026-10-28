@@ -16,11 +16,17 @@ import type { PrintsGL } from '../../gl/prints/index.ts';
 interface StageHooks {
   readonly gl: GLApi | null;
   readonly glState: string;
+  readonly tier: string;
   effects: { develop(id: string, opts?: Record<string, unknown>): Promise<unknown> };
   registerEffect(name: string, impl: unknown): void;
   take(id: string): void;
   give(id: string): void;
   invalidate(): void;
+}
+declare global {
+  interface Navigator {
+    connection?: { saveData?: boolean };
+  }
 }
 const html = document.documentElement;
 const stage = () => (window as unknown as { __stage?: StageHooks }).__stage;
@@ -250,8 +256,8 @@ function initView(): void {
     } catch {
       /* no storage */
     }
-    const c = (navigator as Navigator & { connection?: { saveData?: boolean } }).connection;
-    v ??= matchMedia('(max-width: 47.99rem)').matches || html.dataset.tier === 'static' || c?.saveData ? 'list' : 'sheet';
+    // A plain dotted read of navigator.connection (scripts/check/lint.mjs: no cast or alias of navigator).
+    v ??= matchMedia('(max-width: 47.99rem)').matches || html.dataset.tier === 'static' || navigator.connection?.saveData ? 'list' : 'sheet';
     s.dataset.view = v;
     const r = s.querySelector<HTMLInputElement>(`input[value="${v}"]`);
     if (r) r.checked = true;
