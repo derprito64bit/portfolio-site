@@ -132,10 +132,10 @@ const offsetCss = `@media ${listMq}{@container sheet (min-width: ${twoCols}px){.
   .view-legend { float: left; padding: 0; margin-inline-end: var(--space-2); color: var(--ink-2); }
   .view-legend::after { content: ':'; }
   .view-opt { position: relative; display: inline-grid; place-items: center; min-inline-size: 44px; min-block-size: 44px; padding-inline: var(--space-2); cursor: pointer; }
-  .view-opt input { position: absolute; inset: 0; margin: 0; opacity: 0; cursor: pointer; }
+  /* The radio is the label's whole box (transparent, not hidden), so the site's focus ring draws around it. */
+  .view-opt input { position: absolute; inset: 0; margin: 0; appearance: none; background: none; border: 0; border-radius: var(--radius-ui); cursor: pointer; }
   .view-opt span { text-decoration: underline transparent; text-decoration-thickness: 2px; text-underline-offset: 0.35em; transition: text-decoration-color var(--dur-panel-out) var(--ease-out); }
   .view-opt input:checked + span { text-decoration-color: var(--accent); }
-  .view-opt input:focus-visible + span { outline: var(--focus-ring-width) solid var(--focus); outline-offset: var(--focus-offset); box-shadow: 0 0 0 calc(var(--focus-offset) + var(--focus-ring-width) + var(--focus-halo-width)) var(--focus-halo); }
   .view-sep { color: var(--ink-2); }
 
   /* Which view shows: data-view (the load default or the visitor's toggle, prints.ts), else the checked radio, else
@@ -162,16 +162,18 @@ const offsetCss = `@media ${listMq}{@container sheet (min-width: ${twoCols}px){.
     gap: var(--space-6) var(--g);
     align-items: start;
   }
-  .sheet-item { position: relative; display: grid; gap: var(--space-2); min-inline-size: 0; }
+  .sheet-item { position: relative; display: grid; gap: var(--space-2) ; row-gap: var(--space-3); min-inline-size: 0; }
   .sheet-rebate { font: 500 var(--type-edge) / 1 var(--font-edge); letter-spacing: 0.08em; color: var(--ink-2); }
   .sheet-item :global(.print) { display: grid; gap: var(--space-3); }
   .sheet-item :global(.print-name) { font-size: var(--type-edge); font-family: var(--font-edge); line-height: 1.4; }
   .sheet-note { font: 500 var(--type-edge) / 1.4 var(--font-edge); color: var(--accent-text); }
   /* The pencil box rides the card's box: same width, the card's 54:86, 6% outside it, behind nothing. */
+  /* z-index auto: the pencil paints under the content layer, so a focused print's ring (z 2) is never covered by it. */
   .pencil {
     position: absolute;
+    z-index: auto;
     inset-inline-start: 0;
-    inset-block-start: calc(var(--type-edge) + var(--space-2));
+    inset-block-start: calc(var(--type-edge) + var(--space-3));
     inline-size: 100%;
     aspect-ratio: 54 / 86;
     overflow: visible;

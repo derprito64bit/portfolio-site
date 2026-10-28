@@ -194,6 +194,7 @@ function apply(v: string): void {
   if (!s || v === shown) return;
   const from = shown;
   shown = v;
+  order(s, v);
   // A toggle is a List arrival (A3); a developing sheet print jumps to d = 1 and hands back first (A4).
   dryGroup('s');
   fade.forEach((a) => a.cancel());
@@ -216,6 +217,15 @@ function apply(v: string): void {
     })
     .catch(() => {});
   stage()?.invalidate();
+}
+/** The shown view's list comes first in the DOM (only the List moves; the sheet's slots stay put), so reading order is
+ *  visual order and a first match for a print's id (the router's Back focus) is the visible link. */
+function order(s: HTMLElement, v: string): void {
+  const grid = s.querySelector('[data-sheet-grid]');
+  const list = s.querySelector('[data-sheet-list]');
+  if (!grid || !list) return;
+  if (v === 'list' && grid.nextElementSibling === list) grid.before(list);
+  if (v === 'sheet' && list.nextElementSibling === grid) grid.after(list);
 }
 function onToggle(): void {
   const v = checked();
@@ -263,6 +273,7 @@ function initView(): void {
     if (r) r.checked = true;
   }
   shown = s.dataset.view as string;
+  order(s, shown);
   s.querySelector('[data-view-toggle]')?.addEventListener('change', onToggle);
 }
 
