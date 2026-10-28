@@ -1,0 +1,28 @@
+---
+// Refraction concept shell. Its own head and styles: nothing from the old Darkroom layout.
+import '@fontsource-variable/mona-sans/wdth.css';
+import './refraction.css';
+interface Props { title: string }
+const { title } = Astro.props;
+---
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="robots" content="noindex" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="theme-color" content="#0A0A0B" />
+    <title>{title}</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <script is:inline>
+      document.documentElement.classList.remove('no-js');
+      document.documentElement.classList.add('js');
+      if (!matchMedia('(prefers-reduced-motion: reduce)').matches) document.documentElement.classList.add('motion');
+      if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
+    </script>
+  </head>
+  <body>
+    <slot />
+  </body>
+</html>
