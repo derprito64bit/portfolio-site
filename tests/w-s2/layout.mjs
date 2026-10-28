@@ -10,8 +10,8 @@
 // Usage: node tests/w-s2/layout.mjs [--profiles D1,...] [--plant <name>] [--dist <dir>] [--out <dir>]
 import { join } from 'node:path';
 import { mkdirSync, writeFileSync } from 'node:fs';
+import { pathToFileURL } from 'node:url';
 import { PROFILES, closeBrowsers, cliOpts, newContext, serve, waitSettled } from '../harness/lib.mjs';
-import { layout } from '../../src/lib/tokens.js';
 
 /** L1: the largest enlargement at D1 is at least this wide (#14 acceptance line 1). */
 export const D1_LARGEST_MIN = 520;
@@ -25,6 +25,9 @@ const TOL = 0.5;
 
 const o = cliOpts();
 const plant = o.plant ? String(o.plant) : null;
+// --tokens <tokens.js>: a rebuilt tree's tokens (the tokens-only rebuild); the fixed tables then do not apply.
+const altTokens = o.tokens ? String(o.tokens) : null;
+const { layout } = await import(altTokens ? pathToFileURL(altTokens).href : '../../src/lib/tokens.js');
 const profiles = String(o.profiles ?? Object.keys(PROFILES).join(',')).split(',');
 const band = (w) => (w < 480 ? 'B1' : w < 768 ? 'B2' : w < 1024 ? 'B3' : w < 1440 ? 'B4' : 'B5');
 const bandKey = (b) => (b === 'B1' || b === 'B2' ? 'B1-B2' : b === 'B3' ? 'B3' : 'B4-B5');
@@ -197,7 +200,7 @@ for (const r of rows) {
     if (Math.abs(e.width - e.expected) > TOL) note('L1', tag(`${e.id} is ${e.width.toFixed(2)} px, its share gives ${e.expected.toFixed(2)}`));
     if (e.still < layout.minPrintPx - TOL) note('L1', tag(`${e.id} still ${e.still} px < ${layout.minPrintPx}`));
   }
-  if (r.profile === 'D1' && Math.max(...s.enl.map((e) => e.width)) < D1_LARGEST_MIN) note('L1', tag(`largest enlargement ${Math.max(...s.enl.map((e) => e.width))} < ${D1_LARGEST_MIN}`));
+  if (!altTokens && r.profile === 'D1' && Math.max(...s.enl.map((e) => e.width)) < D1_LARGEST_MIN) note('L1', tag(`largest enlargement ${Math.max(...s.enl.map((e) => e.width))} < ${D1_LARGEST_MIN}`));
   for (const v of [r.sheet, r.list]) {
     if (v.overflow !== 0) note('L1', tag(`${v.view}: horizontal overflow ${v.overflow} px`));
     if (v.captionsOverImages.length) note('L1', tag(`${v.view}: caption over image ${v.captionsOverImages.join(', ')}`));
@@ -206,9 +209,9 @@ for (const r of rows) {
   const sh = s.sheet;
   if (!sh) note('L1', tag('no sheet rendered in the Sheet view'));
   else {
-    const want = COLUMNS[r.profile] ?? sh.derived;
+    const want = (!altTokens && COLUMNS[r.profile]) || sh.derived;
     if (sh.columns !== sh.derived) note('L1', tag(`${sh.columns} columns, the derivation gives ${sh.derived} (W ${sh.Wg}, g ${sh.gap})`));
-    if (COLUMNS[r.profile] && sh.columns !== want) note('L1', tag(`${sh.columns} columns, ruling 1b says ${want}`));
+    if (!altTokens && COLUMNS[r.profile] && sh.columns !== want) note('L1', tag(`${sh.columns} columns, ruling 1b says ${want}`));
     if (r.profile === 'R1' && sh.columns !== (sh.gap <= 8 ? 2 : 1)) note('L1', tag(`R1 ${sh.columns} columns with g ${sh.gap}`));
     if (r.innerWidth >= 1024 && !s.sheet.headingBeside) note('L1', tag('the heading is not beside the sheet at 1024+'));
     if (sh.headingOverlap) note('L1', tag('the heading overlaps the sheet'));
@@ -260,10 +263,10 @@ for (const r of rows) {
 }
 const verdict = Object.fromEntries(['L1', 'L2', 'L5', 'L6', 'L7'].map((k) => [k, fail[k] ? 'fail' : 'pass']));
 const pass = Object.values(verdict).every((v) => v === 'pass');
-const result = { schema: 1, instrument: 'w-s2/layout', plant, profiles, verdict, failures: fail, report, pass, summary: Object.entries(verdict).map(([k, v]) => `${k} ${v}`).join(', ') + (report.L7 ? `; contact ${report.L7.screens} screens at P2` : '') + (report.M2.length ? `; M2 ${report.M2.map((m) => `${m.profile} ${m.ratio}`).join(' ')}` : ''), rows };
+const result = { schema: 1, instrument: 'w-s2/layout', plant, tokens: altTokens, profiles, verdict, failures: fail, report, pass, summary: Object.entries(verdict).map(([k, v]) => `${k} ${v}`).join(', ') + (report.L7 ? `; contact ${report.L7.screens} screens at P2` : '') + (report.M2.length ? `; M2 ${report.M2.map((m) => `${m.profile} ${m.ratio}`).join(' ')}` : ''), rows };
 if (o.out) {
   mkdirSync(String(o.out), { recursive: true });
-  writeFileSync(join(String(o.out), `layout${plant ? `-plant-${plant}` : ''}.json`), JSON.stringify(result, null, 2));
+  writeFileSync(join(String(o.out), `layout${plant ? `-plant-${plant}` : ''}${altTokens ? '-tokens-alt' : ''}.json`), JSON.stringify(result, null, 2));
 }
 console.log(`layout${plant ? ` (plant ${plant})` : ''}: ${pass ? 'PASS' : 'FAIL'}  ${result.summary}`);
 for (const [k, v] of Object.entries(fail)) console.log(`  ${k}: ${v.slice(0, 4).join(' | ')}${v.length > 4 ? ` (+${v.length - 4})` : ''}`);
