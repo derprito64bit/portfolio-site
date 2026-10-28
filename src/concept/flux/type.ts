@@ -34,6 +34,8 @@ export class NameType {
   lastPY = NaN;
   lastPull = -1;
   writes = 0;
+  frame = 0;
+  pendingDt = 0;
 
   constructor(el: HTMLElement) {
     this.el = el;
@@ -86,7 +88,9 @@ export class NameType {
     }
     REST_W = wd;
     this.left = r30[0].left;
-    this.cyDoc = (r30[0].top + r30[0].bottom) / 2 + window.scrollY;
+    // the vertical centre comes from the h1 itself: the letters may still sit translated inside their masks
+    const hr = this.el.getBoundingClientRect();
+    this.cyDoc = (hr.top + hr.bottom) / 2 + window.scrollY;
     this.chars.forEach((c, i) => (c.el.style.fontVariationSettings = saved[i]));
     this.lastPX = NaN;
   }
@@ -139,6 +143,15 @@ export class NameType {
     const revealing = t < this.revealAt + this.chars.length * 0.055 + 1.2;
     const springing = this.chars.some((c) => !settled(c.w) || !settled(c.g) || !settled(c.s) || !settled(c.y));
     if (!moved && !pulled && !revealing && !springing && !fronts.length) return; // the pointer is still: skip
+    // when the governor reports a struggling machine, the letters re-shape at half rate (springs keep their time)
+    this.frame++;
+    const half = !!e && e.quality >= 2 && !revealing;
+    if (half && this.frame % 2 === 1) {
+      this.pendingDt += dt;
+      return;
+    }
+    dt += this.pendingDt;
+    this.pendingDt = 0;
     this.lastPX = P.x;
     this.lastPY = P.y;
     this.lastPull = pull;
@@ -182,9 +195,9 @@ export class NameType {
   apply(force: boolean) {
     for (const c of this.chars) {
       // quantized so the browser can reuse font instances between frames
-      const w = Math.round(c.w.x);
-      const g = Math.round(c.g.x / 5) * 5;
-      const s = Math.round(clamp(c.s.x, -10, 0) * 4) / 4;
+      const w = clamp(Math.round(c.w.x / 2) * 2, 26, 150);
+      const g = clamp(Math.round(c.g.x / 10) * 10, 100, 1000);
+      const s = Math.round(clamp(c.s.x, -10, 0));
       const y = Math.round(c.y.x * 4) / 4;
       const key = `${w}|${g}|${s}|${y}`;
       if (!force && key === c.last) continue;

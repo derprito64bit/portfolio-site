@@ -56,6 +56,7 @@ if (engine) {
 // ---------------------------------------------------------------- loader: real tasks, sliced across frames
 const TASKS = 3 + projects.length;
 let done = 0;
+let partial = 0; // progress inside the current task (shader steps, cover strips), 0..1
 let shown = 0;
 let loaded = false;
 let released = false;
@@ -66,6 +67,7 @@ const taskEl = $('loader-task');
 $('loader-total').textContent = String(TASKS);
 function complete(label: string) {
   done++;
+  partial = 0;
   $('loader-done').textContent = String(done);
   taskEl.textContent = label;
 }
@@ -105,7 +107,9 @@ function* boot(): Generator<void, void, void> {
     }
   };
   if (engine) {
+    const total = engine.stepsLeft;
     while (!engine.prepare()) {
+      partial = 1 - engine.stepsLeft / Math.max(1, total);
       checkType();
       yield;
     }
@@ -119,9 +123,11 @@ function* boot(): Generator<void, void, void> {
   for (const p of projects) {
     if (engine) {
       const rc = recipe(p.slug, p.index, p.tint);
-      const job: CoverJob = engine.coverJob({ seed: seedOf(p.slug) * 10 + p.index, ...rc, label: labelCanvas(p.n) }, lowPower ? 640 : 960, lowPower ? 800 : 1200, lowPower ? 2 : 4);
-      yield;
-      while (!engine.coverStep(job)) yield;
+      const job: CoverJob = engine.coverJob({ seed: seedOf(p.slug) * 10 + p.index, ...rc, label: labelCanvas(p.n) }, lowPower ? 640 : 960, lowPower ? 800 : 1200, lowPower ? 2 : 1);
+      while (!engine.coverStep(job)) {
+        partial = job.row / job.rows;
+        yield;
+      }
       world.covers[p.index] = job.rt.texture;
       if (world.rm) {
         yield;
@@ -131,7 +137,6 @@ function* boot(): Generator<void, void, void> {
     complete(`cover ${p.n}`);
     yield;
   }
-  yield;
   complete('first frame');
   loaded = true;
 }
@@ -416,8 +421,8 @@ function tick(_time: number, deltaMs: number) {
 
   // --- loader
   if (!released) {
-    shown = Math.min(done / TASKS, shown + dt / 1.05);
-    dropR.target = 0.014 + 0.205 * easeInOut(shown);
+    shown = Math.min((done + partial) / TASKS, shown + dt / 0.9);
+    dropR.target = 0.02 + 0.2 * shown; // the drop grows in step with real progress
     dropR.step(dt);
     seed.r = dropR.x;
     engine.reveal = seed.r * 1.03 + 0.006;

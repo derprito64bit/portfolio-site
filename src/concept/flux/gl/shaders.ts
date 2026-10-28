@@ -233,6 +233,9 @@ void main() {
   vec3 fc = filmAt(vUv, ph / uBands, uVivid, uTime);
   vec3 col = marble(ph, w, 0.0, 0.0, fc, uDpr, uVivid);
   col *= 1.0 - smoothstep(uR * 1.03, uR * 1.03 + 0.006, d);
+  // the drop's own edge: visible from the first frame, however small the drop still is
+  float edgePx = abs(d - uR) * uRes.y;
+  col += mix(vec3(0.62, 0.61, 0.59), fc * 1.2, uVivid) * clamp(1.6 * uDpr - edgePx + 0.5, 0.0, 1.0) * 0.55;
   fragColor = vec4(col, 1.0);
 }
 `;
