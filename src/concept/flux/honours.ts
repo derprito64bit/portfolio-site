@@ -45,17 +45,26 @@ export class Honours {
     }
   }
 
-  read() {
+  gDoc = { x: 0, y: 0, w: 0, h: 0 };
+  mDoc = { x: 0, y: 0, w: 0, h: 0 };
+  /** Document positions, measured on resize only. */
+  measure() {
     const rect = (el: HTMLElement | null, o: { x: number; y: number; w: number; h: number }) => {
       if (!el) return;
       const r = el.getBoundingClientRect();
       o.x = r.left + r.width / 2;
-      o.y = r.top + r.height / 2;
+      o.y = r.top + r.height / 2 + window.scrollY;
       o.w = r.width;
       o.h = r.height;
     };
-    rect(this.glassEl, this.g);
-    rect(this.medalEl, this.m);
+    rect(this.glassEl, this.gDoc);
+    rect(this.medalEl, this.mDoc);
+  }
+  /** Screen positions from the scroll (no layout reads per frame). */
+  read() {
+    const sy = world.scrollY;
+    Object.assign(this.g, this.gDoc, { y: this.gDoc.y - sy });
+    Object.assign(this.m, this.mDoc, { y: this.mDoc.y - sy });
     this.visible = this.g.y > -world.H * 0.5 && this.g.y < world.H * 1.5;
   }
 

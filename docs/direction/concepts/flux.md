@@ -32,6 +32,26 @@ driving it, and always returning to calm.
   close 0.6 s. Hover answers in the same frame (95% under 100 ms).
 - 60 fps held (p95 16.8 ms) while stirring the intro and while scrolling the pinned work.
 
+## Revision 1 (jury round, 2026-10-28): measured on the production build
+- **Weak machines (fix 1).** The loader is HTML and inline CSS in a system face; the app loads after the first paint;
+  only a tiny loader shader compiles up front and every other shader compiles and warms one step per frame; the covers
+  render in strips; nothing reads layout per frame (letter positions are computed, section offsets cached, the pin is
+  CSS sticky, so ScrollTrigger is gone); axis values are quantized and skipped while the pointer is still; a governor
+  (p90 over 20 ms for 30 frames) halves the simulation, then its rate, then the resolution. Roboto Flex is subset to
+  latin with wdth, wght and slnt: 99 kB (was 319). At 4x CPU: FCP 204 ms (120 ms unthrottled), 4 long tasks, the
+  longest 123 ms (was one of 859), intro 60 fps idle and 59 fps while stirring, work 60 fps. At 10x the governor
+  steps down and stirring still holds 18 fps with no frame over 133 ms.
+- **One focal mass (fix 2).** One column runs through the projects, the neighbours sit either side, half a sheet down.
+  The sheet in focus is 594 px tall at 1440 x 900; the others shrink to 82% and drop to about 40% brightness and 30%
+  saturation until they come close. A throw lands the sheet on the focus point (x 864, the same as at scroll rest).
+- **Travel (fix 3).** The counter is a digit roll clamped to 01 to 08; titles swap in a mask; the throw settles in
+  457 ms on a firm spring.
+- **Marbling (fix 4).** Fewer, wider bands that carry the image (film-tinted fills, a fine vein and a wet sheen at each
+  edge), film colour at rest (vivid 0.3), and after the bloom the marbler combs the drop (a wavy stroke and fine
+  teeth) while the surface drifts up and to the left. Lenses magnify and refract the ink with rim dispersion.
+- **Phone and copy (fix 5).** On phones the header hides on the way down and returns on a solid band; reduced motion
+  says the ink holds still; "A personal portfolio" has no full stop; focus rings are 2 px.
+
 ## Tokens
 - **Colour:** `ink #030304` (ground), `bone #ECE8E1` (text, 17:1), `smoke #9C988F` (secondary, 7:1), `rule #2A2A2D`;
   the film spectrum (copper, magenta, peacock, brass) exists only inside the field and the covers, never as UI fill.
@@ -46,9 +66,9 @@ driving it, and always returning to calm.
   95% there in under 100 ms (k 900 c 50).
 
 ## Libraries
-`ogl` 1.0.11 (all WebGL: fluid sim, field, covers, planes, glass), `gsap` 3.15.0 (ScrollTrigger, SplitText,
-ScrambleText, CustomEase), `lenis` 1.3.26 (smooth wheel, driven by the GSAP ticker), Roboto Flex via
-`@fontsource-variable/roboto-flex` (only the latin full-axes file is used). The fluid solver follows the stable-fluids
+`ogl` 1.0.11 (all WebGL: fluid sim, field, covers, planes, glass), `gsap` 3.15.0 (SplitText, ScrambleText,
+CustomEase), `lenis` 1.3.26 (smooth wheel, driven by the GSAP ticker), Roboto Flex subset from
+`@fontsource-variable/roboto-flex` (latin, wdth, wght and slnt: 99 kB). The fluid solver follows the stable-fluids
 method of PavelDoGreat's WebGL-Fluid-Simulation (MIT; notice kept in `src/concept/flux/gl/shaders.ts`).
 
 ## The owner's guidelines: kept, reshaped, dropped

@@ -1,10 +1,11 @@
 ---
 // Flux: the whole page. Real text lives here in the DOM; the canvas behind it is decoration (aria-hidden).
 import './flux.css';
-import fontUrl from '@fontsource-variable/roboto-flex/files/roboto-flex-latin-full-normal.woff2?url';
 import { OWNER_NAME, NAME_IS_PLACEHOLDER, HANDLE, GITHUB, projects, honours, ph } from './content';
 
-const fontFace = `@font-face{font-family:'Flux Flex';font-style:oblique 0deg 10deg;font-display:block;font-weight:100 1000;font-stretch:25% 151%;src:url(${fontUrl}) format('woff2-variations'),url(${fontUrl}) format('woff2');}`;
+// Roboto Flex subset for this page: latin, with only the wdth, wght and slnt axes (99 kB; OFL, see /fonts/concept/).
+const fontUrl = '/fonts/concept/flux-flex.woff2';
+const fontFace = `@font-face{font-family:'Flux Flex';font-style:oblique 0deg 10deg;font-display:block;font-weight:100 1000;font-stretch:25% 151%;src:url(${fontUrl}) format('woff2');}`;
 const total = String(projects.length).padStart(2, '0');
 const award = honours.find((h) => h.type === 'Award');
 const medal = honours.find((h) => h.type === 'Medal');
@@ -42,7 +43,7 @@ const medal = honours.find((h) => h.type === 'Medal');
         <span class="loader-task" id="loader-task">the field</span>
         <span class="loader-count" id="loader-count"><span id="loader-done">0</span> of <span id="loader-total">11</span></span>
       </p>
-      <button class="lens loader-skip" id="skip" type="button" data-lens>Skip intro</button>
+      <button class="loader-skip" id="skip" type="button">Skip intro</button>
     </div>
 
     <header class="top" id="top">
@@ -60,8 +61,8 @@ const medal = honours.find((h) => h.type === 'Medal');
           <h1 id="name" class="name" data-name>{OWNER_NAME}</h1>
           <div class="intro-under">
             {NAME_IS_PLACEHOLDER && <span class="ph-tag" data-intro-fade>[PLACEHOLDER: real name]</span>}
-            <p class="intro-line" data-intro-fade><span data-scramble>A personal portfolio.</span></p>
-            <p class="intro-hint" data-intro-fade><span data-scramble>Move to stir the ink. Click to drop more.</span></p>
+            <p class="intro-line" data-intro-fade><span data-scramble>A personal portfolio</span></p>
+            <p class="intro-hint" data-intro-fade id="intro-hint"><span data-scramble>Move to stir the ink. Click to drop more.</span></p>
           </div>
         </div>
         <p class="intro-cue" data-intro-fade aria-hidden="true"><span data-scramble>{projects.length} projects below</span></p>
@@ -71,8 +72,8 @@ const medal = honours.find((h) => h.type === 'Medal');
         <div class="work-stage" id="work-stage">
           <div class="work-hud" id="work-hud">
             <h2 id="work-h" class="work-h">Work</h2>
-            <p class="work-count" aria-hidden="true"><span class="work-n" id="work-n">01</span><span class="work-of">/{total}</span></p>
-            <p class="work-title" id="work-title" aria-hidden="true"><span class="ph-tag ph-tag--inline">placeholder</span> <span id="work-title-t">project title</span></p>
+            <p class="work-count" aria-hidden="true"><span class="work-n"><span class="work-n0">0</span><span class="work-roll"><span class="work-roll-col" id="work-roll">{projects.map((p) => <span>{String(p.index + 1)}</span>)}</span></span></span><span class="work-of">/{total}</span></p>
+            <p class="work-title" id="work-title" aria-hidden="true"><span class="ph-tag ph-tag--inline">placeholder</span> <span class="work-title-swap" id="work-title-swap"><span>project title</span></span></p>
             <button class="work-open" id="work-open" type="button">Open project <span class="sr" id="work-open-sr">01</span></button>
             <ol class="work-index" id="work-index" aria-label="Projects">
               {projects.map((p) => (
@@ -101,7 +102,7 @@ const medal = honours.find((h) => h.type === 'Medal');
         <div class="honours-head">
           <h2 id="honours-h" class="sec-h">Honours</h2>
           <p class="honours-note">DECA glass awards and medals. <span class="ph-tag ph-tag--inline">to confirm</span> Names, events, placings and years are placeholders until the owner supplies them.</p>
-          <p class="honours-hint">Push them. Click one to drop ink.</p>
+          <p class="honours-hint" id="honours-hint">Push them. Click one to drop ink.</p>
         </div>
         <div class="honours-stage">
           {award && (

@@ -1,5 +1,7 @@
 // Flux engine: one OGL canvas. A stable-fluids simulation stirs a marbling map; the field is drawn from it; the work
-// planes and honours objects sit in it; a last pass bends it all under the liquid-glass lenses.
+// planes sit in it; a last pass adds the honours glass and medal and bends it all under the liquid-glass lenses.
+// Boot is staged: only the loader shader compiles up front; everything else compiles and warms one step per frame.
+// A governor halves the simulation's cost when frames run long.
 import { Renderer, Program, Mesh, Triangle, RenderTarget, Plane, Texture } from 'ogl';
 import * as S from './shaders';
 
@@ -70,13 +72,25 @@ export interface CoverSpec {
   label: HTMLCanvasElement;
 }
 
+export interface CoverJob {
+  rt: RT;
+  label: Texture;
+  spec: CoverSpec;
+  row: number;
+  rows: number;
+  w: number;
+  h: number;
+}
+
 export class Engine {
   renderer: Renderer;
   gl: any;
   ok = true;
+  ready = false;
   W = 1;
   H = 1;
   dpr = 1;
+  baseDpr = 1;
   lowPower: boolean;
   simW = 1;
   simH = 1;
@@ -90,22 +104,28 @@ export class Engine {
   div!: RT;
   curl!: RT;
   scene!: RT;
+  warm!: RT;
+  warmSrc!: RT;
 
   p: Record<string, Program> = {};
-  planeMesh: Mesh;
-  planeProgram: Program;
+  planeMesh!: Mesh;
+  planeProgram!: Program;
+  steps: (() => void)[] = [];
 
   // state the page drives
   splats: { x: number; y: number; dx: number; dy: number; r: number; ring?: number }[] = [];
   drops: Drop[] = [];
-  bands = 7.4;
+  bands = 4.3;
+  vivid = 0.3;
+  comb = 0;
+  wave = 0;
+  drift: [number, number] = [0, 0];
   dim = 1;
   reveal = 3; // field units
   revealC: [number, number] = [0.5, 0.5];
   defocus = 0;
   focusRect: [number, number, number, number] = [0, 0, 1, 1];
   frameOn = 0;
-  sat = 1;
   scroll = 0; // field units
   shift: [number, number] = [0, 0];
   relaxRate = 0.42;
@@ -117,20 +137,19 @@ export class Engine {
   medal = { x: 0, y: 0, r: 0, spin: 0, ax: 0, ay: 0, on: 0 };
   time = 0;
   simulate = true;
+  showLoader = true;
+  loaderDrop: Drop | null = null;
+
+  // governor
+  quality = 0;
+  frameNo = 0;
+  dts: number[] = [];
+  calmFrames = 0;
 
   constructor(canvas: HTMLCanvasElement, lowPower: boolean) {
     this.lowPower = lowPower;
-    this.dpr = Math.min(window.devicePixelRatio || 1, lowPower ? 1.25 : 1.5);
-    this.renderer = new Renderer({
-      canvas,
-      dpr: this.dpr,
-      alpha: false,
-      antialias: false,
-      depth: false,
-      premultipliedAlpha: false,
-      powerPreference: 'high-performance',
-      webgl: 2,
-    });
+    this.baseDpr = this.dpr = Math.min(window.devicePixelRatio || 1, lowPower ? 1.25 : 1.5);
+    this.renderer = new Renderer({ canvas, dpr: this.dpr, alpha: false, antialias: false, depth: false, premultipliedAlpha: false, powerPreference: 'high-performance', webgl: 2 });
     const gl = (this.gl = this.renderer.gl);
     if (!this.renderer.isWebgl2) {
       this.ok = false;
@@ -139,77 +158,115 @@ export class Engine {
     gl.getExtension('EXT_color_buffer_float');
     gl.getExtension('EXT_color_buffer_half_float');
     this.renderer.autoClear = false;
-    gl.clearColor(0.012, 0.012, 0.016, 1);
-
-    this.quad = new Mesh(gl, { geometry: new Triangle(gl), program: this.makeProgram(S.FRAG_CLEAR, { uTexture: { value: null }, uValue: { value: 1 } }) });
-    this.p.clear = this.quad.program;
-    this.planeProgram = new Program(gl, {
-      vertex: S.VERT_PLANE,
-      fragment: S.FRAG_PLANE,
-      transparent: true,
-      depthTest: false,
-      depthWrite: false,
-      cullFace: false,
-      uniforms: {
-        uRect: { value: [0, 0, 1, 1] },
-        uView: { value: [1, 1] },
-        uVel: { value: [0, 0] },
-        uBend: { value: 0 },
-        uWave: { value: [0.5, 0.5, 1] },
-        uWaveAmp: { value: 0 },
-        uTex: { value: null },
-        uAlpha: { value: 1 },
-        uFocus: { value: 1 },
-        uHover: { value: 0 },
-        uMouse: { value: [0.5, 0.5] },
-        uTime: { value: 0 },
-        uSplit: { value: [0, 0] },
-        uDevelop: { value: 1 },
-        uAspect: { value: 0.8 },
-        uSeed: { value: 0 },
-        uClip: { value: [-1e5, 1e5] },
-        uVfade: { value: [-2e5, -1e5, 1e5, 2e5] },
+    const v2 = () => ({ value: [0, 0] });
+    // only the loader compiles now: the first drop is on screen in the first frame
+    this.p.loader = this.makeProgram(S.FRAG_LOADER, { uRes: v2(), uDpr: { value: 1 }, uR: { value: 0.01 }, uK: { value: 7 }, uBands: { value: 4 }, uVivid: { value: 0.6 }, uTime: { value: 0 } });
+    this.quad = new Mesh(gl, { geometry: new Triangle(gl), program: this.p.loader });
+    this.W = Math.max(1, window.innerWidth);
+    this.H = Math.max(1, window.innerHeight);
+    this.renderer.setSize(this.W, this.H);
+    this.steps = [
+      () => {
+        this.p.clear = this.makeProgram(S.FRAG_CLEAR, { uTexture: { value: null }, uValue: { value: 1 } });
+        this.p.splat = this.makeProgram(S.FRAG_SPLAT, { uTarget: { value: null }, uAspect: { value: 1 }, uColor: { value: [0, 0, 0] }, uPoint: v2(), uRadius: { value: 0.002 }, uRing: { value: 0 } });
+        this.p.curl = this.makeProgram(S.FRAG_CURL, { uVelocity: { value: null }, uTexel: v2() });
+        this.p.vort = this.makeProgram(S.FRAG_VORTICITY, { uVelocity: { value: null }, uCurl: { value: null }, uTexel: v2(), uCurlStrength: { value: 4 }, uDt: { value: 0.016 } });
       },
-    });
-    this.planeMesh = new Mesh(gl, { geometry: new Plane(gl, { width: 1, height: 1, widthSegments: 28, heightSegments: 28 }), program: this.planeProgram });
-    this.buildPrograms();
-    this.resize();
+      () => {
+        this.p.div = this.makeProgram(S.FRAG_DIVERGENCE, { uVelocity: { value: null }, uTexel: v2() });
+        this.p.pres = this.makeProgram(S.FRAG_PRESSURE, { uPressure: { value: null }, uDivergence: { value: null }, uTexel: v2() });
+        this.p.grad = this.makeProgram(S.FRAG_GRADIENT, { uPressure: { value: null }, uVelocity: { value: null }, uTexel: v2() });
+        this.p.adv = this.makeProgram(S.FRAG_ADVECT, { uVelocity: { value: null }, uSource: { value: null }, uTexel: v2(), uDt: { value: 0.016 }, uDissipation: { value: 0.8 } });
+      },
+      () => {
+        this.p.ink = this.makeProgram(S.FRAG_INK, {
+          uInk: { value: null }, uVelocity: { value: null }, uSimTexel: v2(), uDt: { value: 0.016 }, uRelax: { value: 0.006 },
+          uEnergyDecay: { value: 0.985 }, uEnergyGain: { value: 0.0035 }, uTime: { value: 0 }, uAspect: { value: 1 }, uScroll: { value: 0 },
+          uShift: v2(), uDrift: v2(), uComb: { value: 0 }, uWave: { value: 0 },
+          uDrop: { value: Array.from({ length: 6 }, () => [0, 0, 0, 0]) }, uDropVivid: { value: [0, 0, 0, 0, 0, 0] },
+        });
+      },
+      () => {
+        this.p.field = this.makeProgram(S.FRAG_FIELD, {
+          uInk: { value: null }, uRes: v2(), uDpr: { value: 1 }, uBands: { value: 4 }, uDim: { value: 1 }, uReveal: { value: 3 }, uRevealC: { value: [0.5, 0.5] },
+          uDefocus: { value: 0 }, uFrame: { value: [0, 0, 1, 1] }, uFrameOn: { value: 0 }, uTime: { value: 0 }, uVivid: { value: 0.3 },
+        });
+      },
+      () => {
+        this.p.final = this.makeProgram(S.FRAG_FINAL, {
+          uScene: { value: null }, uRes: v2(), uDpr: { value: 1 }, uTime: { value: 0 },
+          uLens: { value: [[0, 0, 1, 1], [0, 0, 1, 1], [0, 0, 1, 1]] }, uLensR: { value: [0, 0, 0] }, uLensOn: { value: [0, 0, 0] }, uPointer: v2(),
+          uGlass: { value: [0, 0, 1, 1] }, uGlassTilt: v2(), uGlassOn: { value: 0 }, uMedal: { value: [0, 0, 1, 0] }, uMedalOn: { value: 0 }, uMedalAnchor: v2(),
+        });
+      },
+      () => {
+        this.planeProgram = new Program(gl, {
+          vertex: S.VERT_PLANE, fragment: S.FRAG_PLANE, transparent: true, depthTest: false, depthWrite: false, cullFace: false,
+          uniforms: {
+            uRect: { value: [0, 0, 1, 1] }, uView: { value: [1, 1] }, uVel: { value: [0, 0] }, uBend: { value: 0 }, uWave: { value: [0.5, 0.5, 1] },
+            uWaveAmp: { value: 0 }, uTex: { value: null }, uAlpha: { value: 1 }, uFocus: { value: 1 }, uHover: { value: 0 }, uMouse: { value: [0.5, 0.5] },
+            uTime: { value: 0 }, uSplit: { value: [0, 0] }, uDevelop: { value: 1 }, uAspect: { value: 0.8 }, uSeed: { value: 0 },
+            uClip: { value: [-1e5, 1e5] }, uVfade: { value: [-2e5, -1e5, 1e5, 2e5] },
+          },
+        });
+        this.planeMesh = new Mesh(gl, { geometry: new Plane(gl, { width: 1, height: 1, widthSegments: 28, heightSegments: 28 }), program: this.planeProgram });
+      },
+      () => {
+        const z4 = (n: number) => Array.from({ length: n }, () => [0, 0, 0, 0]);
+        this.p.cover = this.makeProgram(S.FRAG_COVER, {
+          uDrops: { value: z4(64) }, uDropN: { value: 0 }, uOpsA: { value: z4(8) }, uOpsB: { value: z4(8) }, uOpN: { value: 0 }, uSamples: { value: 4 },
+          uPal: { value: Array.from({ length: 6 }, () => [0, 0, 0]) }, uSize: { value: [640, 800] }, uLabel: { value: null }, uSeed: { value: 0 },
+        });
+      },
+      () => this.resize(),
+      () => {
+        // warm every program once so the driver finishes its work now, not on the first real frame
+        this.warmSrc = new RenderTarget(gl, { width: 4, height: 4, depth: false });
+        this.warm = new RenderTarget(gl, { width: 4, height: 4, depth: false });
+        for (const k of ['clear', 'splat', 'curl', 'vort', 'div', 'pres', 'grad', 'adv']) this.warmPass(this.p[k]);
+      },
+      () => {
+        this.warmPass(this.p.ink);
+        this.warmPass(this.p.field);
+      },
+      () => {
+        this.warmPass(this.p.final);
+        this.ready = true;
+      },
+    ];
+  }
+
+  /** Draws a program once into a 4 x 4 target, with any empty sampler pointed at a tiny source texture. */
+  warmPass(prog: Program) {
+    const saved: [string, any][] = [];
+    for (const [k, u] of Object.entries(prog.uniforms as Record<string, { value: any }>)) {
+      if (u.value === null) {
+        saved.push([k, null]);
+        u.value = this.warmSrc.texture;
+      }
+    }
+    this.pass(prog, this.warm);
+    for (const [k] of saved) (prog.uniforms as any)[k].value = null;
+  }
+
+  get stepsLeft() {
+    return this.steps.length;
+  }
+  /** One step of the staged boot. Returns true once the full pipeline is ready. */
+  prepare(): boolean {
+    const s = this.steps.shift();
+    try {
+      if (s) s();
+    } catch (err) {
+      console.warn('[flux] boot step failed, finishing without it', err);
+      if (!this.steps.length && this.p.final && this.scene) this.ready = true;
+    }
+    if (!this.steps.length && this.p.final && this.scene) this.ready = true;
+    return this.ready;
   }
 
   makeProgram(fragment: string, uniforms: Record<string, { value: any }>) {
     return new Program(this.gl, { vertex: S.VERT_QUAD, fragment, uniforms, depthTest: false, depthWrite: false, cullFace: false, transparent: false });
-  }
-
-  buildPrograms() {
-    const t = { value: null as any };
-    const v2 = () => ({ value: [0, 0] });
-    this.p.splat = this.makeProgram(S.FRAG_SPLAT, { uTarget: { value: null }, uAspect: { value: 1 }, uColor: { value: [0, 0, 0] }, uPoint: v2(), uRadius: { value: 0.002 }, uRing: { value: 0 } });
-    this.p.curl = this.makeProgram(S.FRAG_CURL, { uVelocity: { value: null }, uTexel: v2() });
-    this.p.vort = this.makeProgram(S.FRAG_VORTICITY, { uVelocity: { value: null }, uCurl: { value: null }, uTexel: v2(), uCurlStrength: { value: 20 }, uDt: { value: 0.016 } });
-    this.p.div = this.makeProgram(S.FRAG_DIVERGENCE, { uVelocity: { value: null }, uTexel: v2() });
-    this.p.pres = this.makeProgram(S.FRAG_PRESSURE, { uPressure: { value: null }, uDivergence: { value: null }, uTexel: v2() });
-    this.p.grad = this.makeProgram(S.FRAG_GRADIENT, { uPressure: { value: null }, uVelocity: { value: null }, uTexel: v2() });
-    this.p.adv = this.makeProgram(S.FRAG_ADVECT, { uVelocity: { value: null }, uSource: { value: null }, uTexel: v2(), uDt: { value: 0.016 }, uDissipation: { value: 0.2 } });
-    this.p.ink = this.makeProgram(S.FRAG_INK, {
-      uInk: { value: null }, uVelocity: { value: null }, uSimTexel: v2(), uDt: { value: 0.016 }, uRelax: { value: 0.006 },
-      uEnergyDecay: { value: 0.985 }, uEnergyGain: { value: 0.0035 }, uTime: { value: 0 }, uAspect: { value: 1 }, uScroll: { value: 0 },
-      uShift: v2(), uDrop: { value: [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]] }, uDropVivid: { value: [0, 0, 0, 0, 0, 0] }, uCalm: { value: 0 },
-    });
-    this.p.field = this.makeProgram(S.FRAG_FIELD, {
-      uInk: { value: null }, uRes: v2(), uDpr: { value: 1 }, uBands: { value: 8 }, uDim: { value: 1 }, uReveal: { value: 3 }, uRevealC: { value: [0.5, 0.5] },
-      uDefocus: { value: 0 }, uFrame: { value: [0, 0, 1, 1] }, uFrameOn: { value: 0 }, uTime: { value: 0 }, uSat: { value: 1 },
-      uGlass: { value: [0, 0, 1, 1] }, uGlassTilt: v2(), uGlassOn: { value: 0 }, uMedal: { value: [0, 0, 1, 0] }, uMedalOn: { value: 0 }, uMedalAnchor: v2(),
-    });
-    this.p.final = this.makeProgram(S.FRAG_FINAL, {
-      uScene: { value: null }, uRes: v2(), uDpr: { value: 1 },
-      uLens: { value: [[0, 0, 1, 1], [0, 0, 1, 1], [0, 0, 1, 1]] }, uLensR: { value: [0, 0, 0] }, uLensOn: { value: [0, 0, 0] }, uPointer: v2(),
-    });
-    const z4 = (n: number) => Array.from({ length: n }, () => [0, 0, 0, 0]);
-    this.p.cover = this.makeProgram(S.FRAG_COVER, {
-      uDrops: { value: z4(64) }, uDropN: { value: 0 }, uOpsA: { value: z4(8) }, uOpsB: { value: z4(8) }, uOpN: { value: 0 },
-      uPal: { value: Array.from({ length: 6 }, () => [0, 0, 0]) }, uSize: { value: [640, 800] }, uLabel: { value: null }, uSeed: { value: 0 },
-    });
-    void t;
   }
 
   halfRT(w: number, h: number) {
@@ -223,7 +280,9 @@ export class Engine {
     const sizeChanged = !this.scene || Math.abs(W / H - this.W / this.H) > 0.08 || Math.abs(W - this.W) > 160;
     this.W = W;
     this.H = H;
+    this.renderer.dpr = this.dpr;
     this.renderer.setSize(W, H);
+    if (!this.p.ink) return; // still booting: the loader only needs the canvas size
     const aspect = W / H;
     const simShort = this.lowPower ? 96 : 128;
     const sW = aspect >= 1 ? Math.round(simShort * aspect) : simShort;
@@ -274,14 +333,24 @@ export class Engine {
     }
   }
 
+  /** A full-screen pass without the scene-graph overhead of renderer.render. */
   pass(program: Program, target: RT | null) {
+    const r = this.renderer;
+    if (target) {
+      r.bindFramebuffer(target);
+      r.setViewport(target.width, target.height);
+    } else {
+      r.bindFramebuffer();
+      r.setViewport(Math.round(this.W * this.dpr), Math.round(this.H * this.dpr));
+    }
     this.quad.program = program;
-    this.renderer.render({ scene: this.quad, target: target ?? undefined, clear: false, sort: false, frustumCull: false } as any);
+    this.quad.draw({});
   }
 
   // ---------------------------------------------------------------- input into the fluid
   /** x, y in css px (y down); dx, dy in css px per frame. */
   stir(x: number, y: number, dx: number, dy: number, radius = 1) {
+    if (this.splats.length > 6) this.splats.shift();
     this.splats.push({ x: x / this.W, y: 1 - y / this.H, dx: dx / this.W, dy: -dy / this.H, r: radius });
   }
   /** A ring of outward velocity, centred at x, y css px, of radius rad (field units, height 1). */
@@ -292,6 +361,7 @@ export class Engine {
   /** The surface's displacement under a css px point (uv units), read back from the marbling map. */
   sampleD(x: number, y: number): [number, number] {
     const gl = this.gl;
+    if (!this.ready) return [0, 0];
     try {
       const rt = this.ink.read;
       const px = Math.min(rt.width - 1, Math.max(0, Math.round((x / this.W) * rt.width)));
@@ -307,24 +377,36 @@ export class Engine {
     }
   }
 
-  // ---------------------------------------------------------------- covers
-  makeCover(spec: CoverSpec, w = 960, h = 1200): Texture {
+  // ---------------------------------------------------------------- covers, rendered in strips across frames
+  coverJob(spec: CoverSpec, w = 960, h = 1200, rows = 4): CoverJob {
     const gl = this.gl;
     const rt = new RenderTarget(gl, { width: w, height: h, depth: false, minFilter: gl.LINEAR });
     const label = new Texture(gl, { image: spec.label, generateMipmaps: false, minFilter: gl.LINEAR });
+    return { rt, label, spec, row: 0, rows, w, h };
+  }
+  /** Renders the next strip of a cover. Returns true when the cover is complete. */
+  coverStep(job: CoverJob): boolean {
+    const gl = this.gl;
     const u = this.p.cover.uniforms;
     const pad = (a: number[][], n: number) => Array.from({ length: n }, (_, i) => a[i] || [0, 0, 0, 0]);
-    u.uDrops.value = pad(spec.drops, 64);
-    u.uDropN.value = Math.min(64, spec.drops.length);
-    u.uOpsA.value = pad(spec.opsA, 8);
-    u.uOpsB.value = pad(spec.opsB, 8);
-    u.uOpN.value = Math.min(8, spec.opsA.length);
-    u.uPal.value = spec.pal;
-    u.uSize.value = [w, h];
-    u.uSeed.value = spec.seed;
-    u.uLabel.value = label;
-    this.pass(this.p.cover, rt);
-    return rt.texture;
+    u.uDrops.value = pad(job.spec.drops, 64);
+    u.uDropN.value = Math.min(64, job.spec.drops.length);
+    u.uOpsA.value = pad(job.spec.opsA, 8);
+    u.uOpsB.value = pad(job.spec.opsB, 8);
+    u.uOpN.value = Math.min(8, job.spec.opsA.length);
+    u.uSamples.value = this.lowPower ? 2 : 4;
+    u.uPal.value = job.spec.pal;
+    u.uSize.value = [job.w, job.h];
+    u.uSeed.value = job.spec.seed;
+    u.uLabel.value = job.label;
+    const y0 = Math.floor((job.row * job.h) / job.rows);
+    const y1 = Math.floor(((job.row + 1) * job.h) / job.rows);
+    this.renderer.enable(gl.SCISSOR_TEST);
+    gl.scissor(0, y0, job.w, y1 - y0);
+    this.pass(this.p.cover, job.rt);
+    this.renderer.disable(gl.SCISSOR_TEST);
+    job.row++;
+    return job.row >= job.rows;
   }
 
   /** Reads a generated cover back into a 2D canvas (reduced-motion grid, project page fallback). */
@@ -349,17 +431,54 @@ export class Engine {
     return c;
   }
 
+  // ---------------------------------------------------------------- governor
+  /** p90 of the last 30 frames over 20 ms halves the simulation; a long calm spell gives it back. */
+  govern(dtMs: number) {
+    this.dts.push(dtMs);
+    if (this.dts.length < 30) return;
+    const s = this.dts.slice().sort((a, b) => a - b);
+    const p90 = s[Math.floor(s.length * 0.9)];
+    this.dts.length = 0;
+    if (p90 > 20 && this.quality < 3) {
+      this.setQuality(this.quality + 1);
+      this.calmFrames = 0;
+    } else if (p90 < 14 && this.quality > 0) {
+      this.calmFrames += 30;
+      if (this.calmFrames >= 600) {
+        this.setQuality(this.quality - 1);
+        this.calmFrames = 0;
+      }
+    } else this.calmFrames = 0;
+  }
+  setQuality(q: number) {
+    this.quality = q;
+    const dpr = q >= 3 ? 1 : this.baseDpr;
+    if (dpr !== this.dpr) {
+      this.dpr = dpr;
+      this.resize();
+    }
+  }
+
   // ---------------------------------------------------------------- frame
   frame(dt: number) {
     if (!this.ok) return;
     dt = Math.min(dt, 1 / 30);
     this.time += dt;
+    this.frameNo++;
+    const dp = this.dpr;
+    if (!this.ready) {
+      this.drawLoader();
+      return;
+    }
     const { simW, simH } = this;
     const texel = [1 / simW, 1 / simH];
     const aspect = this.W / this.H;
+    const q = this.quality;
+    // quality 2+: the simulation runs every other frame with twice the step
+    const simNow = this.simulate && (q < 2 || this.frameNo % 2 === 0);
+    const simDt = q >= 2 ? Math.min(dt * 2, 1 / 20) : dt;
 
-    if (this.simulate) {
-      // splats
+    if (simNow) {
       const sp = this.p.splat.uniforms;
       sp.uAspect.value = aspect;
       for (const s of this.splats) {
@@ -379,19 +498,20 @@ export class Engine {
       }
       this.splats.length = 0;
 
-      const c = this.p.curl.uniforms;
-      c.uVelocity.value = this.vel.read.texture;
-      c.uTexel.value = texel;
-      this.pass(this.p.curl, this.curl);
-
-      const v = this.p.vort.uniforms;
-      v.uVelocity.value = this.vel.read.texture;
-      v.uCurl.value = this.curl.texture;
-      v.uTexel.value = texel;
-      v.uCurlStrength.value = this.curlStrength;
-      v.uDt.value = dt;
-      this.pass(this.p.vort, this.vel.write);
-      this.vel.swap();
+      if (q < 1) {
+        const c = this.p.curl.uniforms;
+        c.uVelocity.value = this.vel.read.texture;
+        c.uTexel.value = texel;
+        this.pass(this.p.curl, this.curl);
+        const v = this.p.vort.uniforms;
+        v.uVelocity.value = this.vel.read.texture;
+        v.uCurl.value = this.curl.texture;
+        v.uTexel.value = texel;
+        v.uCurlStrength.value = this.curlStrength;
+        v.uDt.value = simDt;
+        this.pass(this.p.vort, this.vel.write);
+        this.vel.swap();
+      }
 
       const d = this.p.div.uniforms;
       d.uVelocity.value = this.vel.read.texture;
@@ -407,7 +527,7 @@ export class Engine {
       const pr = this.p.pres.uniforms;
       pr.uDivergence.value = this.div.texture;
       pr.uTexel.value = texel;
-      const iters = this.lowPower ? 12 : 18;
+      const iters = q >= 1 ? (this.lowPower ? 6 : 8) : this.lowPower ? 12 : 18;
       for (let i = 0; i < iters; i++) {
         pr.uPressure.value = this.pres.read.texture;
         this.pass(this.p.pres, this.pres.write);
@@ -425,7 +545,7 @@ export class Engine {
       a.uVelocity.value = this.vel.read.texture;
       a.uSource.value = this.vel.read.texture;
       a.uTexel.value = texel;
-      a.uDt.value = dt;
+      a.uDt.value = simDt;
       a.uDissipation.value = 0.8;
       this.pass(this.p.adv, this.vel.write);
       this.vel.swap();
@@ -443,10 +563,12 @@ export class Engine {
     k.uAspect.value = aspect;
     k.uScroll.value = this.scroll;
     k.uShift.value = this.shift;
+    k.uDrift.value = this.drift;
+    k.uComb.value = this.comb;
+    k.uWave.value = this.wave;
     const dropArr = k.uDrop.value as number[][];
     const viv = k.uDropVivid.value as number[];
     for (let i = 0; i < 6; i++) {
-      // uniform slot 5 is the newest drop
       const dr = this.drops[this.drops.length - 6 + i];
       if (dr && dr.r > 0.0005) {
         dropArr[i][0] = dr.x;
@@ -468,7 +590,7 @@ export class Engine {
     const sw = this.scene.width, sh = this.scene.height;
     f.uInk.value = this.ink.read.texture;
     f.uRes.value = [sw, sh];
-    f.uDpr.value = this.dpr;
+    f.uDpr.value = dp;
     f.uBands.value = this.bands;
     f.uDim.value = this.dim;
     f.uReveal.value = this.reveal;
@@ -477,14 +599,7 @@ export class Engine {
     f.uFrame.value = this.focusRect;
     f.uFrameOn.value = this.frameOn;
     f.uTime.value = this.time;
-    f.uSat.value = this.sat;
-    const G = this.glass, M = this.medal, dp = this.dpr;
-    f.uGlassOn.value = G.on;
-    f.uGlass.value = [G.x * dp, (this.H - G.y) * dp, G.hw * dp, G.hh * dp];
-    f.uGlassTilt.value = [G.tx, G.ty];
-    f.uMedalOn.value = M.on;
-    f.uMedal.value = [M.x * dp, (this.H - M.y) * dp, M.r * dp, M.spin];
-    f.uMedalAnchor.value = [M.ax * dp, (this.H - M.ay) * dp];
+    f.uVivid.value = this.vivid;
     this.pass(this.p.field, this.scene);
 
     // planes
@@ -492,6 +607,8 @@ export class Engine {
       const u = this.planeProgram.uniforms;
       u.uView.value = [this.W, this.H];
       u.uTime.value = this.time;
+      this.renderer.bindFramebuffer(this.scene);
+      this.renderer.setViewport(sw, sh);
       for (const pl of this.planes) {
         if (pl.alpha <= 0.002) continue;
         u.uRect.value = [pl.x, pl.y, pl.w, pl.h];
@@ -511,15 +628,23 @@ export class Engine {
         u.uClip.value = pl.clip ? [(this.H - pl.clip[1]) * dp, (this.H - pl.clip[0]) * dp] : [-1e5, 1e5];
         const vf = pl.vfade;
         u.uVfade.value = vf ? [(this.H - vf[3]) * dp, (this.H - vf[2]) * dp, (this.H - vf[1]) * dp, (this.H - vf[0]) * dp] : [-2e5, -1e5, 1e5, 2e5];
-        this.renderer.render({ scene: this.planeMesh, target: this.scene, clear: false, sort: false, frustumCull: false } as any);
+        this.planeMesh.draw({});
       }
     }
 
-    // final with lenses
+    // final: honours objects and lenses
     const fi = this.p.final.uniforms;
     fi.uScene.value = this.scene.texture;
     fi.uRes.value = [sw, sh];
     fi.uDpr.value = dp;
+    fi.uTime.value = this.time;
+    const G = this.glass, M = this.medal;
+    fi.uGlassOn.value = G.on;
+    fi.uGlass.value = [G.x * dp, (this.H - G.y) * dp, G.hw * dp, G.hh * dp];
+    fi.uGlassTilt.value = [G.tx, G.ty];
+    fi.uMedalOn.value = M.on;
+    fi.uMedal.value = [M.x * dp, (this.H - M.y) * dp, M.r * dp, M.spin];
+    fi.uMedalAnchor.value = [M.ax * dp, (this.H - M.ay) * dp];
     const L = fi.uLens.value as number[][];
     const LR = fi.uLensR.value as number[];
     const LO = fi.uLensOn.value as number[];
@@ -536,5 +661,19 @@ export class Engine {
     }
     fi.uPointer.value = [this.pointer[0] * dp, (this.H - this.pointer[1]) * dp];
     this.pass(this.p.final, null);
+    if (this.showLoader) this.drawLoader();
+  }
+
+  drawLoader() {
+    const u = this.p.loader.uniforms;
+    const d = this.loaderDrop;
+    u.uRes.value = [Math.round(this.W * this.dpr), Math.round(this.H * this.dpr)];
+    u.uDpr.value = this.dpr;
+    u.uR.value = d ? d.r : 0.01;
+    u.uK.value = d ? d.k : 7;
+    u.uBands.value = this.bands;
+    u.uVivid.value = d ? Math.min(0.85, d.vivid) : 0.6;
+    u.uTime.value = this.time;
+    this.pass(this.p.loader, null);
   }
 }
