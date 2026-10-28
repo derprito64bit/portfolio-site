@@ -115,7 +115,8 @@ if (mode === 'file') {
 } else if (mode === 'cmd') {
   if (!tail.length) usage('cmd needs -- <command> [args...]');
   probe = () => {
-    const r = spawnSync(tail[0], tail.slice(1), { encoding: 'utf8', shell: process.platform === 'win32' && !/\.(exe|com)$/i.test(tail[0]) });
+    const left = Math.max(1000, maxMs - (Date.now() - t0));
+    const r = spawnSync(tail[0], tail.slice(1), { encoding: 'utf8', timeout: left, shell: process.platform === 'win32' && !/\.(exe|com)$/i.test(tail[0]) });
     const out = `${r.stdout || ''}${r.stderr || ''}`.trim().split(/\r?\n/).slice(-4).join('\n');
     return r.status === 0 ? { done: true, ok: true, say: `${out}\ncommand exited 0` } : { done: false, say: `${out}\ncommand exited ${r.status}` };
   };

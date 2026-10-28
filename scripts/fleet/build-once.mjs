@@ -104,7 +104,8 @@ if (flags.builder) {
   // No npm ci or build while another agent's timed set runs (the perf lane); re-check every 30 s.
   for (;;) {
     const st = spawnSync('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', LANE, 'status'], { encoding: 'utf8' });
-    const held = /^perf\s+held by/m.test(st.stdout || '');
+    // A claim whose pid has exited is abandoned (lane.ps1 status marks it); the next acquire frees it.
+    const held = /^perf\s+held by(?!.*\[pid gone)/m.test(st.stdout || '');
     if (!held) break;
     write({ status: 'waiting-perf', step: 'lane', lane: (st.stdout.match(/^perf.*$/m) || [''])[0] });
     await sleep(30000);

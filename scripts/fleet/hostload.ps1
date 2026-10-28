@@ -62,8 +62,8 @@
   (the median of the summed load, not of each process). A run with a plant is never 'clear'.
 
 .EXAMPLE
-  powershell -File scripts/fleet/lane.ps1 acquire perf -Agent w-f-perf -TimeoutMinutes 45
-  powershell -File scripts/fleet/lane.ps1 acquire blender -Agent w-f-perf -TimeoutMinutes 45
+  powershell -File scripts/fleet/lane.ps1 acquire perf -Agent w-f-perf      # waits at most 4 min; exit 75: call it again
+  powershell -File scripts/fleet/lane.ps1 acquire blender -Agent w-f-perf
   powershell -File scripts/fleet/hostload.ps1 -Out <evidence>\hostload-lighthouse-pre.json   # exit 0 before the set
   $p = Start-Process node -ArgumentList 'scripts/crew.mjs', 'lighthouse' -PassThru -NoNewWindow
   powershell -File scripts/fleet/hostload.ps1 -Watch $p.Id -Out <evidence>\hostload-lighthouse-during.json
@@ -429,7 +429,11 @@ if ($Watch -le 0) {
     # Allowlist entries: 'name' (no cap) or 'name<=N' (allowed up to N%, flagged above it).
     $allowCap = @{}
     foreach ($e in @($allowList)) {
-        if ([string]$e -match '^(.+?)\s*<=\s*([\d.]+)$') { $allowCap[$matches[1].Trim()] = [double]$matches[2] } else { $allowCap[([string]$e).Trim()] = $null }
+        if ([string]$e -match '^(.+?)\s*<=\s*(\S+)$') {
+            $cap = 0.0
+            if (-not [double]::TryParse($matches[2], [Globalization.NumberStyles]::Float, [Globalization.CultureInfo]::InvariantCulture, [ref]$cap)) { Fail-Usage "host.watch.allowlist entry '$e': the cap after <= is not a number" }
+            $allowCap[$matches[1].Trim()] = $cap
+        } else { $allowCap[([string]$e).Trim()] = $null }
     }
     $foreignMax = $thresholds.foreignCpuPctMax
     $uncal = ($null -eq $foreignMax -or -not $allowSet -or $null -eq $thresholds.gpu3dPctMax)
@@ -525,7 +529,10 @@ if ($Watch -le 0) {
     }
     $fgStats = Get-Stats $fgSums.ToArray()
     $fgMax = $thresholds.gpu3dPctMax
-    $gpuForeign = ($null -ne $fgMax -and $null -ne $fgStats.median -and $fgStats.median -gt [double]$fgMax)
+    # The comparison uses the unrounded median (Get-Stats rounds to 0.1 for the record).
+    $fgSorted = @($fgSums | Sort-Object)
+    $fgRaw = if (-not $fgSorted.Count) { $null } elseif ($fgSorted.Count % 2) { $fgSorted[($fgSorted.Count - 1) / 2] } else { ($fgSorted[$fgSorted.Count / 2 - 1] + $fgSorted[$fgSorted.Count / 2]) / 2 }
+    $gpuForeign = ($null -ne $fgMax -and $null -ne $fgRaw -and $fgRaw -gt [double]$fgMax)
     $result.foreignGpu3d = [ordered]@{
         rule         = 'budgets.md R2: the median, over valid samples, of the summed GPU 3D load of every process outside the watched tree and this script, against host.precheck.gpu3dPctMax'
         thresholdPct = $fgMax

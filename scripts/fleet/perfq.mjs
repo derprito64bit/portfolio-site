@@ -10,8 +10,11 @@
 //   node scripts/fleet/perfq.mjs stop --out <dir>                                    kill the runner and its children, release the lanes
 // plan.json: { "sha": "<head>", "tree": "<a build-once tree>", "heartbeatMin": 15, "busyWaitMin": 30,
 //   "sets": [{ "id": "TBT-m", "row": "<the budgets.md row>", "cmd": ["node", "scripts/crew.mjs", "lighthouse", "--out", "{out}"],
-//              "cwd": "{tree}", "precheck": true, "watch": false, "confirmFails": true }] }
-//   In cmd and cwd, {out} is the attempt's folder, {tree} the plan's tree and {n} the attempt number.
+//              "cwd": "{tree}", "precheck": true, "watch": false, "confirmFails": true, "result": "manifest.json" }] }
+//   In cmd, cwd and result, {out} is the attempt's folder, {tree} the plan's tree and {n} the attempt number. result names
+//   the file (relative to the attempt's folder unless absolute) the command writes when it measured; an exit 1 without it
+//   is a crash (a tool error: blocked), never a fail. A watched set starts its command 3 s after its hostload -Watch
+//   (through perfq.mjs exec), so the watch's head gap holds.
 //
 // The runner takes the perf lane, then the blender lane (budgets.md MEASURING), with its own pid in each lane file. Per
 // set not already finished in <out>\status.json it: renews both lanes (and every 10 minutes while a set runs); runs a
@@ -21,7 +24,8 @@
 // clean set (R4: both are kept); it counts as fail only when it reproduces, otherwise it is a flake (to the #91 queue).
 // The heartbeat (<out>\heartbeat, touched by start, wait and status) is the agent's pulse: older than heartbeatMin
 // minutes means the agent died, so the runner kills its set, releases the lanes and stops (state orphaned). A later
-// start resumes: sets that passed, failed or flaked are kept; pending, running and blocked ones run again.
+// start resumes: sets that passed, failed or flaked are kept; pending, running and blocked ones run again. An exit 75
+// from the command re-checks the host and reruns it, at most twice, then the set is blocked.
 // States: starting, waiting-lane, running, done, blocked (a set stayed blocked), orphaned, stopped, failed (tool error).
 import { spawn, spawnSync } from 'node:child_process';
 import { closeSync, existsSync, mkdirSync, openSync, readFileSync, statSync, utimesSync, writeFileSync } from 'node:fs';
@@ -47,6 +51,17 @@ const die = (code, m) => {
   console.log(m);
   process.exit(code);
 };
+// exec: the delay wrapper a watched set runs under (perfq.mjs exec --delay <ms> -- <command...>): it waits, runs the
+// command as its child with inherited output, and exits with its code, so the watch sees the whole run from its start.
+if (cmd === 'exec') {
+  const dash = argv.indexOf('--');
+  const rest = argv.slice(dash + 1);
+  await new Promise((r) => setTimeout(r, Number(flags.delay) || 3000));
+  const c = spawn(rest[0] === 'node' ? process.execPath : rest[0], rest.slice(1), { stdio: 'inherit', windowsHide: true, shell: process.platform === 'win32' && rest[0] !== 'node' && !/\.(exe|com)$/i.test(rest[0]) });
+  c.on('error', () => process.exit(2));
+  c.on('close', (code) => process.exit(code ?? 2));
+  await new Promise(() => {});
+}
 if (!cmd || !flags.out || flags.out === true) die(2, 'usage: perfq.mjs start --plan <plan.json> --out <dir> --agent <id> | wait|status|stop --out <dir> [--max 240]');
 const OUT = resolve(flags.out);
 const STATUS = join(OUT, 'status.json');
@@ -94,6 +109,8 @@ if (cmd === 'status') {
 if (cmd === 'stop') {
   const st = readJson(STATUS);
   if (!st) die(0, 'perfq: nothing to stop');
+  // Only a live, unfinished runner is killed: an ended runner's pid may belong to another process by now.
+  if (!alive(st.pid) || TERMINAL.includes(st.state)) die(0, `perfq: the runner is not running (state ${st.state}); nothing to stop`);
   killTree(st.pid);
   if (st.current) {
     killTree(st.current.pid);
@@ -240,7 +257,11 @@ async function attempt(set, kind) {
   }
   st.current = { set: set.id, attempt: n, kind };
   save();
-  const [file, ...args] = set.cmd.map((x) => fill(x, vars));
+  let [file, ...args] = set.cmd.map((x) => fill(x, vars));
+  if (set.watch) {
+    args = [fileURLToPath(import.meta.url), 'exec', '--out', OUT, '--delay', '3000', '--', file, ...args];
+    file = process.execPath;
+  }
   const timer = setInterval(() => {
     if (!heartOk()) {
       killTree(st.current && st.current.pid);
@@ -251,8 +272,10 @@ async function attempt(set, kind) {
   }, 60000);
   const run = runProc(file === 'node' ? process.execPath : file, args, set.cwd ? fill(set.cwd, vars) : plan.tree || process.cwd(), a.log);
   let watch = null;
+  let settled = false;
+  run.then(() => (settled = true));
   if (set.watch) {
-    while (!st.current.pid) await sleep(50);
+    while (!st.current.pid && !settled) await sleep(50);
     const wf = join(dir, 'hostload-watch.json');
     watch = new Promise((res) => {
       const w = spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', HOSTLOAD, '-Watch', String(st.current.pid), '-Out', wf], { stdio: 'ignore', windowsHide: true });
@@ -262,7 +285,7 @@ async function attempt(set, kind) {
     });
   }
   const r = await run;
-  const w = watch ? await watch : null;
+  const w = watch && st.current && st.current.watchPid ? await watch : null;
   clearInterval(timer);
   a.exit = r.code;
   if (r.error) a.error = r.error;
@@ -273,6 +296,13 @@ async function attempt(set, kind) {
   a.endedAt = new Date().toISOString();
   st.current = null;
   save();
+  // An exit 1 that wrote no result is a crash, not a measured fail.
+  const resultFile = set.result ? (/^[a-z]:|^[\\/]/i.test(fill(set.result, vars)) ? fill(set.result, vars) : join(dir, fill(set.result, vars))) : null;
+  if (r.code === 1 && resultFile && !existsSync(resultFile)) {
+    a.crash = `exit 1 with no ${set.result}`;
+    save();
+    return { code: 2, suspect: false };
+  }
   return { code: r.code, suspect: !!w && w.code !== 0 };
 }
 
@@ -282,6 +312,7 @@ async function runSet(set) {
   s.reason = '';
   save();
   let replaced = 0;
+  let busy = 0;
   const once = async (kind) => {
     for (;;) {
       const r = await attempt(set, kind);
@@ -291,6 +322,7 @@ async function runSet(set) {
         continue;
       }
       if (r.code === 75) {
+        if (++busy > 2) return { blocked: 'the command reported the host busy (exit 75) three times' };
         const pc = await precheck(set.id, `${s.attempts.length}-rerun`);
         if (!pc.ok) return { blocked: pc.why || 'the command reported the host busy (exit 75)' };
         continue;
@@ -301,7 +333,10 @@ async function runSet(set) {
   const first = await once('set');
   if (first.blocked) return Object.assign(s, { status: 'blocked', reason: first.blocked });
   if (first.code === 0) return Object.assign(s, { status: 'pass' });
-  if (first.code !== 1) return Object.assign(s, { status: 'blocked', reason: `the command exited ${first.code} (neither pass 0, fail 1 nor host 75): a tool error` });
+  if (first.code !== 1) {
+    const crash = (s.attempts.slice(-1)[0] || {}).crash;
+    return Object.assign(s, { status: 'blocked', reason: crash ? `a crash (${crash}): a tool error, never a fail` : `the command exited ${first.code} (neither pass 0, fail 1 nor host 75): a tool error` });
+  }
   if (set.confirmFails === false) return Object.assign(s, { status: 'fail', reason: 'failed (no confirming set asked)' });
   const second = await once('confirm');
   if (second.blocked) return Object.assign(s, { status: 'blocked', reason: `the first set failed; the confirming set was blocked: ${second.blocked}` });

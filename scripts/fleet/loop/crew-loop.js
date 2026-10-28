@@ -197,13 +197,40 @@ function tally(c, round, work, gate, breaks, jury, review) {
     if (why) { queue(m.key, m.text, `prove it under the taxonomy or fix it later: ${why}`, `judge round ${round}`); notes.push(`must-fix ${m.key} moved to the #91 queue: ${why}`) } else items.push(m)
   }
   for (const q of review.queued || []) queue(q.key, q.text, q.doneWhen, `judge round ${round}`)
-  // A breaker defect the judge left without a disposition: a proven regression on a visitor path blocks, the rest is queued.
-  const disposed = t => (review.breakerDispositions || []).some(d => d.title === t)
-  for (const d of breaks.flatMap(b => b.defects || []).filter(d => !disposed(d.title))) {
+  // Breaker defects, matched to the judge's dispositions by title (trimmed, any case). A defect with no disposition: a
+  // proven regression on a visitor path blocks, the rest is queued. A 'must-fix' or 'queue' disposition whose item the
+  // judge left out of mustFix or queued gets one here, so no disposed defect disappears.
+  const low = x => trim(x).toLowerCase()
+  const dispOf = t => (review.breakerDispositions || []).find(d => low(d.title) === low(t))
+  const proven = d => d.visitorPath && d.mainResult === 'main-passes' && trim(d.mainControl)
+  const named = (d, key) => items.some(m => m.key === key || low(m.text).includes(low(d.title)) || low(m.citation).includes(low(d.title)))
+  for (const d of breaks.flatMap(b => b.defects || [])) {
     const key = `break-${slug(d.title)}`
-    if (d.visitorPath && d.mainResult === 'main-passes' && trim(d.mainControl)) { if (!items.some(m => m.key === key)) items.push({ key, cls: 'regression', text: `${d.title}: ${d.observed}`, citation: d.expected, repro: d.evidence, mainControl: d.mainControl, oneTask: false, addedBy: 'loop' }) } /*R:breakerRegression*/
-    else queue(key, d.title, 'the judge disposes it, or it is fixed', `breaker round ${round}, undisposed`)
-    notes.push(`breaker defect '${d.title}' was left undisposed by the judge`)
+    const disp = dispOf(d.title)
+    if (!disp) {
+      if (proven(d)) { if (!items.some(m => m.key === key)) items.push({ key, cls: 'regression', text: `${d.title}: ${d.observed}`, citation: d.expected, repro: d.evidence, mainControl: d.mainControl, oneTask: false, addedBy: 'loop' }) } /*R:breakerRegression*/
+      else queue(key, d.title, 'the judge disposes it, or it is fixed', `breaker round ${round}, undisposed`)
+      notes.push(`breaker defect '${d.title}' was left undisposed by the judge`)
+    } else if (disp.disposition === 'must-fix' && !named(d, key)) {
+      const citation = trim(d.refutes) || trim(d.expected)
+      if (proven(d)) items.push({ key, cls: 'regression', text: `${d.title}: ${d.observed}`, citation: d.expected, repro: d.evidence, mainControl: d.mainControl, oneTask: false, addedBy: 'loop' })
+      else if (citation) items.push({ key, cls: 'acceptance', text: `${d.title}: ${d.observed}`, citation, repro: d.evidence, mainControl: '', oneTask: false, addedBy: 'loop' }) /*R:dispositionMustFix*/
+      else queue(key, d.title, 'the judge cites the row it fails, or it is fixed', `breaker round ${round}, must-fix with no citation`)
+      notes.push(`breaker defect '${d.title}' was disposed must-fix but missing from mustFix; the loop added it`)
+    } else if (disp.disposition === 'queue' && !queued.some(q => q.key === key) && !(review.queued || []).some(q => low(q.text).includes(low(d.title)))) {
+      queue(key, d.title, disp.reason || 'the judge queued it', `breaker round ${round}, queued`)
+    }
+  }
+  // A failing gate row blocks by itself (an acceptance-row failure), so the must-fix count sees it even when the judge
+  // names none; a regression the gate proved with a main control blocks as a regression.
+  const gateRows = [...FIXED.map(k => gate.fixed && gate.fixed[k]).filter(Boolean), ...(gate.rows || [])]
+  for (const r of gateRows.filter(x => x.status === 'fail')) {
+    const key = `gate-${slug(String(r.item).slice(0, 40))}`
+    if (!items.some(m => m.key === key)) items.push({ key, cls: 'acceptance', text: `the gate fails: ${clip(`${c.id}: gate row`, r.item, 300)}`, citation: clip(`${c.id}: gate row`, r.item, 200), repro: r.evidence, mainControl: '', oneTask: false, addedBy: 'loop' }) /*R:gateFails*/
+  }
+  for (const g of (gate.regressions || []).filter(x => trim(x.mainControl))) {
+    const key = `gate-reg-${slug(String(g.item).slice(0, 40))}`
+    if (!items.some(m => m.key === key)) items.push({ key, cls: 'regression', text: `regression against main: ${g.item} (${g.path})`, citation: g.item, repro: g.path, mainControl: g.mainControl, oneTask: false, addedBy: 'loop' })
   }
   if (c.jury.enabled) {
     for (const row of c.jury.rows) {
@@ -241,11 +268,11 @@ async function loop(c, spec, o, newGrant) {
   const cap = { code: c.caps.code + (grant.code || 0), evidence: c.caps.evidence + (grant.evidence || 0) }
   log(`${c.id}: caps code ${cap.code}, evidence ${cap.evidence}${Object.keys(grant).length ? ` (with grant ${JSON.stringify(grant)})` : ''}; spec ${spec.version}`)
   const hist = o.hist || []
-  let round = o.round || 1, work = o.work || null, fb = o.fb || null, queued = o.queued || [], perfAt = o.perfAt || null
+  let round = o.round || 1, work = o.work || null, fb = o.fb || null, queued = o.queued || []
   let resume = o.resume || null, stage = o.stage || {}, pendingKind = o.pendingKind || null
   const count = k => hist.filter(h => h.kind === k).length
   const summary = () => hist.map(h => `round ${h.round} (${h.kind}) at ${sha7(h.head)}: ${h.verdict}, ${h.mustFixCount} must-fix${h.mustFix.length ? ` [${h.mustFix.join(', ')}]` : ''}${h.perf ? `; perf ${h.perf}` : ''}`)
-  const snap = extra => ret(c, Object.assign({ round, work, fb, hist, queued, perfAt, grant, spec: spec.version }, extra))
+  const snap = extra => ret(c, Object.assign({ round, work, fb, hist, queued, grant, spec: spec.version }, extra))
   // Crews never force-push, so a crew head never returns to an earlier round's commit (the immediately previous head may repeat).
   const regressed = s => { const prev = hist[hist.length - 1]; if (!prev || sameSha(s, prev.head)) return null; const h = hist.slice(0, -1).find(x => sameSha(s, x.head)); return h ? h.round : null }
   for (; round <= c.hardStop; round++) {
@@ -327,15 +354,24 @@ async function loop(c, spec, o, newGrant) {
       const sets = (c.perf.sets || []).filter(s => !s.paths || hits(s.paths, files)) /*R:perfScope*/
       const skipped = (c.perf.sets || []).filter(s => !sets.includes(s)).map(s => s.id)
       if (skipped.length) log(`${c.id}: round ${round}: perf sets the diff cannot reach, not run: ${skipped.join(', ')}`)
-      if (sets.length && !sameSha(perfAt, work.sha)) {
+      if (sets.length) {
         if (!perf) perf = await once(r => agent(perfPrompt(c, spec, round, work, sets, { retry: r || !!px }), opts(c, 'perf', L(c, 'perf', round, px + (r ? 'r' : '')), PERF)), L(c, 'perf', round, px))
         if (!perf) return died('perf-died', 'perf', { gate, breaks, breakDone: true, jury, review, tries })
-        if (perf.state !== 'done') { log(`${c.id}: round ${round}: the perf queue ended ${perf.state}: blocked, rerun`); return snap({ status: 'host-blocked', resume: 'perf', pendingKind: kind, stage: { gate, breaks, breakDone: true, jury, review, tries: Object.assign({}, tries, { perf: (tries.perf || 0) + 1 }) }, blocked: (perf.rows || []).filter(r => r.status === 'blocked').map(r => r.id) }) } /*R:busyHostPerf*/
+        const rerunPerf = Object.assign({}, tries, { perf: (tries.perf || 0) + 1 })
+        // The result must be this head's, with one measured row per planned set; a tool error or a dead queue is not a busy host.
+        const unmeasured = sets.filter(st => !(perf.rows || []).some(r => r.id === st.id && r.status !== 'skipped')).map(st => st.id)
+        const invalid = ['failed', 'orphaned'].includes(perf.state) ? `the perf queue ended ${perf.state}` : !sameSha(perf.sha, work.sha) ? `the perf result is for ${perf.sha}, not the head ${work.sha}` : unmeasured.length ? `no measured row for ${unmeasured.join(', ')}` : ''
+        if (invalid) { log(`${c.id}: round ${round}: ${invalid}: the orchestrator reruns the perf step`); return snap({ status: 'perf-invalid', resume: 'perf', pendingKind: kind, stage: { gate, breaks, breakDone: true, jury, review, tries: rerunPerf }, reason: invalid }) } /*R:perfValid*/
+        const blockedRows = (perf.rows || []).filter(r => r.status === 'blocked').map(r => r.id)
+        if (perf.state === 'blocked' || blockedRows.length) { log(`${c.id}: round ${round}: the perf queue is blocked by a busy host (${blockedRows.join(', ') || perf.state}): blocked, rerun`); return snap({ status: 'host-blocked', resume: 'perf', pendingKind: kind, stage: { gate, breaks, breakDone: true, jury, review, tries: rerunPerf }, blocked: blockedRows }) } /*R:busyHostPerf*/
         for (const r of perf.rows.filter(x => x.status === 'flake')) t.queued.push({ key: `perf-flake-${slug(r.id)}`, text: `${r.id} failed once and did not reproduce: ${r.value} vs ${r.budget}`, doneWhen: 'it passes in the pre-G3a perf run', from: `perf round ${round}` })
         const fails = perf.rows.filter(x => x.status === 'fail')
         if (fails.length) {
           const inv = await once(r => agent(investPrompt(c, spec, round, work, perf, sets.filter(s => fails.some(f => f.id === s.id))), opts(c, 'invest', L(c, 'invest', round, px + (r ? 'r' : '')), INVEST)), L(c, 'invest', round, px))
           if (!inv) return died('invest-died', 'perf', { gate, breaks, breakDone: true, jury, review, perf, tries })
+          // An inconclusive main control (main's set blocked) is a busy host: blocked, rerun the investigator, never a must-fix.
+          const open = fails.filter(f => { const v = (inv.rows || []).find(x => x.id === f.id); return !v || v.verdict === 'inconclusive' }).map(f => f.id)
+          if (open.length) { log(`${c.id}: round ${round}: the main control is inconclusive for ${open.join(', ')}: blocked, rerun`); return snap({ status: 'host-blocked', resume: 'perf', pendingKind: kind, stage: { gate, breaks, breakDone: true, jury, review, perf, tries: rerunPerf }, blocked: open }) } /*R:investInconclusive*/
           for (const f of fails) {
             const v = (inv.rows || []).find(x => x.id === f.id)
             if (v && v.verdict === 'pre-existing') t.queued.push({ key: `perf-main-${slug(f.id)}`, text: `${f.id} breaches on main too: head ${v.head}, main ${v.main}`, doneWhen: 'a crew that owns it fixes it', from: `perf round ${round}` }) /*R:perfPreExisting*/
@@ -343,7 +379,6 @@ async function loop(c, spec, o, newGrant) {
           }
         }
         perfNote = perf.rows.map(r => `${r.id} ${r.status}`).join(', ')
-        if (!t.items.length) perfAt = work.sha
       }
     }
 
