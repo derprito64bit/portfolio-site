@@ -46,7 +46,8 @@ const PLANT_INIT = {
     };
   },
 };
-async function page(srv, profile, url, { mode = 'auto', init = [], clock = false } = {}) {
+async function page(srv, profile, url, { mode = 'auto', init = [], clock: fake = false } = {}) {
+  clock = 0;
   const ctx = await newContext(profile, mode, webkit ? { browser: 'webkit' } : {});
   const p = await ctx.newPage();
   const errors = [];
@@ -54,7 +55,7 @@ async function page(srv, profile, url, { mode = 'auto', init = [], clock = false
   p.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
   for (const fn of init) await ctx.addInitScript(fn);
   if (plant && PLANT_INIT[plant]) await ctx.addInitScript(PLANT_INIT[plant]);
-  if (clock) await p.clock.install();
+  if (fake) await p.clock.install();
   await p.goto(`${srv.base}${url}`, { waitUntil: 'load' });
   return { ctx, p, errors };
 }
@@ -88,11 +89,14 @@ async function plantPage(p) {
   if (plant === 'handback') await p.evaluate(() => (window.__stage.give = () => {}));
 }
 
-/** Seek frame by frame from `t` until every id has been taken and handed back (or `max` frames); one record per frame. */
-async function seekRun(p, ids, t, max) {
+/** The stage clock under ?t=: every seek moves it one frame on from the last, never a jump (a jump reads as one long
+ *  frame, and the tier governor demotes on it: WebKit's lite tier went static after a 10 s jump). */
+let clock = 0;
+/** Seek frame by frame until every id has been taken and handed back (or `max` frames); one record per frame. */
+async function seekRun(p, ids, _t, max) {
   const frames = [];
   for (let i = 0; i < max; i++) {
-    const ms = t + i * FRAME;
+    const ms = (clock += FRAME);
     await p.evaluate((m) => window.__stage.seek(m), ms);
     const s = await state(p, ids);
     frames.push({ i, ms, s });
@@ -125,7 +129,9 @@ try {
     const t0 = Date.now();
     while ((await p.evaluate(() => performance.getEntriesByName('prints:develop').length)) === n0 && Date.now() - t0 < 3000) await sleep(50);
     await sleep(400);
+    const preWave = await p.evaluate(() => ({ marks: performance.getEntriesByName('prints:develop').map((m) => m.detail.group), dev: document.documentElement.dataset.dev, s: [...document.querySelectorAll('[data-print="sheet"]')].map((e) => `${e.dataset.dev ?? '-'}${e.hasAttribute('data-wet') ? 'W' : ''}${e.classList.contains('is-gl') ? 'G' : ''}`).join(' ') }));
     const wave = await seekRun(p, sheetIds, 20000, 160);
+    preWave.after = await p.evaluate(() => ({ tierLog: window.__stage.tierLog, losses: window.__stage.stats.losses, governor: window.__stage.stats.governorSteps, hookErrors: window.__stage.stats.hookErrors, motion: window.__stage.motion }));
     const focus1 = await p.evaluate(() => document.activeElement?.tagName);
     const lastGive = Math.max(...wave.map((w) => w.give ?? Infinity));
     const starts = wave.map((w) => (w.take ?? NaN) - 1);
@@ -136,11 +142,13 @@ try {
     if (!triggered) fails.push('no develop at 40% visible');
     if (enlMs === null || enlMs < durations.develop || enlMs > durations.develop + 2 * FRAME) fails.push(`enlargement develop ${enlMs?.toFixed(0)} ms, want ${durations.develop}`);
     if (!(lastGive * FRAME <= SHEET_DONE_MS)) fails.push(`sheet done ${(lastGive * FRAME).toFixed(0)} ms after its trigger > ${SHEET_DONE_MS}`);
-    if (durs.some((d) => d < durations.developSheet || d > durations.developSheet + 2 * FRAME)) fails.push(`sheet print develops ${durs.map((d) => d.toFixed(0)).join(',')} ms, want ${durations.developSheet}`);
+    // A staggered start falls between two frames, so a duration counted in whole frames reads up to one frame short.
+    if (durs.some((d) => d < durations.developSheet - FRAME - 0.01 || d > durations.developSheet + 2 * FRAME)) fails.push(`sheet print develops ${durs.map((d) => d.toFixed(0)).join(',')} ms, want ${durations.developSheet}`);
     if (stagger.some((s) => Math.abs(s - durations.sheetStagger) > FRAME)) fails.push(`stagger ${stagger.map((s) => s.toFixed(0)).join(',')} ms, want ${durations.sheetStagger}`);
     if (focus0 !== focus1) fails.push(`focus moved ${focus0} -> ${focus1}`);
+    if (preWave.after.tierLog.length !== 1) fails.push(`the tier changed during the run (instrument invalid): ${JSON.stringify(preWave.after.tierLog)}`);
     if (errors.length) fails.push(`console: ${errors.slice(0, 2).join(' | ')}`);
-    results.L3 = { pass: !fails.length, fails, enlargement: { id, ...enl, ms: enlMs }, sheet: { lastGiveMs: lastGive * FRAME, durationsMs: durs, staggerMs: stagger, wave } };
+    results.L3 = { pass: !fails.length, fails, enlargement: { id, ...enl, ms: enlMs }, sheet: { lastGiveMs: lastGive * FRAME, durationsMs: durs, staggerMs: stagger, wave, preWave } };
     await ctx.close();
   }
 
@@ -215,7 +223,7 @@ try {
     await reveal(b.p, '[data-sheet-grid]', 0.4);
     await waitMark(b.p, 'prints:develop', 3000);
     await sleep(400);
-    for (let i = 0; i < 20; i++) await b.p.evaluate((m) => window.__stage.seek(m), 30000 + i * FRAME);
+    for (let i = 0; i < 20; i++) await b.p.evaluate((m) => window.__stage.seek(m), (clock += FRAME));
     const mid = await b.p.evaluate(() => document.querySelectorAll('[data-print="sheet"].is-gl').length);
     const t2 = await b.p.evaluate(() => {
       const r = document.querySelector('[data-view-toggle] input[value="list"]');
