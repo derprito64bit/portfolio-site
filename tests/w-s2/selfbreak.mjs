@@ -14,9 +14,10 @@
 //                enlargements develop and end dry.
 //   reduced      reduced motion: nothing develops, nothing wet.
 //   rapid        nine Sheet/List toggles in about a second mid-develop: the last state wins, prints arrive developed.
-//   swup         a Swup arrival at / from a project page (its markup's inline view default never ran: prints.ts runs
-//                it again): the view is set and matches the checked radio, the toggle works; then a toggle, a Swup
-//                visit to a project and Back: the address keeps ?view= and the view (breaker 1.1).
+//   swup         / then a Swup visit to a project and a Swup arrival back at / by the home link (the new markup's
+//                inline view default never ran: prints.ts runs it again): the view is set and matches the checked
+//                radio, the toggle works; then a Swup visit to a project and Back: the address keeps ?view= and the
+//                view (breaker 1.1). (A session that starts on a project page has no prints module at all: #98 item 2.)
 // --browser webkit runs throw, resize, rapid, reduced and swup in WebKit (WK-T2).
 // --plant handback (negative control): __stage.give() does nothing, so a print keeps .is-gl; the scenario must FAIL.
 // Usage: node tests/w-s2/selfbreak.mjs --out <dir> [--only a,b] [--browser chromium|webkit] [--plant handback]
@@ -272,9 +273,12 @@ const S = {
   },
   async swup(srv) {
     const fails = [];
-    const { ctx, p, errors } = await open(srv, DESK, '/work/project-01/');
-    await sleep(1500);
+    const { ctx, p, errors } = await open(srv, DESK, '/');
+    await ready(p);
     await p.evaluate(() => (window.__sameDoc = 1));
+    await p.evaluate(() => document.querySelector('[data-print="enl"]').click());
+    await p.waitForFunction(() => location.pathname.startsWith('/work/'), null, { timeout: 10000 });
+    await sleep(800);
     await p.click('a.site-mark[href="/"]');
     await p.waitForFunction(() => location.pathname === '/' && document.querySelector('section.sheet'), null, { timeout: 10000 });
     await sleep(1000);
