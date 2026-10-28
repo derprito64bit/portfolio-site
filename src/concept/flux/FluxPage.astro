@@ -1,0 +1,172 @@
+---
+// Flux: the whole page. Real text lives here in the DOM; the canvas behind it is decoration (aria-hidden).
+import './flux.css';
+import fontUrl from '@fontsource-variable/roboto-flex/files/roboto-flex-latin-full-normal.woff2?url';
+import { OWNER_NAME, NAME_IS_PLACEHOLDER, HANDLE, GITHUB, projects, honours, ph } from './content';
+
+const fontFace = `@font-face{font-family:'Flux Flex';font-style:oblique 0deg 10deg;font-display:block;font-weight:100 1000;font-stretch:25% 151%;src:url(${fontUrl}) format('woff2-variations'),url(${fontUrl}) format('woff2');}`;
+const total = String(projects.length).padStart(2, '0');
+const award = honours.find((h) => h.type === 'Award');
+const medal = honours.find((h) => h.type === 'Medal');
+---
+<!doctype html>
+<html lang="en" class="flux is-loading">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>{HANDLE}: personal portfolio</title>
+    <meta name="description" content={`The personal portfolio of ${HANDLE}: work, honours and contact.`} />
+    <meta name="robots" content="noindex" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="theme-color" content="#030304" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="preload" href={fontUrl} as="font" type="font/woff2" crossorigin />
+    <style is:inline set:html={fontFace}></style>
+    <script is:inline>
+      // Before first paint: reduced motion and the loader state.
+      (function () {
+        var d = document.documentElement;
+        if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) d.classList.add('rm');
+        if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
+      })();
+    </script>
+  </head>
+  <body>
+    <a class="skiplink" href="#work">Skip to the work</a>
+    <canvas id="gl" class="gl" aria-hidden="true"></canvas>
+
+    <div class="loader" id="loader">
+      <div class="loader-dot" aria-hidden="true"></div>
+      <p class="loader-status" role="status">
+        <span class="loader-label">Loading</span>
+        <span class="loader-task" id="loader-task">the field</span>
+        <span class="loader-count" id="loader-count"><span id="loader-done">0</span> of <span id="loader-total">11</span></span>
+      </p>
+      <button class="lens loader-skip" id="skip" type="button" data-lens>Skip intro</button>
+    </div>
+
+    <header class="top" id="top">
+      <a class="top-handle" href="#intro" data-nav>{HANDLE}</a>
+      <nav class="top-nav lens" data-lens aria-label="Sections">
+        <a href="#work" data-nav>Work</a>
+        <a href="#honours" data-nav>Honours</a>
+        <a href="#contact" data-nav>Contact</a>
+      </nav>
+    </header>
+
+    <main id="main">
+      <section id="intro" class="intro" aria-labelledby="name">
+        <div class="intro-frame">
+          <h1 id="name" class="name" data-name>{OWNER_NAME}</h1>
+          <div class="intro-under">
+            {NAME_IS_PLACEHOLDER && <span class="ph-tag" data-intro-fade>[PLACEHOLDER: real name]</span>}
+            <p class="intro-line" data-intro-fade><span data-scramble>A personal portfolio.</span></p>
+            <p class="intro-hint" data-intro-fade><span data-scramble>Move to stir the ink. Click to drop more.</span></p>
+          </div>
+        </div>
+        <p class="intro-cue" data-intro-fade aria-hidden="true"><span data-scramble>{projects.length} projects below</span></p>
+      </section>
+
+      <section id="work" class="work" aria-labelledby="work-h">
+        <div class="work-stage" id="work-stage">
+          <div class="work-hud" id="work-hud">
+            <h2 id="work-h" class="work-h">Work</h2>
+            <p class="work-count" aria-hidden="true"><span class="work-n" id="work-n">01</span><span class="work-of">/{total}</span></p>
+            <p class="work-title" id="work-title" aria-hidden="true"><span class="ph-tag ph-tag--inline">placeholder</span> <span id="work-title-t">project title</span></p>
+            <button class="work-open" id="work-open" type="button">Open project <span class="sr" id="work-open-sr">01</span></button>
+            <ol class="work-index" id="work-index" aria-label="Projects">
+              {projects.map((p) => (
+                <li>
+                  <a href={`#/work/${p.slug}`} data-i={p.index} aria-label={`Project ${p.n}: ${ph(p.title).text} (placeholder)`}>{p.n}</a>
+                </li>
+              ))}
+            </ol>
+            <p class="work-hint" id="work-hint">Drag to throw the sheets. Click one to open it.</p>
+          </div>
+          <ul class="work-grid" id="work-grid" aria-label="Projects, as a grid">
+            {projects.map((p) => (
+              <li class="work-cell">
+                <a href={`#/work/${p.slug}`} data-i={p.index} class="work-cell-link">
+                  <span class="work-cell-media" style={`--tint:${p.tint}`} data-cover={p.index}></span>
+                  <span class="work-cell-n">Project {p.n}</span>
+                  <span class="work-cell-t"><span class="ph-tag ph-tag--inline">placeholder</span> {ph(p.title).text}</span>
+                </a>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </section>
+
+      <section id="honours" class="honours" aria-labelledby="honours-h">
+        <div class="honours-head">
+          <h2 id="honours-h" class="sec-h">Honours</h2>
+          <p class="honours-note">DECA glass awards and medals. <span class="ph-tag ph-tag--inline">to confirm</span> Names, events, placings and years are placeholders until the owner supplies them.</p>
+          <p class="honours-hint">Push them. Click one to drop ink.</p>
+        </div>
+        <div class="honours-stage">
+          {award && (
+            <figure class="honour honour--glass" id="honour-glass">
+              <div class="honour-object" id="glass-anchor" data-honour="glass" tabindex="0" role="img" aria-label={`Award ${award.n}, glass (placeholder object)`}></div>
+              <figcaption class="honour-cap">
+                <span class="honour-k">Award {award.n}</span>
+                <span class="honour-t"><span class="ph-tag ph-tag--inline">placeholder</span> {ph(award.title).text}</span>
+                <span class="honour-m">{ph(award.event).text}</span>
+                <span class="honour-m">{ph(award.placement).text}, {ph(award.year).text}</span>
+              </figcaption>
+            </figure>
+          )}
+          {medal && (
+            <figure class="honour honour--medal" id="honour-medal">
+              <div class="honour-object" id="medal-anchor" data-honour="medal" tabindex="0" role="img" aria-label={`Medal ${medal.n} (placeholder object)`}></div>
+              <figcaption class="honour-cap">
+                <span class="honour-k">Medal {medal.n}</span>
+                <span class="honour-t"><span class="ph-tag ph-tag--inline">placeholder</span> {ph(medal.title).text}</span>
+                <span class="honour-m">{ph(medal.event).text}</span>
+                <span class="honour-m">{ph(medal.placement).text}, {ph(medal.year).text}</span>
+              </figcaption>
+            </figure>
+          )}
+        </div>
+      </section>
+
+      <section id="contact" class="contact" aria-labelledby="contact-h">
+        <h2 id="contact-h" class="sec-h sec-h--small">Contact</h2>
+        <a class="contact-big" id="contact-big" href={GITHUB} rel="me noopener" target="_blank"><span class="contact-word">GitHub</span><span class="sr"> (opens in a new tab)</span></a>
+        <div class="contact-rows">
+          <p class="contact-row"><span class="contact-k">Handle</span> <a href={GITHUB} rel="me noopener" target="_blank">{HANDLE}</a> <span class="ph-tag ph-tag--inline">to confirm</span></p>
+          <p class="contact-row"><span class="contact-k">Email</span> <span class="ph-tag ph-tag--inline">placeholder</span> email address</p>
+          <p class="contact-row"><span class="contact-k">Elsewhere</span> <span class="ph-tag ph-tag--inline">placeholder</span> other links</p>
+        </div>
+        <button class="contact-top" id="to-top" type="button">Back to the top</button>
+      </section>
+    </main>
+    <div class="af" id="af" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+
+    <div class="project" id="project" role="dialog" aria-modal="true" aria-labelledby="project-title" hidden>
+      <div class="project-hero" id="project-hero" aria-hidden="true"></div>
+      <div class="project-panel" id="project-panel">
+        <p class="project-n" data-pd><span>Project</span> <span id="project-n">01</span></p>
+        <h2 class="project-title" id="project-title" tabindex="-1"><span class="ph-tag ph-tag--inline">placeholder</span> <span id="project-title-t">project title</span></h2>
+        <dl class="project-meta" data-pd>
+          <div><dt>Role</dt><dd id="project-role"></dd></div>
+          <div><dt>Year</dt><dd id="project-year"></dd></div>
+          <div><dt>Kind</dt><dd id="project-kind"></dd></div>
+          <div><dt>Tools</dt><dd id="project-tools"></dd></div>
+        </dl>
+        <p class="project-blurb" id="project-blurb" data-pd></p>
+        <div class="project-body" id="project-body" data-pd></div>
+        <p class="project-media" id="project-media" data-pd></p>
+        <p class="project-note" data-pd>The cover is a generated placeholder pattern, not project media.</p>
+        <div class="project-actions" data-pd>
+          <button type="button" class="project-btn" id="project-prev">Previous</button>
+          <button type="button" class="project-btn" id="project-next">Next project</button>
+        </div>
+      </div>
+      <button class="lens project-close" id="project-close" type="button" data-lens>Close</button>
+    </div>
+
+    <script>
+      import './main';
+    </script>
+  </body>
+</html>

@@ -1,16 +1,5 @@
 ---
-// Home (W-D004, D-023): hero, Selected work, Proof sheet, Awards and medals; the footer (contact) comes from the layout.
-// W-F mounts the sections in their fixed order; each section belongs to its crew.
-import Base from '../layouts/Base.astro';
-import Hero from '../sections/hero/Hero.astro';
-import Work from '../sections/work/Work.astro';
-import Sheet from '../sections/sheet/Sheet.astro';
-import Honours from '../sections/honours/Honours.astro';
-import { content } from '../lib/content/index.ts';
+// Home: the Flux concept (direction reset, #101, D-036, D-037). Built from src/concept/flux only.
+import FluxPage from '../concept/flux/FluxPage.astro';
 ---
-<Base title="Portfolio" path="/" page="home" noindex={content.hasPlaceholders}>
-  <Hero />
-  <Work />
-  <Sheet />
-  <Honours />
-</Base>
+<FluxPage />

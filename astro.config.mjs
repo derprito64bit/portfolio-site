@@ -96,8 +96,8 @@ export default defineConfig({
   vite: {
     plugins: [chunkManifest()],
     build: {
-      // One stylesheet for every page (see the header comment).
-      cssCodeSplit: false,
+      // Direction reset concept (Flux): per-page CSS, so the old Darkroom stylesheet stays off the new home page.
+      cssCodeSplit: true,
     },
   },
 });

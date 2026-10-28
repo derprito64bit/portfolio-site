@@ -26,4 +26,8 @@ Only the foundation crew (W-F) edits `package.json` and the lockfile. Everyone e
 | lighthouse | 13.5.0 (exact) | Apache-2.0 | 0 (dev, npx; Node >=22.19) | Performance and accessibility gate (no @lhci/cli) |
 | size-limit + @size-limit/file | 14.1.0 | MIT | 0 (dev) | Per-chunk budgets from the Vite manifest |
 | NVDA (desktop tool, not in package.json) | current stable | GPL-2.0 | 0 | Screen-reader transcripts at G3a and W-C10 |
-| REJECTED: gsap, ScrollTrigger, SplitText, CustomEase, @paper-design/shaders, troika-three-text, postprocessing, detect-gpu, ogl, stegu/webgl-noise, @swup/astro, @swup/head-plugin, @swup/preload-plugin, @lhci/cli, @fontsource packages | n/a | n/a | saves about 46-120 kB gz | No beat needs them |
+| gsap (core, ScrollTrigger, SplitText, ScrambleTextPlugin, CustomEase) | 3.15.0 | GSAP Standard "no charge" licence (gsap.com/standard-license); notices kept | about 57 (LIBRARIES.md sums); Flux page bundle 91.7 measured with ogl and our code | Flux concept: scroll triggers and pin, split and scrambled type, the one signature ease |
+| ogl | 1.0.11 | Unlicense | about 13 (LIBRARIES.md) | Flux concept: every WebGL pass (fluid sim, marbling field, covers, planes, glass lenses) |
+| @fontsource-variable/roboto-flex | 5.3.0 | OFL-1.1 (licence in the package) | 319 woff2 (measured; only the latin full-axes file ships) | Flux concept: the one family, all roles set by its wdth, wght, slnt and opsz axes |
+| WebGL-Fluid-Simulation (PavelDoGreat), borrowed method, not a package | n/a | MIT; notice kept in src/concept/flux/gl/shaders.ts | 0 extra (rewritten into our shaders) | Flux concept: the stable-fluids solver structure |
+| REJECTED: @paper-design/shaders, troika-three-text, postprocessing, detect-gpu, stegu/webgl-noise, @swup/astro, @swup/head-plugin, @swup/preload-plugin, @lhci/cli | n/a | n/a | saves about 46-120 kB gz | No beat needs them |
