@@ -29,3 +29,15 @@ Newest entries last, dates in UTC. The full 2026-10-02 to 10-13 history (about 1
   - The review's lean operating model is adopted. W-S2's cap is 3 code rounds plus 1 evidence round, with no budget pause and a cost line every round.
   - The repo now carries the orchestrator context (this file, `PLAN.md` and `CLAUDE.md`).
   - **Next stage:** the tooling PR (the lean loop), then the W-S2 launch.
+- **2026-10-27 to 10-28: the lean loop, then W-S2.**
+  - Tooling PR #95 (d1ba6cd) built the lean crew loop and its shared tools; one Sonnet verifier found 10 issues, all fixed before merge. #96 set W-S2's config and the swapMinGap token.
+  - The W-S2 spec v1 (#14 comment 6459323335, 9,604 chars, 25 quotes verified) folded every ruling. A refuter ran 2 rounds; A12 was ruled in it (1.19 kB held, W-S2 at most +3.0 kB pre-GL).
+  - **Round 1** (about $59): changes, 4 must-fix. Rulings 6462781328: GL must fit 187,000 B, no pre-GL rise, L3 means 35% of the print.
+  - **Round 2** (about $32): only GL over. Ruling 6464777023: chunks that only GL imports count.
+  - **Round 3** (about $28): GL 233 B over at the cap. The owner chose D-035 (GL 187.6 kB, #99) plus one more round.
+  - **Round 4** (about $20): approved. The jury scored 7/7 on all five rows. Readable 3,129 ms, L8 iGPU 0.12 ms (a pass), ratio 0.13, hero GPU 0.83.
+  - Mobile TBT was blocked five times by a busy host: other sessions' headless browsers, and benchmarkIndex under 0.9 x the baseline. The owner chose to merge with TBT deferred.
+  - **W-S2 merged as be3049f.** Follow-ups: #91 comment 6476370307.
+  - Costs: W-S2 crew runs about $140, the orchestrator about $70, reviews about $3.
+  - **Next stage:** W-F-m3 on the lean loop.
+
