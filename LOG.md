@@ -51,3 +51,12 @@ Newest entries last, dates in UTC. The full 2026-10-02 to 10-13 history (about 1
   - The portfolio is standalone, not connected to [project]ion.
   - Agents use external libraries and tools and install them themselves.
   - The reset exceptions are written into CLAUDE.md, owner-voice.md, decisions.md, deps.md, rules.web.md, the north star, budgets.md and PLAN.md.
+- **2026-10-28: the direction reset built three concepts and stopped for the owner's pick.**
+  - The owner's name field was left as the template text, so the intros use a marked placeholder (`OWNER_NAME`).
+  - Research (2 Sonnet agents): `TECHNIQUES.md` and `LIBRARIES.md` in `portfolio-evidence/research-reset/2026-10-28/`. GSAP 3.15 is free with every plugin; Spline and Unicorn Studio fail the no-badge rule; lygia's licence is risky.
+  - Three Opus xhigh builders, in parallel worktrees, each wrote a direction doc and a working prototype at `/`: Viewfinder (an EVF-native site), Refraction (liquid glass) and Flux (a stirred fluid field).
+  - An independent Opus xhigh jury drove each production build (desktop, phone, reduced motion, keyboard, 4x CPU): round 1 Viewfinder 7.4, Refraction 7.1, Flux 7.1. Its worst finds: Refraction's broken first second, Flux at 4 fps on a slow CPU, and Viewfinder's untappable phone Back.
+  - One revision round on the jury's five fixes each, then a jury re-check: Viewfinder 7.9, Refraction 7.7, Flux 7.6, no blocking bug. A last Flux fix restored the name's cursor response, which round 2 had found almost gone.
+  - The builds are served by `portfolio-preview/concepts_serve.py` (a chooser on 4420), and the build log shows the three concepts.
+  - Cost: about $126 in agents.
+  - **Next:** the owner's pick (D-038), then step 4 of the stage (the new plan).
