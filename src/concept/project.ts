@@ -288,7 +288,7 @@ export function initProject(ctx: Ctx): ProjectView {
       // the loupe over the hero
       const p = ctx.pointer;
       const L = rig.loupe;
-      const inHero = ctx.pvOpen && !busy && vw >= 760 && p.x > H.x && p.x < H.x + H.w && p.y > H.y && p.y < H.y + H.h;
+      const inHero = ctx.motion && ctx.pvOpen && !busy && vw >= 760 && p.x > H.x && p.x < H.x + H.w && p.y > H.y && p.y < H.y + H.h;
       if (inHero && !L.on && L.r < 1) {
         L.x = drop.x;
         L.y = drop.y;

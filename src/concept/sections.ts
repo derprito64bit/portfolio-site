@@ -14,7 +14,7 @@ export interface Sections {
   lightOverride(light: [number, number]): [number, number];
 }
 
-export function initSections(ctx: Ctx): Sections {
+export async function initSections(ctx: Ctx, slice: () => Promise<void>): Promise<Sections> {
   const { stage, rig, motion } = ctx;
   const honours = $('#honours');
   const contact = $('#contact');
@@ -29,6 +29,7 @@ export function initSections(ctx: Ctx): Sections {
   });
   stage?.mirror.add(link, $$('.contact__w', link));
 
+  await slice();
   if (motion) {
     $$('.honour').forEach((h, i) => {
       const lines: HTMLElement[] = [];
@@ -47,6 +48,7 @@ export function initSections(ctx: Ctx): Sections {
         },
       });
     });
+    await slice();
     const head = $$('.honours__h, .honours__note');
     const hs = head.map((el) => SplitText.create(el, { type: 'lines', mask: 'lines', aria: 'none' }));
     const hl = hs.flatMap((s) => s.lines as HTMLElement[]);

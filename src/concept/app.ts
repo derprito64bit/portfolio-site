@@ -1,10 +1,9 @@
-// The app chunk: GSAP (ScrollTrigger, SplitText, Flip, ScrambleText, DrawSVG, CustomEase), Lenis, the entry release,
+// The app chunk: GSAP (ScrollTrigger, SplitText, Flip, DrawSVG, CustomEase), Lenis, the entry release,
 // the theatre, honours, contact and the project view, all driven from one ticker.
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { SplitText } from 'gsap/SplitText';
 import { Flip } from 'gsap/Flip';
-import { ScrambleTextPlugin } from 'gsap/ScrambleTextPlugin';
 import { DrawSVGPlugin } from 'gsap/DrawSVGPlugin';
 import { CustomEase } from 'gsap/CustomEase';
 import Lenis from 'lenis';
@@ -17,7 +16,7 @@ import { initSections, type Sections } from './sections';
 import type { Project } from './content';
 import { $, $$, coverOf } from './util';
 
-gsap.registerPlugin(ScrollTrigger, SplitText, Flip, ScrambleTextPlugin, DrawSVGPlugin, CustomEase);
+gsap.registerPlugin(ScrollTrigger, SplitText, Flip, DrawSVGPlugin, CustomEase);
 CustomEase.create('glass', '0.16, 1, 0.3, 1');
 
 export interface Ctx {
@@ -56,8 +55,18 @@ function fitName(phone: boolean) {
   root.style.setProperty('--ns', `${fs.toFixed(1)}px`);
 }
 
-export function start({ stage, rig, motion, skipped }: { stage: Stage | null; rig: LensRig | null; motion: boolean; skipped: boolean }) {
-  const html = document.documentElement;
+let sliceN = 0;
+const nextFrame = () => {
+  performance.mark(`prep-${sliceN++}`);
+  return new Promise<void>((r) => requestAnimationFrame(() => r()));
+};
+let prepared: { ctx: Ctx; nameChars: HTMLElement[]; introEl: HTMLElement } | null = null;
+
+/**
+ * Everything heavy happens here, a slice per frame while the preloader runs (the count only reaches 100 once it is
+ * done), so the release itself never stalls: name split, Lenis, the theatre, honours, the project view.
+ */
+export async function prepare({ stage, rig, motion }: { stage: Stage | null; rig: LensRig | null; motion: boolean }) {
   const data = JSON.parse($('#r-data').textContent || '{}') as { projects: Project[] };
   const phone = innerWidth < 760;
   const ctx: Ctx = {
@@ -83,28 +92,61 @@ export function start({ stage, rig, motion, skipped }: { stage: Stage | null; ri
 
   fitName(phone);
 
-  // the name: chars, each masked by its line, mirrored into the glass
+  // the name: chars, each masked by its line, mirrored into the glass (hidden until the release)
   const nameChars: HTMLElement[] = [];
   $$('.nl').forEach((l) => {
-    const sp = SplitText.create(l, { type: 'chars', aria: 'none', charsClass: 'nc' });
-    nameChars.push(...(sp.chars as HTMLElement[]));
-    stage?.mirror.add(l, sp.chars as HTMLElement[]);
+    const chars = $$('.nc', l);
+    nameChars.push(...chars);
+    if (motion) gsap.set(chars, { yPercent: 130 });
+    stage?.mirror.add(l, chars);
   });
+  await nextFrame();
 
   if (motion) {
-    const lenis = new Lenis({ lerp: 0.085, wheelMultiplier: 0.95, smoothWheel: true });
+    // lerp 0.14: about 90% of a wheel step lands within 0.25 s, so the scrubbed scenes keep up with the hand
+    const lenis = new Lenis({ lerp: 0.14, wheelMultiplier: 0.95, smoothWheel: true });
     ctx.lenis = lenis;
     lenis.on('scroll', ScrollTrigger.update);
     lenis.stop();
   }
   gsap.ticker.lagSmoothing(0);
 
-  ctx.theatre = motion ? initTheatre(ctx) : null;
-  ctx.sections = initSections(ctx);
+  ctx.theatre = motion ? await initTheatre(ctx, nextFrame) : null;
+  await nextFrame();
+  ctx.sections = await initSections(ctx, nextFrame);
+  await nextFrame();
   ctx.project = initProject(ctx);
   if (!motion) bindCalmPlates(ctx);
+  await nextFrame();
 
   // pointer
+  // scroll answers in the same frame: the glass flinches from the wheel or the swipe before Lenis moves anything
+  if (motion && rig) {
+    addEventListener('wheel', (e) => rig.kick(e.deltaY / 100), { passive: true });
+    let ty = 0;
+    addEventListener('touchstart', (e) => (ty = e.touches[0]?.clientY ?? 0), { passive: true });
+    addEventListener(
+      'touchmove',
+      (e) => {
+        const y = e.touches[0]?.clientY ?? ty;
+        rig.kick((ty - y) / 40);
+        ty = y;
+      },
+      { passive: true },
+    );
+  }
+  const setNamePath = () => {
+    if (!rig) return;
+    const ls = $$('.nl').map((l) => l.getBoundingClientRect());
+    if (ls.length < 1) return;
+    const x0 = Math.min(...ls.map((r) => r.left)) + rig.R * 0.7;
+    const x1 = Math.max(...ls.map((r) => r.right)) - rig.R * 0.6;
+    const y1 = ls[0].top + ls[0].height * 0.5;
+    const y2 = ls[ls.length - 1].top + ls[ls.length - 1].height * 0.55;
+    rig.namePath = { x0, x1: Math.max(x0 + 10, x1), y1, y2 };
+  };
+  setNamePath();
+
   addEventListener(
     'pointermove',
     (e) => {
@@ -148,9 +190,20 @@ export function start({ stage, rig, motion, skipped }: { stage: Stage | null; ri
       fitName(ctx.phone);
       stage?.resize();
       rig?.layout();
+      setNamePath();
       ScrollTrigger.refresh();
     });
   });
+
+  prepared = { ctx, nameChars, introEl };
+}
+
+/** The release: called once the count reaches 100 (after prepare). */
+export function start({ skipped }: { skipped: boolean }) {
+  if (!prepared) return;
+  const { ctx, nameChars, introEl } = prepared;
+  const { stage, rig, motion } = ctx;
+  const html = document.documentElement;
 
   // the loop: lenis, sections, theatre, lens, then one GL frame
   let lastLight: [number, number] = [-0.55, -0.8];
@@ -215,7 +268,6 @@ export function start({ stage, rig, motion, skipped }: { stage: Stage | null; ri
     html.classList.add('is-in');
     pre.setAttribute('aria-hidden', 'true');
     ctx.lenis?.start();
-    ScrollTrigger.refresh();
     const hash = location.hash.match(/^#\/(project-\d\d)$/);
     if (hash) {
       const i = ctx.projects.findIndex((p) => p.slug === hash[1]);
@@ -232,7 +284,7 @@ export function start({ stage, rig, motion, skipped }: { stage: Stage | null; ri
     tl.to(rig, { surge: 1, duration: 0.3, ease: 'power2.out' }, hold);
     tl.to(rig, { surge: 0, duration: 1.1, ease: 'glass' }, hold + 0.3);
     tl.add(() => rig.release(), hold + 0.24);
-    tl.fromTo(nameChars, { yPercent: 130 }, { yPercent: 0, duration: 1.1, ease: 'glass', stagger: 0.035 }, hold + 0.2);
+    tl.to(nameChars, { yPercent: 0, duration: 1.1, ease: 'glass', stagger: 0.035 }, hold + 0.2);
     tl.fromTo(kicker, { yPercent: 115 }, { yPercent: 0, duration: 1.1, ease: 'glass' }, hold + 0.55);
     tl.fromTo([tag, bar], { opacity: 0 }, { opacity: 1, duration: 0.6, ease: 'power1.out' }, hold + 0.75);
     tl.add(() => {
@@ -245,6 +297,9 @@ export function start({ stage, rig, motion, skipped }: { stage: Stage | null; ri
       rig.release();
       rig.travel = 0;
     }
+    // no glass (WebGL off): the name still rises in the DOM; calm mode simply shows it
+    if (motion) gsap.to(nameChars, { yPercent: 0, duration: 1.1, ease: 'glass', stagger: 0.035, delay: 0.1 });
+    else gsap.set(nameChars, { yPercent: 0 });
     pre.style.display = 'none';
     stage?.mirror.remove(preNum);
     enter();
@@ -257,7 +312,7 @@ const calmPlates: { visible: boolean }[] = [];
 function bindCalmPlates(ctx: Ctx) {
   const stage = ctx.stage;
   if (!stage) return;
-  $$('.chapter__digits').forEach((d) => stage.mirror.add(d, [d]));
+  $$('.chapter__digits').forEach((d) => stage.mirror.add(d, $$('.cd', d)));
   $$('.chapter__plate').forEach((el, i) => {
     const p = ctx.projects[i];
     const plate = { el, rect: null, a: coverOf(p), b: null, split: 0, dir: 0, exposure: 1, hover: 0, visible: true };

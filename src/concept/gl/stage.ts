@@ -1,7 +1,7 @@
 // One WebGL2 canvas (OGL) behind the DOM. Frame: plates and mirrored type render into a scene target, then the lens
 // pass refracts that target onto the screen.
 import { Renderer, Program, Mesh, Triangle, Plane, RenderTarget, Texture } from 'ogl';
-import { FULL_VERT, TEXT_FRAG, PLATE_VERT, PLATE_FRAG, LENS_FRAG } from './shaders';
+import { FULL_VERT, TEXT_FRAG, PLATE_VERT, PLATE_FRAG, LENS_FRAG, GROUND_FRAG } from './shaders';
 import { TextMirror } from './mirror';
 
 export const MAX_SHAPES = 6;
@@ -66,8 +66,12 @@ export class Stage {
   private rt: RenderTarget;
   private textTex: Texture;
   private textMesh: Mesh;
-  private plateProgram: Program;
-  private plateMesh: Mesh;
+  private groundMesh: Mesh;
+  private groundProgram: Program;
+  /** Ground light pool (CSS px) and strength. */
+  pool = { x: 0, y: 0, r: 600, s: 1 };
+  private plateProgram: Program | null = null;
+  private plateMesh: Mesh | null = null;
   private lensProgram: Program;
   private lensMesh: Mesh;
   private shapeBuf = new Array(MAX_SHAPES * 4).fill(0);
@@ -89,28 +93,18 @@ export class Stage {
     this.textTex = new Texture(gl, { image: this.mirror.canvas, generateMipmaps: false, minFilter: gl.LINEAR, magFilter: gl.LINEAR });
     const textProgram = new Program(gl, { vertex: FULL_VERT, fragment: TEXT_FRAG, uniforms: { uText: { value: this.textTex } }, transparent: true, depthTest: false, depthWrite: false, cullFace: null as unknown as number });
     this.textMesh = new Mesh(gl, { geometry: tri, program: textProgram });
-
-    this.plateProgram = new Program(gl, {
-      vertex: PLATE_VERT,
-      fragment: PLATE_FRAG,
-      uniforms: {
-        uRect: { value: [0, 0, 1, 1] },
-        uView: { value: [1, 1] },
-        uTime: { value: 0 },
-        uA: { value: [0, 0] },
-        uB: { value: [0, 0] },
-        uTintA: { value: [0.3, 0.1, 0.1] },
-        uTintB: { value: [0.3, 0.1, 0.1] },
-        uSplit: { value: 0 },
-        uDir: { value: 0 },
-        uExposure: { value: 1 },
-        uHover: { value: 0 },
-      },
+    this.groundProgram = new Program(gl, {
+      vertex: FULL_VERT,
+      fragment: GROUND_FRAG,
+      uniforms: { uRes: { value: [1, 1] }, uDpr: { value: 1 }, uTime: { value: 0 }, uPool: { value: [0, 0, 600] }, uGround: { value: 1 } },
       depthTest: false,
       depthWrite: false,
       cullFace: null as unknown as number,
     });
-    this.plateMesh = new Mesh(gl, { geometry: new Plane(gl), program: this.plateProgram });
+    this.groundMesh = new Mesh(gl, { geometry: tri, program: this.groundProgram });
+
+    // the cover program is built later (preparePlates) so the droplets move from the first frame
+
 
     this.lensProgram = new Program(gl, {
       vertex: FULL_VERT,
@@ -148,6 +142,7 @@ export class Stage {
     this.w = window.innerWidth;
     this.h = window.innerHeight;
     this.renderer.setSize(this.w, this.h);
+    this.pool = { x: this.w * 0.62, y: this.h * 0.56, r: Math.max(this.w, this.h) * 0.55, s: 1 };
     const pw = this.gl.canvas.width;
     const ph = this.gl.canvas.height;
     this.rt.setSize(pw, ph);
@@ -156,10 +151,69 @@ export class Stage {
     this.textTex.needsUpdate = true;
   }
 
-  /** Compile every program and draw once so the first real frame never hitches. */
+  /**
+   * Compile the cover shader without blocking: a twin program links in the driver (KHR_parallel_shader_compile)
+   * while frames keep running; OGL then links the same sources, which the driver serves from its program cache.
+   */
+  async preparePlates(nextFrame: () => Promise<void>) {
+    const gl = this.gl as WebGL2RenderingContext;
+    const ext = gl.getExtension('KHR_parallel_shader_compile') as { COMPLETION_STATUS_KHR: number } | null;
+    if (ext) {
+      const vs = gl.createShader(gl.VERTEX_SHADER)!;
+      const fs = gl.createShader(gl.FRAGMENT_SHADER)!;
+      gl.shaderSource(vs, PLATE_VERT);
+      gl.shaderSource(fs, PLATE_FRAG);
+      gl.compileShader(vs);
+      gl.compileShader(fs);
+      const prog = gl.createProgram()!;
+      gl.attachShader(prog, vs);
+      gl.attachShader(prog, fs);
+      gl.linkProgram(prog);
+      const t0 = performance.now();
+      while (!gl.getProgramParameter(prog, ext.COMPLETION_STATUS_KHR) && performance.now() - t0 < 5000) await nextFrame();
+      gl.deleteProgram(prog);
+      gl.deleteShader(vs);
+      gl.deleteShader(fs);
+    }
+    await nextFrame();
+    performance.mark('plates-link');
+    this.buildPlates();
+    performance.mark('plates-built');
+  }
+
+  private buildPlates() {
+    if (this.plateProgram) return;
+    const gl = this.gl;
+    this.plateProgram = new Program(gl, {
+      vertex: PLATE_VERT,
+      fragment: PLATE_FRAG,
+      uniforms: {
+        uRect: { value: [0, 0, 1, 1] },
+        uView: { value: [1, 1] },
+        uTime: { value: 0 },
+        uA: { value: [0, 0] },
+        uB: { value: [0, 0] },
+        uTintA: { value: [0.3, 0.1, 0.1] },
+        uTintB: { value: [0.3, 0.1, 0.1] },
+        uSplit: { value: 0 },
+        uDir: { value: 0 },
+        uExposure: { value: 1 },
+        uHover: { value: 0 },
+      },
+      depthTest: false,
+      depthWrite: false,
+      cullFace: null as unknown as number,
+    });
+    this.plateMesh = new Mesh(gl, { geometry: new Plane(gl), program: this.plateProgram });
+  }
+
+  /** Draw once with a plate so the first real frame never hitches (no blocking finish). */
   warm() {
+    this.buildPlates();
+    const probe: Plate = { el: null, rect: { x: -8, y: -8, w: 4, h: 4 }, a: { seed: 0, mode: 0, tint: [0, 0, 0] }, b: null, split: 0, dir: 0, exposure: 1, hover: 0, visible: true };
+    this.plates.push(probe);
     this.render(0);
-    this.gl.finish();
+    this.plates.splice(this.plates.indexOf(probe), 1);
   }
 
   render(dt: number) {
@@ -170,10 +224,20 @@ export class Stage {
     renderer.setViewport(this.rt.width, this.rt.height);
     gl.clearColor(10 / 255, 10 / 255, 11 / 255, 1);
     gl.clear(gl.COLOR_BUFFER_BIT);
-    const pu = this.plateProgram.uniforms;
-    pu.uView.value = [this.w, this.h];
-    pu.uTime.value = this.time;
+    const gu = this.groundProgram.uniforms;
+    gu.uRes.value = [gl.canvas.width, gl.canvas.height];
+    gu.uDpr.value = this.dpr;
+    gu.uTime.value = this.time;
+    gu.uPool.value = [this.pool.x, this.pool.y, this.pool.r];
+    gu.uGround.value = this.pool.s;
+    renderer.render({ scene: this.groundMesh, target: this.rt, clear: false, sort: false, frustumCull: false });
+    const pu = this.plateProgram?.uniforms;
+    if (pu) {
+      pu.uView.value = [this.w, this.h];
+      pu.uTime.value = this.time;
+    }
     for (const p of this.plates) {
+      if (!pu || !this.plateMesh) break;
       if (!p.visible) continue;
       let x: number, y: number, w: number, h: number;
       if (p.rect) ({ x, y, w, h } = p.rect);
@@ -181,7 +245,7 @@ export class Stage {
         const r = p.el.getBoundingClientRect();
         x = r.left; y = r.top; w = r.width; h = r.height;
       } else continue;
-      if (w < 1 || h < 1 || y > this.h || y + h < 0 || x > this.w || x + w < 0) continue;
+      if (w < 1 || h < 1 || y > this.h || y + h < -10 || x > this.w || x + w < -10) continue;
       pu.uRect.value = [x, y, w, h];
       pu.uA.value = [p.a.seed, p.a.mode];
       pu.uTintA.value = p.a.tint;

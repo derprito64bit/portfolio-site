@@ -34,13 +34,12 @@ interface Chapter {
   open: HTMLElement;
 }
 
-export function initTheatre(ctx: Ctx): Theatre {
+export async function initTheatre(ctx: Ctx, slice: () => Promise<void>): Promise<Theatre> {
   const html = document.documentElement;
   html.classList.add('theatre-on');
   const { stage, rig } = ctx;
   const theatre = $('#theatre');
   const stagePlate = $('.stage__plate');
-  const chaptersEl = $('.chapters');
   const intro = $('.intro');
   const evf = $('.evf');
   const af = $('.evf__af');
@@ -51,11 +50,14 @@ export function initTheatre(ctx: Ctx): Theatre {
   const ro = Object.fromEntries($$('[data-ro]').map((el) => [el.dataset.ro!, el])) as Record<string, HTMLElement>;
   const railBtns = $$('.rail__b');
 
-  // ---- chapters: split the numerals (mirrored) and the title lines (DOM)
-  const chapters: Chapter[] = $$('.chapter').map((li) => {
+  // ---- chapters: split the numerals (mirrored) and the title lines (DOM), two chapters per frame
+  const chapters: Chapter[] = [];
+  const lis = $$('.chapter');
+  for (let k = 0; k < lis.length; k++) {
+    const li = lis[k];
     const dEl = $('.chapter__digits', li);
-    const ds = SplitText.create(dEl, { type: 'chars', aria: 'none' });
-    stage?.mirror.add(dEl, ds.chars as HTMLElement[]);
+    const ds = { chars: $$('.cd', dEl) };
+    stage?.mirror.add(dEl, ds.chars);
     const lines: HTMLElement[] = [];
     $$('.chapter__label, .chapter__name, .chapter__meta dt, .chapter__meta dd', li).forEach((el) => {
       const sp = SplitText.create(el, { type: 'lines', mask: 'lines', aria: 'none' });
@@ -66,8 +68,9 @@ export function initTheatre(ctx: Ctx): Theatre {
     gsap.set(ds.chars, { yPercent: 130 });
     gsap.set(lines, { yPercent: 115 });
     gsap.set(open, { clipPath: 'inset(0 100% 0 0)' });
-    return { li, digits: ds.chars as HTMLElement[], lines, open };
-  });
+    chapters.push({ li, digits: ds.chars as HTMLElement[], lines, open });
+    await slice();
+  }
 
   // ---- the stage plate (GL)
   const plate: Plate = { el: null, rect: { x: 0, y: 0, w: 1, h: 1 }, a: coverOf(ctx.projects[0]), b: null, split: 0, dir: 0, exposure: 0, hover: 0, visible: false };
@@ -86,19 +89,12 @@ export function initTheatre(ctx: Ctx): Theatre {
   const bottomItems = $$('.evf__bottom > *');
   gsap.set([...topItems, ...bottomItems, $('.evf__hist')], { opacity: 0 });
 
-  const tl = gsap.timeline({
-    defaults: { ease: 'none' },
-    scrollTrigger: {
-      trigger: theatre,
-      start: 'top top',
-      end: () => `+=${Math.round(TOTAL * innerHeight)}`,
-      pin: true,
-      scrub: true,
-      invalidateOnRefresh: true,
-      onUpdate: (self) => (s = self.progress * TOTAL),
-    },
-  });
-  tl.to(evf, { opacity: 1, duration: 0.1 }, 0.5)
+  await slice();
+  // built paused, initialised, then attached to its ScrollTrigger in separate frames (no long boot task)
+  const tl = gsap.timeline({ defaults: { ease: 'none' }, paused: true });
+  // the name block lifts with the first wheel tick, so the page answers at once
+  tl.to($('.intro__inner'), { yPercent: -9, duration: 1.15, ease: 'none' }, 0)
+    .to(evf, { opacity: 1, duration: 0.1 }, 0.5)
     .to(corners, { drawSVG: '100%', duration: 0.2, stagger: 0.03 }, 0.55)
     .to(topItems, { opacity: 1, duration: 0.08, stagger: 0.025 }, 0.7)
     .to(levelPaths, { drawSVG: '100%', duration: 0.18 }, 0.8)
@@ -110,15 +106,33 @@ export function initTheatre(ctx: Ctx): Theatre {
     .to(evf, { opacity: 0, duration: 0.18, ease: 'power1.in' }, 2.4)
     .to([$('.work__h'), $('.rail')], { opacity: 1, duration: 0.22 }, 2.66)
     .set({}, {}, TOTAL);
+  await slice();
+  tl.progress(1).progress(0);
+  await slice();
+  // the pin's layout is the one heavy task left: it waits until the droplets have flowed for a moment
+  const boot = (window as unknown as { __boot?: { t0: number } }).__boot;
+  while (boot && performance.now() - boot.t0 < 1300) await slice();
+  const st = ScrollTrigger.create({
+    trigger: theatre,
+    start: 'top top',
+    end: () => `+=${Math.round(TOTAL * innerHeight)}`,
+    pin: true,
+    scrub: true,
+    animation: tl,
+    invalidateOnRefresh: true,
+    onUpdate: (self) => (s = self.progress * TOTAL),
+  });
 
   // ---- discrete detail that plays at its own pace
+  // readouts are real: the frame darkens by -3 EV in thirds, first stopping the aperture down (F2.0 -> F3.2,
+  // 4 thirds), then the shutter (1/125 -> 1/400, 5 thirds); the scale and these values always agree
+  const AP = ['2.0', '2.2', '2.5', '2.8', '3.2'];
+  const SH = ['1/125', '1/160', '1/200', '1/250', '1/320', '1/400'];
   const roState: Record<string, string> = {};
   const setRo = (k: string, text: string) => {
     if (roState[k] === text || !ro[k]) return;
-    const first = roState[k] === undefined;
     roState[k] = text;
-    if (first) ro[k].textContent = text;
-    else gsap.to(ro[k], { duration: 0.5, scrambleText: { text, chars: '0123456789', speed: 0.5, revealDelay: 0.15 }, overwrite: true });
+    ro[k].textContent = text;
   };
   let afLocked = false;
   const lockAF = (on: boolean) => {
@@ -193,9 +207,8 @@ export function initTheatre(ctx: Ctx): Theatre {
     shape: null,
     params: null,
     active: () => current,
-    debug: () => ({ s, p: tl.progress(), start: tl.scrollTrigger?.start, end: tl.scrollTrigger?.end, y: scrollY }),
+    debug: () => ({ s, p: tl.progress(), start: st.start, end: st.end, y: scrollY }),
     scrollForChapter(i: number) {
-      const st = tl.scrollTrigger!;
       const target = i === 0 ? S0 + 0.06 * C : S0 + (i - 1) * C + 0.88 * C;
       return st.start + (target / TOTAL) * (st.end - st.start);
     },
@@ -209,7 +222,6 @@ export function initTheatre(ctx: Ctx): Theatre {
       const vh = innerHeight;
       const phone = vw < 760;
       const P = rectOf(stagePlate);
-      const col = chaptersEl.getBoundingClientRect();
       const inset = Math.min(vw, vh) * 0.022;
       const full: Rect = { x: inset, y: inset, w: vw - 2 * inset, h: vh - 2 * inset };
 
@@ -221,7 +233,7 @@ export function initTheatre(ctx: Ctx): Theatre {
           gsap.set(barEl, { autoAlpha: bv });
         }
       }
-      const rv = 1 - seg(s, 0.12, 0.34);
+      const rv = 1 - seg(s, 0.02, 0.22);
       if (Math.abs(rv - lastRow) > 0.001) {
         lastRow = rv;
         rowEl.style.opacity = String(rv);
@@ -232,10 +244,15 @@ export function initTheatre(ctx: Ctx): Theatre {
       plate.rect = lerpRect(full, P, gShrink);
       plate.visible = s > 1.66 && !ctx.pvOpen;
       plate.exposure = smooth(seg(s, 1.74, 2.3));
+      if (!stage) {
+        // no WebGL: the stage plate is a tinted stand-in that only exists once the work is exposed
+        stagePlate.style.opacity = plate.visible ? String(plate.exposure) : '0';
+        stagePlate.style.setProperty('--tint', ctx.projects[Math.max(0, current)].tint);
+      }
 
       // slab rests: between plate and numeral (desktop), or at the plate's edges (phone)
       const shw = phone ? Math.max(18, vw * 0.06) : Math.max(50, vw * 0.058);
-      const restR = phone ? P.x + P.w - shw * 0.55 : Math.min(P.x + P.w + shw * 0.12, col.left - shw * 0.2);
+      const restR = phone ? P.x + P.w - shw * 0.55 : P.x + P.w + shw * 0.35;
       const restL = P.x + shw * 0.6;
       const cs = (s - S0) / C;
       let slabX = restR;
@@ -289,7 +306,7 @@ export function initTheatre(ctx: Ctx): Theatre {
         const R = rig.R;
         const circle: Shape = { x: vw / 2, y: vh / 2, hw: R, hh: R, r: R, rot: 0 };
         const frameS: Shape = { x: vw / 2, y: vh / 2, hw: full.w / 2, hh: full.h / 2, r: Math.min(30, inset * 1.6), rot: 0 };
-        const slab: Shape = { x: slabX, y: P.y + P.h / 2, hw: shw, hh: P.h / 2 + (phone ? vh * 0.025 : vh * 0.055), r: shw, rot: 0 };
+        const slab: Shape = { x: slabX, y: P.y + P.h / 2, hw: shw, hh: P.h / 2 + (phone ? vh * 0.02 : vh * 0.03), r: shw, rot: 0 };
         const gGrow = inOut(seg(s, 0.28, 1.05));
         let shape = lerpShape(circle, frameS, gGrow);
         if (gShrink > 0) shape = lerpShape(frameS, slab, gShrink);
@@ -300,10 +317,10 @@ export function initTheatre(ctx: Ctx): Theatre {
         if (gShrink > 0) params = lerpParams(frameP, slabP, gShrink);
         api.shape = shape;
         api.params = params;
-        rig.script.w = inOut(seg(s, 0.1, 0.5));
+        rig.script.w = inOut(seg(s, 0.0, 0.45));
         rig.script.shape = shape;
         rig.script.params = params;
-        rig.follow = s < 0.1;
+        rig.follow = s < 0.02;
 
         // the loupe: a droplet pulled out of the slab onto the cursor over the plate
         const p = ctx.pointer;
@@ -335,9 +352,10 @@ export function initTheatre(ctx: Ctx): Theatre {
         gsap.set(mark, { x: ev * 45 });
         const thirds = Math.round(ev * 3) / 3;
         ro.ev.textContent = Math.abs(thirds) < 0.01 ? '±0' : `${thirds > 0 ? '+' : '-'}${Math.abs(thirds).toFixed(1)}`;
-        setRo('shutter', s < 1.25 ? '1/125' : s < 1.78 ? '1/4000' : '1/60');
-        setRo('aperture', s < 1.78 ? '2.0' : '2.8');
-        setRo('iso', s < 1.78 ? '400' : '200');
+        const n = Math.max(0, Math.min(9, Math.round(-ev * 3)));
+        setRo('aperture', AP[Math.min(n, 4)]);
+        setRo('shutter', SH[Math.max(0, n - 4)]);
+        setRo('iso', '400');
         lockAF(s > 1.62);
         // histogram: two lobes that slide into the shadows as the frame falls to black
         const shift = (ev / 3) * 0.42;
@@ -363,6 +381,5 @@ export function initTheatre(ctx: Ctx): Theatre {
   setRo('shutter', '1/125');
   setRo('aperture', '2.0');
   setRo('iso', '400');
-  ScrollTrigger.refresh();
   return api;
 }

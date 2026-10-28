@@ -316,9 +316,12 @@ void main() {
     col = acc / wsum;
 
     // glass body: a breath of lift, absorption toward the thick rim
-    col = col * (0.965 - 0.08 * slope) + 0.006 * uShade;
+    col = col * (0.99 - 0.05 * slope) + 0.006 * uShade;
     float fres = pow(1.0 - n.z, 1.4);
     col += fres * 0.16 * uShade;
+    // the room in the glass: a broad soft reflection on the bevel that faces the light
+    float env = smoothstep(-0.1, 0.95, dot(nrm, Ld)) * smoothstep(0.05, 0.7, slope);
+    col += env * vec3(0.92, 0.96, 1.0) * 0.075 * uShade;
     vec3 L = normalize(vec3(Ld * 0.95, 0.62));
     vec3 H = normalize(L + vec3(0.0, 0.0, 1.0));
     float spec = pow(max(dot(n, H), 0.0), 70.0);
@@ -327,13 +330,14 @@ void main() {
     float facing = max(dot(nrm, Ld), 0.0);
     float away = max(dot(nrm, -Ld), 0.0);
     col += rim * (0.18 + 0.82 * facing) * 0.9 * uShade;
-    float inner = (1.0 - smoothstep(0.0, bevel * 0.85, -d)) * away * away;
-    col += inner * 0.09 * uShade;
+    // light carried through the body exits on the far side: a soft transmitted glow inside the rim
+    float inner = (1.0 - smoothstep(0.0, bevel * 1.1, -d)) * pow(away, 1.5);
+    col += inner * vec3(1.0, 0.97, 0.92) * 0.2 * uShade;
   } else {
     float off = 14.0 + big * 0.2;
     float dsh = lensD(p + Ld * off);
     float sh = 1.0 - smoothstep(-12.0, 46.0, dsh);
-    col *= 1.0 - 0.5 * sh * uShade;
+    col *= 1.0 - 0.25 * sh * uShade;
     // the light the glass focuses lands beyond it: a caustic pool inside the shadow, brightest at its core
     float core = 1.0 - smoothstep(-off * 1.1, 2.0, dsh);
     float caust = core * smoothstep(0.0, 10.0, d) * (0.5 + 0.5 * smoothstep(0.0, off * 0.6, d));
@@ -342,4 +346,25 @@ void main() {
     col *= 1.0 - 0.3 * (1.0 - smoothstep(0.0, 2.0, d)) * uShade;
   }
   fragColor = vec4(mix(base, col, uAlpha), 1.0);
+}`;
+
+/** The ground: near-black with one soft, slow light pool, so clear glass always has something to bend. */
+export const GROUND_FRAG = /* glsl */ `#version 300 es
+precision highp float;
+uniform vec2 uRes;
+uniform float uDpr;
+uniform float uTime;
+uniform vec3 uPool;    // x, y, radius (CSS px)
+uniform float uGround; // pool strength
+out vec4 fragColor;
+${NOISE}
+void main() {
+  vec2 p = vec2(gl_FragCoord.x, uRes.y - gl_FragCoord.y) / uDpr;
+  vec3 col = vec3(10.0, 10.0, 11.0) / 255.0;
+  vec2 c = uPool.xy + vec2(sin(uTime * 0.05), cos(uTime * 0.04)) * uPool.z * 0.08;
+  float d = length(p - c) / uPool.z;
+  float pool = exp(-d * d * 1.6);
+  float grain = fbm(p * 0.0035 + uTime * 0.01) - 0.5;
+  col += vec3(1.0, 0.98, 0.95) * (pool * 0.05 + grain * 0.012) * uGround;
+  fragColor = vec4(col, 1.0);
 }`;

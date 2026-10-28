@@ -15,10 +15,10 @@ square under it.
 ## Flow (desktop; scroll units are viewport heights)
 | Beat | What happens | Timing |
 |---|---|---|
-| Preloader | Black. Six droplets of glass refract the count. Real progress (fonts, the GSAP chunk, shader compile with a warm frame, window load) pulls them together; merges conserve area, so the lens grows as it forms and its refractive strength rises with the count. Never hangs: 7 s timeout. Skip with Enter or the button. | 1.6 s minimum, then real |
+| Preloader | Black until the first glass frame (no fallback-face flash). Four droplets of glass glide in and turn from frame 1, refracting the count. Real progress (fonts, the GSAP chunk, shader compile with a warm frame, window load) pulls them together; merges conserve area, so the lens grows as it forms and its refractive strength rises with the count. Never hangs: 7 s timeout. Skip with Enter or the button. | 1.6 s minimum, then real |
 | Entry (the release) | At 100% the lens holds 250 ms (the breath), then surges and settles (no overshoot) while the count drops out and the name rises under it, char by char. The lens travels to its rest. | release 1.1 s |
-| Intro | The name, huge and expanded, bent by the lens under the cursor (critically damped follow, 0.32 s; trailing droplet 0.6 s). "Personal portfolio" small. At rest the lens drifts on its own. | |
-| Viewfinder | Pinned. The lens drifts to centre and grows into the whole frame; its rim becomes the eyepiece edge. An original EVF overlay etches on (stroke draw, scrambled readouts). The exposure scale walks to -3 as the frame falls to black; the AF frame hunts and locks; the first work exposes through it, highlights first. | 0 to 2.3 |
+| Intro | The name, huge and expanded, bent by the lens under the cursor (critically damped follow, 0.32 s; trailing droplet 0.6 s). "Personal portfolio" small. At rest the lens walks slowly along the name over a faint ground light it can bend. A wheel tick or swipe makes the glass flinch in the next frame (critically damped); Lenis lerp 0.14 lands 90% of a step in about 0.27 s. | |
+| Viewfinder | Pinned. The lens drifts to centre and grows into the whole frame; its rim becomes the eyepiece edge. An original EVF overlay etches on (stroke draw). The readouts are real: the frame darkens by -3 EV in thirds (F2.0 to F3.2, then 1/125 to 1/400) and the exposure scale always agrees; the AF frame hunts and locks; the first work exposes through it, highlights first. | 0 to 2.3 |
 | Into the work | The frame shrinks onto the stage plate; the lens thins into a standing glass slab between plate and numeral. | 2.3 to 3.0 |
 | Work (8) | Pinned chapters. Scroll pushes the slab across the plate; the next project is behind it (the seam is hidden in the glass). The numeral rolls and title lines swap at their own pace. Hover pulls a droplet out of the slab onto the cursor (a loupe). Click: the plate becomes the project page (GSAP Flip), detail rises after landing; Back is faster. | 0.8 per chapter |
 | Honours | Two glass forms (a standing plaque, a disc) over the category words, refracting them. Light sweeps across them with scroll; the pointer tilts the light. Honest placeholders. | |
@@ -38,8 +38,8 @@ square under it.
   critically damped springs (smooth-time 0.32 s main, 0.6 s trail, 0.07 s loupe).
 
 ## Libraries
-GSAP 3.15 (ScrollTrigger pin and scrub, SplitText masked reveals, Flip for the project open, ScrambleText readouts,
-DrawSVG for the overlay etch, CustomEase), Lenis (smooth scroll on the GSAP ticker), OGL (WebGL2: one canvas, a
+GSAP 3.15 (ScrollTrigger pin and scrub, SplitText masked reveals, Flip for the project open, DrawSVG for the
+overlay etch, CustomEase), Lenis (smooth scroll on the GSAP ticker), OGL (WebGL2: one canvas, a
 scene render target, the refraction pass), Mona Sans variable via @fontsource-variable.
 
 **Glass pipeline:** the page's display type is mirrored from the DOM into a 2D canvas texture each frame (the DOM

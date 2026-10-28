@@ -82,6 +82,11 @@ export class LensRig {
   pointer = { x: -1, y: -1, t: -10, active: false };
   /** Seconds of brisk travel left (after the release). */
   travel = 0;
+  /** The name's lines (CSS px): the idle lens walks slowly along them. */
+  namePath: { x0: number; x1: number; y1: number; y2: number } | null = null;
+  /** Wheel/touch flinch: a critically damped impulse (peaks about 60 ms after input, no overshoot). */
+  flinch = 0;
+  private flinchV = 0;
   time = 0;
   alpha = 1;
 
@@ -105,7 +110,7 @@ export class LensRig {
     this.base = {
       bevel: this.R * 0.82,
       refract: this.R * 0.34,
-      mag: 0.16,
+      mag: 0.12,
       disp: 0.34,
       alpha: 1,
       k: this.R * 0.55,
@@ -116,17 +121,17 @@ export class LensRig {
   }
 
   private seedDrops() {
-    // six droplets whose areas sum to the final lens: merging conserves area, so the lens grows as it forms
-    const weights = [1.6, 0.7, 1.1, 0.55, 0.9, 0.75];
+    // four droplets whose areas sum to the final lens: merging conserves area, so the lens grows as it forms
+    const weights = [1.5, 0.8, 0.95, 0.7];
     const sum = weights.reduce((a, b) => a + b, 0);
-    const angles = [0, 2.2, 4.1, 1.15, 3.2, 5.25];
-    const dists = [0, 0.36, 0.3, 0.42, 0.38, 0.33];
+    const angles = [0, 2.45, 4.35, 0.85];
+    const dists = [0, 0.36, 0.38, 0.32];
     const m = Math.min(this.stage.w, this.stage.h);
     this.drops = weights.map((wt, i) => ({
       sx: Math.cos(angles[i]) * dists[i] * m * (this.stage.w > this.stage.h ? 1.5 : 1),
       sy: Math.sin(angles[i]) * dists[i] * m * 0.9,
       r: Math.sqrt(wt / sum),
-      a: i === 0 ? 0 : (i - 1) * 0.13,
+      a: i === 0 ? 0 : (i - 1) * 0.2,
     }));
   }
 
@@ -146,16 +151,24 @@ export class LensRig {
     const out: Shape[] = [];
     let mainArea = this.drops[0].r * this.drops[0].r;
     const t = this.time;
+    // from the first frame: the droplets glide in from wider out and the whole set turns slowly
+    const enter = outQuart(clamp01(t / 1.5));
+    const spread = 1 + 0.4 * (1 - enter);
+    const turn = t * 0.16;
+    const ct = Math.cos(turn);
+    const sn = Math.sin(turn);
     for (let i = 1; i < this.drops.length; i++) {
       const d = this.drops[i];
       const u = smooth(seg(p, d.a, d.a + 0.42));
       const absorbed = smooth(seg(u, 0.72, 1));
       mainArea += d.r * d.r * absorbed;
       const k = outQuart(u);
-      const wob = (1 - u) * 6;
-      const x = cx + d.sx * (1 - k) + Math.sin(t * 0.9 + i * 1.7) * wob;
-      const y = cy + d.sy * (1 - k) + Math.cos(t * 0.7 + i * 2.3) * wob;
-      const r = this.R * d.r * (1 - absorbed);
+      const wob = (1 - u) * 7;
+      const ox = (d.sx * ct - d.sy * sn) * spread;
+      const oy = (d.sx * sn + d.sy * ct) * spread;
+      const x = cx + ox * (1 - k) + Math.sin(t * 0.9 + i * 1.7) * wob;
+      const y = cy + oy * (1 - k) + Math.cos(t * 0.7 + i * 2.3) * wob;
+      const r = this.R * d.r * (1 - absorbed) * (0.7 + 0.3 * enter);
       if (r > 0.6) out.push({ x, y, hw: r, hh: r, r, rot: 0 });
     }
     const R0 = this.R * Math.sqrt(mainArea) * (1 + this.surge * 0.14);
@@ -182,6 +195,12 @@ export class LensRig {
     const tt = this.time;
     let gx = this.anchor.x + Math.sin(tt * 0.23) * st.w * 0.07 + Math.sin(tt * 0.071) * st.w * 0.03;
     let gy = this.anchor.y + Math.sin(tt * 0.31 + 1.2) * st.h * 0.05;
+    const np = this.namePath;
+    if (np && !this.calm) {
+      // at rest the lens walks slowly along the name, so there is always type for it to bend
+      gx = lerp(np.x0, np.x1, 0.5 - 0.5 * Math.cos(tt * 0.24 + 2.2));
+      gy = lerp(np.y1, np.y2, 0.5 - 0.5 * Math.cos(tt * 0.15 + 1.1));
+    }
     if (!idle) {
       gx = this.pointer.x;
       gy = this.pointer.y;
@@ -203,6 +222,11 @@ export class LensRig {
     this.vx = lerp(this.vx, ivx, 0.25);
     this.vy = lerp(this.vy, ivy, 0.25);
 
+    // the flinch: wheel and touch kick it; critically damped, so it answers at once and never rings
+    const om = 16;
+    this.flinchV += (-2 * om * this.flinchV - om * om * this.flinch) * dt;
+    this.flinch += this.flinchV * dt;
+
     // scripted blend
     const w = this.script.w;
     const R = this.R * (1 + this.surge * 0.14);
@@ -215,6 +239,12 @@ export class LensRig {
       main = lerpShape({ ...main, rot: w > 0.5 ? 0 : main.rot }, { ...sc, rot: 0 }, w);
       if (w > 0.5) main.rot = 0;
     }
+    const fl = Math.max(-1.4, Math.min(1.4, this.flinch));
+    const fa = Math.abs(fl);
+    main.y += fl * 12;
+    main.hh *= 1 - 0.075 * fa;
+    main.hw *= 1 + 0.05 * fa;
+    main.r = Math.min(main.r, main.hw, main.hh);
     // trailing droplet: lags, necks off when the body moves, merges back at rest
     this.tx = this.calm ? main.x : damp(this.tx, main.x, this.tvx, 0.6, dt);
     this.ty = this.calm ? main.y : damp(this.ty, main.y, this.tvy, 0.6, dt);
@@ -240,9 +270,15 @@ export class LensRig {
     let params = this.base;
     if (w > 0 && this.script.params) params = lerpParams(this.base, this.script.params, w);
     if (this.extraParams.params && this.extraParams.t > 0) params = lerpParams(params, this.extraParams.params, this.extraParams.t);
-    const wob = Math.min(speed / 3000, 0.5) * (1 - w) * 0.6;
+    const wob = Math.min(speed / 3000, 0.5) * (1 - w) * 0.6 + 0.3 * fa;
     st.lens = { ...params, wobble: Math.max(params.wobble, wob), alpha: params.alpha * this.alpha };
     st.shapes = shapes.slice(0, 6);
+  }
+
+  /** A wheel or touch impulse (units: about one wheel notch). */
+  kick(v: number) {
+    if (this.calm) return;
+    this.flinchV += Math.max(-1.6, Math.min(1.6, v)) * 16 * Math.E * 0.75;
   }
 
   /** Hand over from the preloader: the merged body becomes the free lens at the centre. */

@@ -1,6 +1,7 @@
 ---
 // Refraction concept shell. Its own head and styles: nothing from the old Darkroom layout.
 import '@fontsource-variable/mona-sans/wdth.css';
+import monaUrl from '@fontsource-variable/mona-sans/files/mona-sans-latin-wdth-normal.woff2?url';
 import './refraction.css';
 interface Props { title: string }
 const { title } = Astro.props;
@@ -15,11 +16,14 @@ const { title } = Astro.props;
     <meta name="theme-color" content="#0A0A0B" />
     <title>{title}</title>
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="preload" as="font" type="font/woff2" href={monaUrl} crossorigin="anonymous" />
     <script is:inline>
       document.documentElement.classList.remove('no-js');
       document.documentElement.classList.add('js');
       if (!matchMedia('(prefers-reduced-motion: reduce)').matches) document.documentElement.classList.add('motion');
       if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
+      // nothing paints in a fallback face before the glass draws; never stays hidden if the script fails
+      setTimeout(function () { document.documentElement.classList.add('gl-drawn'); }, 4000);
     </script>
   </head>
   <body>
