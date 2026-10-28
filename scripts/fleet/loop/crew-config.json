@@ -1,0 +1,157 @@
+{
+  "$comment": "Crew-loop knobs (PLAN.md tooling item; system review 2026-10-13, flaw 7: rulings change the loop's behaviour through this file, never by editing the template). launch.mjs merges defaults with one crew's entry (objects merge one level deep; arrays replace), embeds the result and the crew's spec in the launched script, and refuses a crew marked draft. A ruling that changes a knob lands here through an orchestrator PR; prior-from-journal.cjs --refresh carries it into the next continuation. The mustFix quotes are word for word (crew-loop.check.cjs compares them with their sources).",
+  "schema": 1,
+  "defaults": {
+    "repo": "derprito64bit/portfolio-site",
+    "mainCheckout": "C:\\Users\\Aaron\\Documents\\GitHub\\portfolio-site",
+    "fleet": "C:\\Users\\Aaron\\Documents\\GitHub\\portfolio-site\\scripts\\fleet",
+    "evidenceRoot": "C:\\Users\\Aaron\\Documents\\GitHub\\portfolio-evidence\\wave3a",
+    "phase": "Crew loop",
+    "caps": {
+      "code": 3,
+      "evidence": 1
+    },
+    "hardStop": 8,
+    "stopEarly": {
+      "flatRounds": 2
+    },
+    "breaker": {
+      "passes": 1,
+      "maxPasses": 2,
+      "timeboxMin": 60,
+      "extraPassGlobs": [
+        "src/gl/**",
+        "src/stage/**",
+        "src/layouts/**",
+        "src/pages/**",
+        "src/lib/nav/**",
+        "src/lib/transitions/**"
+      ],
+      "how": ""
+    },
+    "jury": {
+      "enabled": false,
+      "benchmark": "C:\\Users\\Aaron\\Documents\\GitHub\\portfolio-evidence\\research-motion\\2026-10-08\\MOTION-BENCHMARK.md",
+      "rows": []
+    },
+    "perf": {
+      "heartbeatMin": 15,
+      "busyWaitMin": 30,
+      "sets": []
+    },
+    "gate": {
+      "visitorPaths": "the cold first visit of / at D2 and P2, a scroll through the whole page, a Swup visit to /work/<slug>/ and Back, reload, and the reduced-motion and no-WebGL paths",
+      "frames": "npm run h:drift and npm run h:idle (W-F harness), 3 runs each, from the build-once tree, plus the spec's own frame-count rows",
+      "floors": ""
+    },
+    "models": {
+      "crew": {
+        "effort": "xhigh"
+      },
+      "gate": {
+        "effort": "xhigh"
+      },
+      "judge": {
+        "effort": "xhigh"
+      },
+      "jury": {
+        "effort": "xhigh"
+      },
+      "breaker": {
+        "model": "sonnet",
+        "effort": "medium"
+      },
+      "perf": {
+        "model": "sonnet",
+        "effort": "low"
+      },
+      "invest": {
+        "model": "sonnet",
+        "effort": "medium"
+      }
+    },
+    "handoff": {
+      "tokens": 400000,
+      "max": 3
+    },
+    "limits": {
+      "specChars": 10000,
+      "digestChars": 3000,
+      "verdictChars": 4000
+    },
+    "mustFix": {
+      "ruling": "Owner decisions 2026-10-27 (system review, portfolio-evidence/loop-audit/SYSTEM-REVIEW-2026-10-13.md): website-first is reaffirmed (the Manor/project ion stays paused until the portfolio is live). The review's lean pre-launch crew model is ADOPTED for W-S2 onward: pre-launch must-fix taxonomy (block on acceptance-row failures, regressions vs main on default visitor paths, reproduced budget breaches, and slice design rows below target; pre-existing, rare-edge and tooling items go here by default); timed perf once per PR at the approval candidate plus once before G3a; 1 breaker pass by default (2 for W-F-m3); a design/motion jury with must-fix power on slices; waits of 270 s or less; a small versioned spec per crew. W-S2 cap: 3 code rounds plus 1 evidence round. No budget pause; each round still reports its cost. Slot 2's tooling PR now implements the review's quick wins before W-S2 launches.",
+      "rulingUrl": "https://github.com/derprito64bit/portfolio-site/issues/91#issuecomment-6452312126",
+      "taxonomy": [
+        {
+          "label": "Blocks",
+          "quote": "an acceptance-row failure;"
+        },
+        {
+          "label": "Blocks",
+          "quote": "a regression against main on a default visitor path, proven by a main-SHA control;"
+        },
+        {
+          "label": "Blocks",
+          "quote": "a budget breach beyond its tolerance band, reproduced in a second clean set;"
+        },
+        {
+          "label": "Blocks",
+          "quote": "on slices, a design row below target."
+        },
+        {
+          "label": "Rare edge",
+          "quote": "Rare-edge regressions block only when the fix is at most one crew task with no new harness."
+        },
+        {
+          "label": "Queue",
+          "quote": "Everything else goes to #91 with a done-when line: anything pre-existing on main, tooling hardening and single-run flakes."
+        },
+        {
+          "label": "Busy host",
+          "quote": "A busy host means \"blocked, rerun\". It never means \"cannot approve\". A should-fix doesn't become a must-fix just because it recurs."
+        }
+      ],
+      "taxonomySource": "PLAN.md"
+    },
+    "after": []
+  },
+  "crews": {
+    "ws2": {
+      "draft": "the W-S2 launch fills the jury rows, the perf sets and the gate rows (PLAN.md, next stage, step 2)",
+      "id": "W-S2",
+      "issue": 14,
+      "branch": "crew/w-s2",
+      "title": "the work index (contact sheet)",
+      "slice": true,
+      "codePaths": [
+        "src/sections/work/**",
+        "src/sections/sheet/**",
+        "src/components/print/**",
+        "src/lib/teststrip/**",
+        "src/gl/prints/**",
+        "tests/w-s2/**"
+      ],
+      "jury": {
+        "enabled": true
+      }
+    },
+    "wfm3": {
+      "draft": "W-F-m3 launches after W-S2 (PLAN.md, after W-S2, step 1); its spec is the frozen list from #91 comment 6144848977",
+      "id": "W-F-m3",
+      "issue": 11,
+      "branch": "crew/w-f-m3",
+      "title": "W-F's context-loss must-fixes and round 5's carry-over (a frozen list)",
+      "slice": false,
+      "caps": {
+        "code": 2
+      },
+      "breaker": {
+        "passes": 2
+      },
+      "codePaths": [
+        "W-F's globs in docs/agents/ownership.json, with the W-F-m3 one-offs"
+      ]
+    }
+  }
+}

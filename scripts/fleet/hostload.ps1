@@ -14,12 +14,26 @@
   -Watch <pid>: starts sampling at once (the lanes and leftovers are taken after the run) and samples in 5-second
   chunks until that process exits (at most -MaxMinutes). It flags each process whose CPU share in a chunk is above
   the host key's watch.foreignCpuPctMax, unless it is the watched process or one of its descendants, this script, or
-  named in watch.allowlist (the processes seen during calibration). The JSON records the watched process's start, the
+  named in watch.allowlist (the processes seen during calibration). An allowlist entry may carry a cap, "name<=N": that
+  process is allowed up to N% and flagged above it (a plain name has no cap). The JSON records the watched process's start, the
   first and last valid samples, its exit and the gaps between them. Exit 0 only when the whole run was watched and
   nothing was flagged: the process is in the samples, and the head gap (its start to the first valid sample), every
   gap between valid samples and the tail gap (the last valid sample to its exit) are each at most one 5-second chunk,
   and every sample is valid.
   Otherwise 75 (a gap over that bound gives 'incomplete', never 'clear').
+
+  -Watch also applies budgets.md R2's foreign-GPU rule, quoted word for word: "A timed run is also host-suspect when the
+  summed GPU 3D load of all other processes during the run (read per process, so the run's own process tree is excluded)
+  has a median above `host.precheck.gpu3dPctMax` (6.8%); like any host-suspect run it is replaced, never averaged (R3)."
+  Each valid sample's GPU 3D load is summed over every process outside the watched tree and this script (per pid, from
+  the same engtype_3D counters), and the median of those per-sample sums is compared with host.precheck.gpu3dPctMax:
+  above it the verdict is 'gpu-foreign' (exit 75). It is the median of the summed foreign load, not of each process.
+  The JSON's foreignGpu3d records the sums, their median and max, and the top foreign GPU users.
+
+  Information only (never a verdict): watch.bornDuringWatch lists the processes outside the watched tree first seen
+  during the watch (a process born and gone inside one 5-second chunk is still not seen); renderers lists long-running
+  automation browsers (Chrome or Edge whose command line names --remote-debugging, ms-playwright, playwright or an MCP
+  profile, alive for more than 10 minutes), taken with the lanes, outside the sampling window.
 
   A sample is valid only when it has the CPU total, at least one engtype_3D instance (dwm always has one, so none
   means the counter is broken) and the per-process data. Missing data never reads as an idle host.
@@ -34,7 +48,8 @@
   calibrates them they are null: the script still samples and writes its JSON, then exits 75 with the verdict
   'uncalibrated', which counts as blocked (host), never pass or fail.
 
-  Verdicts, first match wins: no-data (no valid sample), uncalibrated, busy or flagged, incomplete, clear.
+  Verdicts, first match wins: no-data (no valid sample), uncalibrated, busy or flagged, gpu-foreign (watch only),
+  incomplete, clear.
   Exit codes: 0 clear; 75 any other verdict (blocked: host); 2 usage or read error.
   The JSON goes to -Out (a one-line summary goes to stdout); without -Out the JSON goes to stdout.
 
@@ -42,7 +57,9 @@
   Documents\GitHub\project.ion\scripts\fork\ and its .claude\worktrees\overhaul\ copy. A copy without -List is skipped.
 
   -GpuPath is a test hook: a path with no engtype_3D instance must give no-data. A run with a non-default -GpuPath
-  is never 'clear'.
+  is never 'clear'. -PlantForeignGpu 4,4 is R2's test hook: it adds one synthetic foreign process per value (4% each
+  here) to every -Watch sample, so two processes each under gpu3dPctMax whose sum is over it must give 'gpu-foreign'
+  (the median of the summed load, not of each process). A run with a plant is never 'clear'.
 
 .EXAMPLE
   powershell -File scripts/fleet/lane.ps1 acquire perf -Agent w-f-perf -TimeoutMinutes 45
@@ -61,12 +78,16 @@ param(
     [int]$MaxMinutes = 60,
     [string]$Budgets,   # default: this repo's docs/agents/budgets.md
     [string]$ReapScript,
-    [string]$GpuPath
+    [string]$GpuPath,
+    [string]$PlantForeignGpu   # test hook: '4,4' adds synthetic foreign GPU 3D processes to every -Watch sample (R2's negative control)
 )
 
 $ErrorActionPreference = 'Stop'
 $started = Get-Date
 $GPU_DEFAULT = '\GPU Engine(*engtype_3D)\Utilization Percentage'
+# A string, split here: through powershell -File an array argument arrives as one string, and '4,4' would parse as 44.
+$plants = @()
+if ($PlantForeignGpu) { $plants = @($PlantForeignGpu -split '[,;\s]+' | Where-Object { $_ } | ForEach-Object { [double]::Parse($_, [Globalization.CultureInfo]::InvariantCulture) }) }
 if (-not $GpuPath) { $GpuPath = $GPU_DEFAULT }
 if (-not $Budgets) { $Budgets = Join-Path $PSScriptRoot '..\..\docs\agents\budgets.md' }   # $PSScriptRoot is empty in param defaults on PS 5.1
 $cpus = [Environment]::ProcessorCount
@@ -125,7 +146,7 @@ function Get-Lanes {
         $lines = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $lanePs status
         return @($lines | ForEach-Object {
                 $l = [string]$_
-                if ($l -match '^(\S+)\s+held by (.+) \(([\d.]+) min ago\)$') {
+                if ($l -match '^(\S+)\s+held by (.+) \(([\d.]+) min ago\)( \[.*\])?$') {
                     [pscustomobject]@{ lane = $matches[1]; state = 'held'; holder = $matches[2]; ageMinutes = [double]$matches[3] }
                 } elseif ($l -match '^(\S+)\s+free$') {
                     [pscustomobject]@{ lane = $matches[1]; state = 'free'; holder = $null; ageMinutes = $null }
@@ -152,6 +173,19 @@ function Get-Leftovers {
         $r = $json | ConvertFrom-Json
         return [pscustomobject]@{ source = $found; groups = @($r.groups); error = $null }
     } catch { return [pscustomobject]@{ source = $found; groups = $null; error = $_.Exception.Message } }
+}
+
+# Long-running automation browsers (MCP renderers, leftover harness browsers), named for the record only.
+function Get-Renderers {
+    try {
+        $now = Get-Date
+        return @(Get-CimInstance Win32_Process -Filter "Name='chrome.exe' OR Name='msedge.exe' OR Name='chrome-headless-shell.exe'" -Property ProcessId, Name, CommandLine, CreationDate -ErrorAction Stop |
+                Where-Object { $_.CommandLine -match '--remote-debugging|ms-playwright|playwright|mcp' -and $_.CommandLine -notmatch '--type=' -and $_.CreationDate -and ($now - $_.CreationDate).TotalMinutes -gt 10 } |
+                ForEach-Object {
+                    $kind = if ($_.CommandLine -match 'devtools-mcp') { 'chrome-devtools MCP' } elseif ($_.CommandLine -match 'mcp') { 'MCP browser' } elseif ($_.CommandLine -match 'ms-playwright|playwright') { 'playwright browser' } else { 'remote-debugging browser' }
+                    [pscustomobject]@{ pid = [int]$_.ProcessId; name = ($_.Name -replace '\.exe$', ''); kind = $kind; ageMinutes = [math]::Round(($now - $_.CreationDate).TotalMinutes) }
+                })
+    } catch { return @([pscustomobject]@{ pid = 0; name = 'error'; kind = $_.Exception.Message; ageMinutes = $null }) }
 }
 
 # ---- sampling ----------------------------------------------------------------------------------------------------
@@ -355,6 +389,7 @@ if ($Watch -le 0) {
     # ---- precheck: context first, then the window ----
     $lanes = Get-Lanes
     $leftovers = Get-Leftovers
+    $renderers = Get-Renderers
     $contextTaken = 'before-sampling'
     Start-Sleep -Seconds 1   # let the two child PowerShells and their WMI queries settle before the window opens
     $t0 = (Get-Date).ToFileTimeUtc()
@@ -391,9 +426,13 @@ if ($Watch -le 0) {
     }
 } else {
     # ---- watch: sampling starts at once; the context is taken after the run ----
-    $allow = @($allowList)
+    # Allowlist entries: 'name' (no cap) or 'name<=N' (allowed up to N%, flagged above it).
+    $allowCap = @{}
+    foreach ($e in @($allowList)) {
+        if ([string]$e -match '^(.+?)\s*<=\s*([\d.]+)$') { $allowCap[$matches[1].Trim()] = [double]$matches[2] } else { $allowCap[([string]$e).Trim()] = $null }
+    }
     $foreignMax = $thresholds.foreignCpuPctMax
-    $uncal = ($null -eq $foreignMax -or -not $allowSet)
+    $uncal = ($null -eq $foreignMax -or -not $allowSet -or $null -eq $thresholds.gpu3dPctMax)
     $tree = @{}
     $rootKey = $null
     $chunks = New-Object System.Collections.Generic.List[object]
@@ -420,7 +459,7 @@ if ($Watch -le 0) {
         $foreign = @($span.shares | Where-Object { -not $tree.ContainsKey($_.key) -and -not $selfTree.ContainsKey($_.key) })
         $over = @()
         if (-not $uncal) {
-            $over = @($foreign | Where-Object { $_.pct -gt [double]$foreignMax -and -not ($allow -contains $_.name) })
+            $over = @($foreign | Where-Object { $_.pct -gt [double]$foreignMax -and (-not $allowCap.ContainsKey($_.name) -or ($null -ne $allowCap[$_.name] -and $_.pct -gt $allowCap[$_.name])) })
             foreach ($f in $over) {
                 if (-not $flagged.ContainsKey($f.name) -or $flagged[$f.name].maxPct -lt $f.pct) {
                     $flagged[$f.name] = [pscustomobject]@{ name = $f.name; pid = $f.pid; maxPct = $f.pct }
@@ -448,6 +487,7 @@ if ($Watch -le 0) {
     if ($null -eq $watchStart) { $startSource = $null }
     $lanes = Get-Lanes
     $leftovers = Get-Leftovers
+    $renderers = Get-Renderers
     $contextTaken = 'after-watch'
 
     # ---- coverage: was the whole run watched? ----
@@ -460,6 +500,46 @@ if ($Watch -le 0) {
     $exitRef = if ($null -ne $exitedAt) { $exitedAt } else { $exitSeenAt }   # exitSeenAt is later than the exit: an upper bound
     $tailGap = if ($exited -and $null -ne $lastAt) { R1 ([math]::Max(0.0, ($exitRef - $lastAt).TotalSeconds)) } else { $null }
     $seenInSamples = [bool]($rootKey -and @($allSets | Where-Object { $_.procs.ContainsKey($rootKey) }).Count)
+
+    # ---- R2: the summed foreign GPU 3D load of each valid sample (outside the watched tree and this script), then its median ----
+    $treeIds = @{}
+    foreach ($k in $tree.Keys) { $treeIds[[int]$known[$k].id] = $true }
+    $selfIds = @{}
+    foreach ($k in $selfTree.Keys) { $selfIds[[int]$known[$k].id] = $true }
+    $fgSums = New-Object System.Collections.Generic.List[double]
+    $fgBy = @{}
+    foreach ($x in $valid) {
+        $sum = 0.0
+        foreach ($p in @($x.perPid.Keys)) {
+            $id = [int]$p
+            if ($treeIds.ContainsKey($id) -or $selfIds.ContainsKey($id)) { continue }
+            $v = [double]$x.perPid[$p]
+            if ($v -le 0) { continue }
+            $sum += $v
+            $nm = if ($byId.ContainsKey($id)) { $known[$byId[$id][$byId[$id].Count - 1]].name } else { "pid$id" }
+            $fgBy[$nm] = [double]$fgBy[$nm] + $v
+        }
+        $i = 0
+        foreach ($pv in $plants) { $i++; $sum += $pv; $fgBy["planted$i"] = [double]$fgBy["planted$i"] + $pv }
+        $fgSums.Add([math]::Min(100.0, $sum))
+    }
+    $fgStats = Get-Stats $fgSums.ToArray()
+    $fgMax = $thresholds.gpu3dPctMax
+    $gpuForeign = ($null -ne $fgMax -and $null -ne $fgStats.median -and $fgStats.median -gt [double]$fgMax)
+    $result.foreignGpu3d = [ordered]@{
+        rule         = 'budgets.md R2: the median, over valid samples, of the summed GPU 3D load of every process outside the watched tree and this script, against host.precheck.gpu3dPctMax'
+        thresholdPct = $fgMax
+        samples      = $fgSums.Count
+        medianPct    = $fgStats.median
+        maxPct       = $fgStats.max
+        suspect      = $gpuForeign
+        top          = @($fgBy.Keys | ForEach-Object { [pscustomobject]@{ name = $_; meanPct = (R1 ($fgBy[$_] / [math]::Max(1, $fgSums.Count))) } } | Where-Object { $_.meanPct -gt 0 } | Sort-Object meanPct -Descending | Select-Object -First 4)
+        perSample    = @($fgSums | ForEach-Object { R1 $_ })
+    }
+    # Information only: processes outside the tree and this script first seen during the watch.
+    $born = @($known.Keys | Where-Object { $known[$_].created -ge $t0 -and -not $tree.ContainsKey($_) -and -not $selfTree.ContainsKey($_) } | ForEach-Object {
+            [pscustomobject]@{ pid = $known[$_].id; name = $known[$_].name; bornAt = Iso ([datetime]::FromFileTime($known[$_].created)) }
+        } | Sort-Object bornAt)
 
     $result.cpuBusyPct = Get-Stats @($allSets | ForEach-Object { $_.cpu })
     $result.gpu3dPct = Get-Stats @($allSets | ForEach-Object { $_.gpu })
@@ -482,6 +562,7 @@ if ($Watch -le 0) {
         tree             = @($tree.Keys | ForEach-Object { $known[$_].id } | Sort-Object -Unique)
         chunks           = $chunks.ToArray()
         flagged          = @($flagged.Values | Sort-Object maxPct -Descending)
+        bornDuringWatch  = $born
     }
 
     $gaps = $false
@@ -500,7 +581,8 @@ if ($Watch -le 0) {
         $verdict = 'no-data'
     } elseif (-not $uncal) {
         foreach ($f in $result.watch.flagged) { $reasons.Add("foreign process $($f.name) (pid $($f.pid)) at $($f.maxPct)% > foreignCpuPctMax $foreignMax%") }
-        $verdict = if ($flagged.Count) { 'flagged' } elseif ($gaps) { 'incomplete' } else { 'clear' }
+        if ($gpuForeign) { $reasons.Add("foreign GPU 3D load: the median of the summed load of all other processes is $($fgStats.median)% > gpu3dPctMax $fgMax% (budgets.md R2; top: $((@($result.foreignGpu3d.top) | ForEach-Object { "$($_.name) $($_.meanPct)%" }) -join ', '))") }
+        $verdict = if ($flagged.Count) { 'flagged' } elseif ($gpuForeign) { 'gpu-foreign' } elseif ($gaps) { 'incomplete' } else { 'clear' }
     }
 }
 if ($uncal -and $verdict -ne 'no-data') {
@@ -508,6 +590,10 @@ if ($uncal -and $verdict -ne 'no-data') {
     $reasons.Insert(0, 'the budgets.md host key has null thresholds (not calibrated yet): blocked (host), never pass or fail')
 }
 if ($verdict -eq 'no-data') { $reasons.Add('no valid counter samples') }
+if ($verdict -eq 'clear' -and $plants.Count) {
+    $verdict = 'incomplete'
+    $reasons.Add("test hook: -PlantForeignGpu $($PlantForeignGpu -join ',') planted foreign GPU load, so this run is never clear")
+}
 if ($verdict -eq 'clear' -and $GpuPath -ne $GPU_DEFAULT) {
     $verdict = 'incomplete'
     $reasons.Add("test hook: -GpuPath '$GpuPath' is not the default GPU 3D path, so this run is never clear")
@@ -521,13 +607,15 @@ $result.endedAt = (Get-Date).ToString('o')
 $result.contextTaken = $contextTaken
 $result.lanes = $lanes
 $result.leftovers = $leftovers
+$result.renderers = [object[]]@($renderers | Where-Object { $_ })
 $json = [pscustomobject]$result | ConvertTo-Json -Depth 8
 
 function Fmt-Pct([object]$x) { if ($null -eq $x) { 'n/a' } else { "$x%" } }
-$summary = 'hostload {0}: {1} (exit {2}); cpu {3} {4} (max {5}), gpu3d {3} {6} (max {7}); held lanes: {8}; leftover groups: {9}' -f
+$summary = 'hostload {0}: {1} (exit {2}); cpu {3} {4} (max {5}), gpu3d {3} {6} (max {7}); held lanes: {8}; leftover groups: {9}{10}' -f
 $result.mode, $verdict, $code, $stat, (Fmt-Pct $result.cpuBusyPct.$stat), (Fmt-Pct $result.cpuBusyPct.max), (Fmt-Pct $result.gpu3dPct.$stat),
 (Fmt-Pct $result.gpu3dPct.max), ((@($lanes | Where-Object state -eq 'held' | ForEach-Object { "$($_.lane) ($($_.holder))" }) -join ', ') -replace '^$', 'none'),
-$(if ($null -ne $leftovers.groups) { @($leftovers.groups).Count } else { 'unknown' })
+$(if ($null -ne $leftovers.groups) { @($leftovers.groups).Count } else { 'unknown' }),
+$(if ($result.foreignGpu3d) { "; foreign gpu3d median $(Fmt-Pct $result.foreignGpu3d.medianPct) (R2)" } else { '' })
 if ($Out) {
     $full = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Out)   # relative to $PWD, not .NET's
     $dir = Split-Path -Parent $full
