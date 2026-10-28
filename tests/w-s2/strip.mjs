@@ -6,9 +6,11 @@
 //            most 2/255 per channel, for every slug, at 540 x 860;
 //   texture  the GL texture's source (the page's <symbol> as an SVG image, as src/gl/prints builds it) matches the DOM
 //            still as the page paints it, to the same bound.
-// --plant canvas (the Canvas2D side draws another slug's strip) and --plant bytes (one attribute differs in the second
-// generation) must FAIL.
-// Usage: node tests/w-s2/strip.mjs [--plant canvas|bytes] [--dist <dir>] [--out <dir>]
+// --plant canvas (the Canvas2D side draws another slug's strip), --plant texture (the GL source is built from another
+// slug's <symbol>) and --plant bytes (one attribute differs in the second generation) must FAIL. The texture side reads
+// its canvas back (getImageData), so a source that taints the canvas (and so could never upload to WebGL) fails too;
+// --profile WK-T2 runs it in WebKit.
+// Usage: node tests/w-s2/strip.mjs [--plant canvas|texture|bytes] [--profile D3] [--dist <dir>] [--out <dir>]
 import { readFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { stripTypeScriptTypes } from 'node:module';
@@ -20,6 +22,7 @@ import { frameCode } from '../../src/lib/content/validate.js';
 export const MEAN_DIFF_MAX = 2;
 const o = cliOpts();
 const plant = o.plant ? String(o.plant) : null;
+const profile = String(o.profile ?? 'D3');
 const dist = o.dist ? String(o.dist) : join(ROOT, 'dist');
 const projects = JSON.parse(readFileSync(join(ROOT, 'content/projects.json'), 'utf8')).projects.map((p, i) => ({ slug: p.slug, tint: p.tint, frame: frameCode(i), cover: p.cover }));
 const html = readFileSync(join(dist, 'index.html'), 'utf8');
@@ -44,7 +47,7 @@ const srv = await serve(dist);
 let canvas = [];
 let texture = [];
 try {
-  const ctx = await newContext('D3', 'reduced');
+  const ctx = await newContext(profile, 'reduced');
   const page = await ctx.newPage();
   await page.goto(`${srv.base}/?view=sheet`, { waitUntil: 'load' });
   await waitSettled(page, 12000);
@@ -87,7 +90,8 @@ try {
   // The GL texture's source against the DOM still: each strip as the page paints it inline (<use> of its <symbol>,
   // the poster's own markup) at whole pixels (540 x 860 at DPR 1, so no subpixel placement blurs either side), against
   // its <symbol> rasterized as an SVG image the way src/gl/prints builds the texture.
-  for (const p of projects.filter((x) => !x.cover)) {
+  const strips = projects.filter((x) => !x.cover);
+  for (const [i, p] of strips.entries()) {
     await page.evaluate((slug) => {
       document.getElementById('w2-probe')?.remove();
       const d = document.createElement('div');
@@ -99,14 +103,15 @@ try {
     const shot = await page.locator('#w2-probe').screenshot({ animations: 'disabled' });
     texture.push(
       await page.evaluate(
-        async ({ b64, slug }) => {
+        async ({ b64, slug, from }) => {
           const shotImg = new Image();
           shotImg.src = `data:image/png;base64,${b64}`;
           await shotImg.decode();
           const [w, h] = [shotImg.naturalWidth, shotImg.naturalHeight];
-          const sym = document.getElementById(`ts-${slug}`);
+          const sym = document.getElementById(`ts-${from}`);
           const img = new Image();
-          img.src = URL.createObjectURL(new Blob([sym.outerHTML.replace('<symbol', `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"`).replace('</symbol>', '</svg>')], { type: 'image/svg+xml' }));
+          // As src/gl/prints builds it: the <symbol>'s tags sliced off into an <svg>, as a data: URL.
+          img.src = 'data:image/svg+xml,' + encodeURIComponent(`<svg xmlns="${sym.namespaceURI}" width="${w}" height="${h}"${sym.outerHTML.slice(7, -9)}</svg>`);
           await img.decode();
           const px = (src, bg) => {
             const c = document.createElement('canvas');
@@ -123,7 +128,7 @@ try {
           for (let k = 0; k < a.length; k += 4) for (let ch = 0; ch < 3; ch++) sum += Math.abs(a[k + ch] - b[k + ch]);
           return { slug, w, h, meanDiff: sum / ((a.length / 4) * 3) };
         },
-        { b64: shot.toString('base64'), slug: p.slug },
+        { b64: shot.toString('base64'), slug: p.slug, from: plant === 'texture' ? strips[(i + 1) % strips.length].slug : p.slug },
       ),
     );
   }
@@ -138,7 +143,7 @@ const pass = fails.length === 0 && canvas.length > 0 && texture.length > 0;
 const summary = `${bytes.length} strips byte-identical: ${bytes.every((b) => b.identical)}; Canvas2D vs SVG mean diff max ${Math.max(...canvas.map((c) => c.meanDiff)).toFixed(3)}/255; GL source vs DOM still max ${Math.max(...texture.map((t) => t.meanDiff)).toFixed(3)}/255`;
 if (o.out) {
   mkdirSync(String(o.out), { recursive: true });
-  writeFileSync(join(String(o.out), `strip${plant ? `-plant-${plant}` : ''}.json`), JSON.stringify({ schema: 1, instrument: 'w-s2/strip', plant, pass, summary, fails, bytes, canvas, texture }, null, 2));
+  writeFileSync(join(String(o.out), `strip${profile === 'D3' ? '' : `-${profile}`}${plant ? `-plant-${plant}` : ''}.json`), JSON.stringify({ schema: 1, instrument: 'w-s2/strip', profile, plant, pass, summary, fails, bytes, canvas, texture }, null, 2));
 }
 console.log(`strip${plant ? ` (plant ${plant})` : ''}: ${pass ? 'PASS' : 'FAIL'}  ${summary}`);
 for (const f of fails.slice(0, 5)) console.log(`  ${f}`);

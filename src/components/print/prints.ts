@@ -11,7 +11,7 @@
 // It reaches the stage only through window.__stage (no src/stage import: hero/bridge.ts says why).
 import { durations } from '../../lib/tokens.js';
 import type { GLApi } from '../../stage/gl/index.ts';
-import type { PrintsGL } from '../../gl/prints/index.ts';
+import type { Print } from '../../gl/prints/index.ts';
 
 interface StageHooks {
   readonly gl: GLApi | null;
@@ -55,14 +55,17 @@ function dry(el: HTMLElement): void {
 /** A whole group arrives developed (an anchor, List, Back or static arrival, or GL that never came). */
 function dryGroup(g: string): void {
   flag(g);
-  gl?.finish(groupEls(g).map((el) => el.dataset.glId as string));
-  groupEls(g).forEach(dry);
+  for (const el of groupEls(g)) {
+    gl?.get(el.dataset.glId as string)?.finish();
+    dry(el);
+  }
 }
 const allGroups = () => [...new Set([...document.querySelectorAll<HTMLElement>('[data-print][data-dev-group]')].map((el) => el.dataset.devGroup as string))];
 const dryAll = () => allGroups().forEach(dryGroup);
 
 // ---------------------------------------------------------------- GL (src/gl/prints, after stage:gl-start)
-let gl: PrintsGL | null = null;
+/** The GL prints by id, once src/gl/prints is installed. */
+let gl: Map<string, Print> | null = null;
 const pending = new Map<string, HTMLElement[]>();
 /** Resolves at the mark; without PerformanceObserver it throws, which rejects, and the visit ends dry (the catch). */
 function whenMark(name: string): Promise<void> {
@@ -82,8 +85,9 @@ whenMark('stage:gl-start')
     await whenMark('stage:gl-ready');
     const st = stage();
     if (!st?.gl) return;
-    gl = mod.install(st, st.gl);
-    if (!gl) return dryAll();
+    const prints = (gl = mod.install(st, st.gl));
+    // A lost context: the stage has handed every slot back; the prints are developed now, not later.
+    st.gl.renderer.domElement.addEventListener('webglcontextlost', () => prints.forEach((p) => p.finish()));
     performance.mark('prints:ready');
     for (const [g, els] of pending) start(g, els);
     pending.clear();
@@ -196,7 +200,7 @@ function apply(v: string): void {
   if (!s || v === shown) return;
   const from = shown;
   shown = v;
-  order(s, v);
+  const [grid, list] = order(s, v);
   // A toggle is a List arrival (A3); a developing sheet print jumps to d = 1 and hands back first (A4).
   dryGroup('s');
   fade.forEach((a) => a.cancel());
@@ -207,8 +211,7 @@ function apply(v: string): void {
     return;
   }
   s.dataset.fading = '';
-  const inEl = s.querySelector<HTMLElement>(v === 'list' ? '[data-sheet-list]' : '[data-sheet-grid]');
-  const outEl = s.querySelector<HTMLElement>(v === 'list' ? '[data-sheet-grid]' : '[data-sheet-list]');
+  const [inEl, outEl] = v === 'list' ? [list, grid] : [grid, list];
   const o = { duration: durations.listToggle, easing: 'cubic-bezier(0.23, 1, 0.32, 1)', fill: 'both' as const };
   fade = [inEl?.animate({ opacity: [0, 1] }, o), outEl?.animate({ opacity: [1, 0] }, o)].filter(Boolean) as Animation[];
   fade[0]?.finished
@@ -222,12 +225,15 @@ function apply(v: string): void {
 }
 /** The shown view's list comes first in the DOM (only the List moves; the sheet's slots stay put), so reading order is
  *  visual order and a first match for a print's id (the router's Back focus) is the visible link. */
-function order(s: HTMLElement, v: string): void {
-  const grid = s.querySelector('[data-sheet-grid]');
-  const list = s.querySelector('[data-sheet-list]');
-  if (!grid || !list) return;
-  if (v === 'list' && grid.nextElementSibling === list) grid.before(list);
-  if (v === 'sheet' && list.nextElementSibling === grid) grid.after(list);
+function order(s: HTMLElement, v: string): (HTMLElement | null)[] {
+  const grid = s.querySelector<HTMLElement>('[data-sheet-grid]');
+  const list = s.querySelector<HTMLElement>('[data-sheet-list]');
+  // The two are adjacent; only one out of place moves (a move would drop focus inside the List).
+  if (grid && list && (grid.nextElementSibling === list) === (v === 'list')) {
+    if (v === 'list') grid.before(list);
+    else grid.after(list);
+  }
+  return [grid, list];
 }
 function onToggle(): void {
   const v = checked();
@@ -290,7 +296,7 @@ const fine = matchMedia('(hover: hover) and (pointer: fine)');
 function hover(e: PointerEvent, on: boolean): void {
   if (e.pointerType === 'touch' || !fine.matches) return;
   const el = (e.target as Element).closest?.<HTMLElement>('[data-print][data-gl-id]');
-  if (el && !el.hasAttribute('data-failed') && (!on || !el.hasAttribute('data-wet'))) gl?.lift(el.dataset.glId as string, on);
+  if (el && !el.hasAttribute('data-failed') && (!on || !el.hasAttribute('data-wet'))) gl?.get(el.dataset.glId as string)?.lift(on);
 }
 
 // ---------------------------------------------------------------- page init (first load and every Swup arrival)
