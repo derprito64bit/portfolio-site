@@ -14,7 +14,10 @@
 //                enlargements develop and end dry.
 //   reduced      reduced motion: nothing develops, nothing wet.
 //   rapid        nine Sheet/List toggles in about a second mid-develop: the last state wins, prints arrive developed.
-// --browser webkit runs throw, resize, rapid and reduced in WebKit (WK-T2).
+//   swup         a Swup arrival at / from a project page (its markup's inline view default never ran: prints.ts runs
+//                it again): the view is set and matches the checked radio, the toggle works; then a toggle, a Swup
+//                visit to a project and Back: the address keeps ?view= and the view (breaker 1.1).
+// --browser webkit runs throw, resize, rapid, reduced and swup in WebKit (WK-T2).
 // --plant handback (negative control): __stage.give() does nothing, so a print keeps .is-gl; the scenario must FAIL.
 // Usage: node tests/w-s2/selfbreak.mjs --out <dir> [--only a,b] [--browser chromium|webkit] [--plant handback]
 //        [--dist <dir>]
@@ -27,7 +30,7 @@ const out = String(o.out ?? 'w-s2-selfbreak');
 mkdirSync(out, { recursive: true });
 const webkit = String(o.browser ?? 'chromium') === 'webkit';
 const plant = o.plant ? String(o.plant) : null;
-const ALL = webkit ? ['throw', 'resize', 'rapid', 'reduced'] : ['ctxloss', 'throw', 'resize', 'orientation', 'bfcache', 'no3d', 'static', 'savedata', 'reduced', 'rapid'];
+const ALL = webkit ? ['throw', 'resize', 'rapid', 'reduced', 'swup'] : ['ctxloss', 'throw', 'resize', 'orientation', 'bfcache', 'no3d', 'static', 'savedata', 'reduced', 'rapid', 'swup'];
 const only = o.only ? String(o.only).split(',') : ALL;
 const DESK = webkit ? 'WK-T2' : 'D2';
 const FRAME = 1000 / 60;
@@ -266,6 +269,35 @@ const S = {
     const r = judge(await endState(p), errors, fails);
     await ctx.close();
     return { ...r, state: st };
+  },
+  async swup(srv) {
+    const fails = [];
+    const { ctx, p, errors } = await open(srv, DESK, '/work/project-01/');
+    await sleep(1500);
+    await p.evaluate(() => (window.__sameDoc = 1));
+    await p.click('a.site-mark[href="/"]');
+    await p.waitForFunction(() => location.pathname === '/' && document.querySelector('section.sheet'), null, { timeout: 10000 });
+    await sleep(1000);
+    const view = () => p.evaluate(() => ({ sameDoc: window.__sameDoc === 1, view: document.querySelector('section.sheet')?.dataset.view ?? null, checked: document.querySelector('input[name="sheet-view"]:checked')?.value ?? null, q: new URLSearchParams(location.search).get('view') }));
+    const arrived = await view();
+    if (!arrived.sameDoc) fails.push('the visit to / was a full load, not a Swup arrival (instrument invalid)');
+    if (!arrived.view || arrived.view !== arrived.checked) fails.push(`Swup arrival: view ${arrived.view}, checked ${arrived.checked}`);
+    const other = arrived.view === 'list' ? 'sheet' : 'list';
+    await p.click(`input[name="sheet-view"][value="${other}"]`, { force: true });
+    await sleep(800);
+    const toggled = await view();
+    if (toggled.view !== other || toggled.q !== other || toggled.checked !== other) fails.push(`toggle after a Swup arrival: ${JSON.stringify(toggled)}, want ${other}`);
+    await p.evaluate(() => document.querySelector('[data-print="enl"]').click());
+    await p.waitForFunction(() => location.pathname.startsWith('/work/'), null, { timeout: 10000 });
+    await sleep(800);
+    await p.goBack();
+    await p.waitForFunction(() => location.pathname === '/' && document.querySelector('section.sheet'), null, { timeout: 10000 });
+    await sleep(1000);
+    const back = await view();
+    if (back.q !== other || back.view !== other || back.checked !== other) fails.push(`Back after a toggle: ${JSON.stringify(back)}, want ?view=${other} and the ${other}`);
+    const r = judge(await endState(p), errors, fails);
+    await ctx.close();
+    return { ...r, arrived, toggled, back };
   },
 };
 

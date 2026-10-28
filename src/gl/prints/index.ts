@@ -14,10 +14,6 @@ import { LinearFilter, Mesh, PlaneGeometry, Texture, WebGLRenderer } from 'three
 import { createDevelopMaterial, developCurve, grainScale } from '../effects/develop/index.ts';
 import type { Entity, FrameInfo, GLApi } from '../../stage/gl/index.ts';
 import type { Slot } from '../../stage/slots.ts';
-// The chunk graph, not a feature: this chunk is loaded from a pre-GL script that has not loaded three, so rolldown
-// would split three out of the chunk it shares with the posters' stage helpers (gl and the camera). Depending on that
-// helper too keeps that one chunk as it is on main (#14 B1: about 0.15 kB GL).
-export { containRect } from '../../../scripts/build/posters/stage.js';
 
 export interface PrintsGL {
   /** Every developing print (or those of `ids`) jumps to d = 1 and hands back now (A4, reduced motion, a loss). */
@@ -104,7 +100,7 @@ function print(id: string, gl: GLApi, st: Hooks): PrintEntity {
       x.clip();
     } else {
       img = new Image();
-      img.src = URL.createObjectURL(new Blob([(document.getElementById(`ts-${slot.el.dataset.strip}`)?.outerHTML ?? '').replace('<symbol', `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"`).replace('</symbol>', '</svg>')], { type: 'image/svg+xml' }));
+      img.src = URL.createObjectURL(new Blob([document.getElementById(`ts-${slot.el.dataset.strip}`)!.outerHTML.replace('<symbol', `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"`).replace('</symbol>', '</svg>')], { type: 'image/svg+xml' }));
     }
     await img.decode();
     URL.revokeObjectURL(img.src); // a strip's blob; a no-op for a cover's URL
@@ -237,7 +233,8 @@ export function install(st: Hooks, gl: GLApi): PrintsGL | null {
   // The stage's own renderer (a WebGL2 one: the develop material is GLSL).
   if (!(gl.renderer instanceof WebGLRenderer)) return null;
   gl.registerEntityFactory({
-    match: (s) => s.kind === 'print' && !s.fixture && 'print' in s.el.dataset,
+    // data-print marks W-S2's print links (data-gl="print"): no other slot carries it.
+    match: (s) => !s.fixture && 'print' in s.el.dataset,
     create: (s) => {
       const e = print(s.id, gl, st);
       ents.set(s.id, e);
