@@ -8,7 +8,7 @@ export const MAXB = 24; // point lights per scene (2 vec4 each)
 
 export interface Shape {
   x: number; y: number; hx: number; hy: number;
-  rot: number; radius: number; z: number; type: 0 | 1 | 2 | 3; // box, disc, ring, half-plane (fills below)
+  rot: number; radius: number; z: number; type: number; // 0 box, 1 disc, 2 ring, 3 half-plane, 4 focus chart, 5 plate, 6 light trail, 7 colour chart
   color: [number, number, number]; alpha: number;
   gradAngle: number; gradAmt: number; stripeFreq: number; stripeAmt: number;
   glow: number; glowR: number;
@@ -26,6 +26,7 @@ export interface Scene {
   glass: number[]; glass2: number[];
   focus: number; fnum: number; shutter: string; iso: number;
   archetype: string;
+  label: string;
   depthAt: (x: number, y: number) => number;
   /** The object under a point (its centre and depth), or null for the backdrop and ground planes. */
   hitAt: (x: number, y: number) => { x: number; y: number; z: number } | null;
@@ -141,110 +142,101 @@ function scatterLights(r: () => number, n: number, cols: RGB[], zMin: number, zM
   return out;
 }
 
-function archWindow(r: () => number, P: ReturnType<typeof palette>): Built {
-  const wx = -0.55 + r() * 0.9, wy = 0.2 + r() * 0.3;
-  const floorY = -0.42 - r() * 0.12;
-  const sx = -0.35 + r() * 0.7;
-  const lightCol = mix(P.light, WARM, 0.55);
+// ---- EVF-native test subjects. Placeholder media that admit what they are: charts, plates and light. ----
+const SHAPE_PLATE = 5, SHAPE_CHART = 4, SHAPE_TRAIL = 6, SHAPE_COLOUR = 7;
+const PAPER: RGB = [0.88, 0.865, 0.83];
+
+/** A 16:10 plate shaped like a screenshot (what the real work will be), lit like a screen in a dark room. */
+function plateScene(r: () => number, P: ReturnType<typeof palette>, variant: number, light: boolean): Built {
+  const px = -0.04 + (r() - 0.5) * 0.12, py = 0.05;
+  const hx = 0.66, hy = hx / 1.6;
+  const acc = mix(P.glow, [1, 1, 1], 0.1);
+  const base: RGB = light ? PAPER : [0.07, 0.075, 0.085];
   const shapes: Shape[] = [
-    // light falling on the back wall through blinds
-    shape({ x: wx + 0.55, y: wy - 0.25, hx: 0.42, hy: 0.55, rot: -0.32, radius: 0.02, z: 0.86, color: mul(lightCol, 0.55), alpha: 0.55, stripeFreq: 34, stripeAmt: 0.75, gradAngle: 0, gradAmt: 0.4 }),
-    // the window itself
-    shape({ x: wx, y: wy, hx: 0.24 + r() * 0.08, hy: 0.4 + r() * 0.12, rot: (r() - 0.5) * 0.08, radius: 0.012, z: 0.9, color: mul(lightCol, 1.55), stripeFreq: 46 + r() * 16, stripeAmt: 0.6, glow: 0.5, glowR: 0.35, gradAmt: 0.15 }),
-    // window frame mullion
-    shape({ x: wx, y: wy, hx: 0.008, hy: 0.52, z: 0.89, color: mul(P.deep, 0.6), radius: 0.004 }),
-    // floor
-    shape({ x: 0, y: floorY, hx: 9, hy: 9, type: 3, z: 0.55, color: mix(P.dark, P.mid, 0.35), gradAngle: -Math.PI / 2, gradAmt: 0.5 }),
-    // pool of light on the floor
-    shape({ x: wx + 0.35, y: floorY - 0.32, hx: 0.75, hy: 0.16, rot: -0.12, radius: 0.02, z: 0.47, color: mul(lightCol, 0.62), alpha: 0.32, stripeFreq: 30, stripeAmt: 0.7, gradAngle: 0, gradAmt: 0.3, soft: 0.03 }),
-    // subject: a tall form and a sphere
-    // contact shadow
-    shape({ x: sx + 0.1, y: floorY + 0.005, hx: 0.3, hy: 0.018, radius: 0.018, z: 0.35, color: mul(P.deep, 0.3), alpha: 0.75, gradAmt: 0, soft: 0.022 }),
-    shape({ x: sx, y: floorY + 0.36, hx: 0.12, hy: 0.36, radius: 0.1, z: 0.36, color: mix(P.mid, P.light, 0.2), gradAngle: Math.PI * 0.85, gradAmt: 0.55, shade: 2 }),
-    shape({ x: sx + 0.26, y: floorY + 0.14, hx: 0.14, hy: 0.14, type: 1, z: 0.33, color: mix(P.comp, P.light, 0.3), gradAngle: Math.PI * 0.8, gradAmt: 0.6, shade: 1 }),
-    // out-of-focus foreground edge
-    shape({ x: -1.22 - r() * 0.1, y: 0, hx: 0.22, hy: 1.8, rot: 0.06, radius: 0.1, z: 0.04, color: mul(P.deep, 0.5), alpha: 0.96, gradAmt: 0.1 }),
+    shape({ x: 0, y: -0.72, hx: 9, hy: 9, type: 3, z: 0.6, color: mul(P.deep, 0.8), gradAngle: -Math.PI / 2, gradAmt: 0.4 }),
+    // the plate's shadow and a thin edge of light around it
+    shape({ x: px + 0.03, y: py - 0.04, hx: hx + 0.01, hy: hy + 0.01, radius: 0.02, z: 0.44, color: [0.005, 0.005, 0.006], alpha: 0.7, soft: 0.05, gradAmt: 0 }),
+    shape({ x: px, y: py, hx, hy, radius: 0.012, z: 0.42, type: SHAPE_PLATE, color: base, gradAngle: variant, gradAmt: acc[0], stripeFreq: acc[1], stripeAmt: acc[2] }),
+    // a second screen, phone-shaped, close to the lens and far out of focus
+    shape({ x: 1.02, y: -0.42, hx: 0.17, hy: 0.36, rot: 0.1, radius: 0.03, z: 0.1, type: SHAPE_PLATE, color: light ? [0.07, 0.075, 0.085] : PAPER, gradAngle: 1 - variant, gradAmt: P.comp[0] + 0.2, stripeFreq: P.comp[1] + 0.2, stripeAmt: P.comp[2] + 0.2 }),
   ];
-  const lights = scatterLights(r, 6, [lightCol, P.glow], 0.9, 1.0, 1.4, 0.0, 1.2);
+  const lights = scatterLights(r, 7, [mix(P.light, WARM, 0.4), P.glow], 0.88, 1.0, 1.5, -0.3, 1.4);
   return {
-    shapes, lights, backTop: mix(P.deep, P.dark, 0.6), backBottom: P.deep, key: [wx + 0.3, wy - 0.2, 1.1, 0.35], keyColor: lightCol,
-    haze: mix(P.dark, lightCol, 0.25), focus: 0.35,
+    shapes, lights, backTop: mix(P.deep, P.dark, 0.55), backBottom: mul(P.deep, 0.7), key: [px, py, 1.15, light ? 0.3 : 0.2],
+    keyColor: mix(P.light, [1, 1, 1], 0.4), haze: P.dark, focus: 0.42,
   };
 }
 
-function archNight(r: () => number, P: ReturnType<typeof palette>): Built {
-  const cx = -0.3 + r() * 0.6, cy = -0.05 + r() * 0.25;
-  const neon = mix(P.glow, [1, 1, 1], 0.15);
+/** A focus chart (Siemens star and line pairs) on a stand, with a second chart behind it. */
+function chartScene(r: () => number, P: ReturnType<typeof palette>): Built {
+  const cx = -0.08 + (r() - 0.5) * 0.2;
+  const grey = mix([0.3, 0.3, 0.3], P.mid, 0.35);
   const shapes: Shape[] = [
-    shape({ x: 0, y: -0.7 - r() * 0.2, hx: 9, hy: 9, type: 3, z: 0.7, color: mul(P.deep, 0.9), gradAngle: -Math.PI / 2, gradAmt: 0.6 }),
-    shape({ x: cx - 0.75, y: cy + 0.2, hx: 0.012, hy: 0.42 + r() * 0.2, rot: 0.04, radius: 0.012, z: 0.62, color: mul(mix(P.side, [1, 1, 1], 0.3), 1.9), glow: 0.7, glowR: 0.18 }),
-    shape({ x: cx + 0.85, y: cy - 0.1, hx: 0.36, hy: 0.011, rot: -0.02, radius: 0.011, z: 0.58, color: mul(mix(P.comp, [1, 1, 1], 0.35), 1.8), glow: 0.7, glowR: 0.16 }),
-    // subject: a lit ring
-    shape({ x: cx, y: cy, hx: 0.3 + r() * 0.06, hy: 0.011, type: 2, z: 0.38, color: mul(neon, 2.0), glow: 0.9, glowR: 0.22 }),
-    shape({ x: cx, y: cy, hx: 0.16, hy: 0.16, type: 1, z: 0.4, color: mul(P.deep, 1.3), alpha: 0.9, gradAmt: 0.4 }),
-    shape({ x: cx + 0.02, y: cy - 0.01, hx: 0.05, hy: 0.05, type: 1, z: 0.39, color: mul(neon, 1.4), glow: 0.5, glowR: 0.1 }),
-    // foreground silhouettes, far out of focus
-    shape({ x: 1.0 + r() * 0.2, y: -0.95, hx: 0.55, hy: 0.6, rot: 0.2, radius: 0.2, z: 0.03, color: [0.01, 0.01, 0.012], alpha: 0.98 }),
+    shape({ x: 0, y: -0.66, hx: 9, hy: 9, type: 3, z: 0.56, color: mul(grey, 0.55), gradAngle: -Math.PI / 2, gradAmt: 0.5 }),
+    shape({ x: -0.92, y: 0.32, hx: 0.24, hy: 0.3, rot: -0.12, radius: 0.008, z: 0.8, type: SHAPE_CHART, color: mul(PAPER, 0.85), gradAngle: Math.PI * 0.8, gradAmt: 0.25 }),
+    shape({ x: cx, y: -0.52, hx: 0.012, hy: 0.2, z: 0.43, color: [0.03, 0.03, 0.035], gradAmt: 0.2 }),
+    shape({ x: cx + 0.03, y: 0.03, hx: 0.44, hy: 0.52, radius: 0.012, z: 0.45, color: [0.01, 0.01, 0.012], alpha: 0.65, soft: 0.045, gradAmt: 0 }),
+    shape({ x: cx, y: 0.06, hx: 0.42, hy: 0.5, rot: (r() - 0.5) * 0.08, radius: 0.008, z: 0.42, type: SHAPE_CHART, color: PAPER, gradAngle: Math.PI * 0.75, gradAmt: 0.3 }),
+    shape({ x: 1.1, y: -0.85, hx: 0.5, hy: 0.32, rot: 0.25, radius: 0.04, z: 0.06, color: mul(P.deep, 0.6), alpha: 0.95 }),
   ];
-  const cols: RGB[] = [mul(P.glow, 1.1), mix(WARM, P.glow, 0.3), mix(P.comp, [1, 1, 1], 0.3), [1, 0.9, 0.8], P.side];
-  const lights = [
-    ...scatterLights(r, 18, cols, 0.78, 1.0, 1.55, -0.6, 1.4),
-    ...scatterLights(r, 3, cols, 0.05, 0.12, 1.3, -1.2, 1.2).map((l) => ({ ...l, intensity: l.intensity * 0.5 })),
-  ];
+  const lights = scatterLights(r, 6, [mix(WARM, [1, 1, 1], 0.4), P.glow], 0.9, 1.0, 1.5, 0.1, 1.4);
   return {
-    shapes, lights, backTop: mul(P.deep, 0.5), backBottom: mix(P.deep, P.dark, 0.35), key: [cx + 0.2, cy - 0.7, 0.9, 0.09], keyColor: P.glow,
-    haze: mul(P.dark, 0.8), focus: 0.38,
+    shapes, lights, backTop: mul(grey, 0.75), backBottom: mul(grey, 0.35), key: [cx - 0.4, 0.6, 1.1, 0.22], keyColor: mix(WARM, [1, 1, 1], 0.5),
+    haze: mul(grey, 0.5), focus: 0.42,
   };
 }
 
-function archStill(r: () => number, P: ReturnType<typeof palette>): Built {
-  const ty = -0.28 - r() * 0.1;
-  const x1 = -0.38 + r() * 0.15, x2 = x1 + 0.42 + r() * 0.1, x3 = x2 + 0.32;
+/** A colour chart (hues and a grey ramp), with a grey card hung behind it. */
+function colourScene(r: () => number, P: ReturnType<typeof palette>): Built {
+  const cx = 0.04 + (r() - 0.5) * 0.16;
   const shapes: Shape[] = [
-    shape({ x: 0, y: ty, hx: 9, hy: 9, type: 3, z: 0.5, color: mix(P.light, WARM, 0.25), gradAngle: -Math.PI / 2, gradAmt: 0.35 }),
-    shape({ x: 0, y: ty - 0.004, hx: 9, hy: 0.006, z: 0.5, color: mix(P.light, [1, 1, 1], 0.6), alpha: 0.8 }),
-    // soft shadows cast to the right, away from the key light
-    shape({ x: x1 + 0.1, y: ty - 0.03, hx: 0.22, hy: 0.03, radius: 0.03, z: 0.42, color: mul(P.dark, 0.5), alpha: 0.42, gradAmt: 0, soft: 0.055 }),
-    shape({ x: x2 + 0.08, y: ty - 0.028, hx: 0.16, hy: 0.026, radius: 0.026, z: 0.47, color: mul(P.dark, 0.5), alpha: 0.4, gradAmt: 0, soft: 0.05 }),
-    // three objects
-    shape({ x: x2, y: ty + 0.34, hx: 0.11, hy: 0.34, radius: 0.11, z: 0.47, color: P.mid, gradAngle: Math.PI * 0.8, gradAmt: 0.6, shade: 2 }),
-    shape({ x: x1, y: ty + 0.17, hx: 0.17, hy: 0.17, type: 1, z: 0.42, color: mix(P.comp, P.light, 0.25), gradAngle: Math.PI * 0.75, gradAmt: 0.7, shade: 1 }),
-    shape({ x: x3, y: ty + 0.06, hx: 0.12, hy: 0.06, radius: 0.04, z: 0.4, color: mix(P.side, P.light, 0.3), gradAngle: Math.PI * 0.8, gradAmt: 0.5, shade: 2 }),
-    // near object, far out of focus
-    shape({ x: -1.05, y: -0.95, hx: 0.5, hy: 0.5, type: 1, z: 0.04, color: mul(P.deep, 0.9), alpha: 0.97, gradAmt: 0.3 }),
-    shape({ x: 1.1, y: 0.75, hx: 0.04, hy: 1.0, rot: 0.15, z: 0.06, radius: 0.04, color: mix(P.light, WARM, 0.5), alpha: 0.6 }),
+    shape({ x: 0, y: -0.7, hx: 9, hy: 9, type: 3, z: 0.58, color: mul(P.dark, 0.7), gradAngle: -Math.PI / 2, gradAmt: 0.45 }),
+    shape({ x: -0.82, y: 0.3, hx: 0.3, hy: 0.4, rot: 0.08, radius: 0.01, z: 0.74, color: [0.42, 0.42, 0.42], gradAngle: Math.PI * 0.8, gradAmt: 0.3 }),
+    shape({ x: cx + 0.035, y: -0.03, hx: 0.62, hy: 0.44, radius: 0.02, z: 0.45, color: [0.005, 0.005, 0.006], alpha: 0.65, soft: 0.05, gradAmt: 0 }),
+    shape({ x: cx, y: 0.0, hx: 0.6, hy: 0.42, rot: (r() - 0.5) * 0.1, radius: 0.016, z: 0.42, type: SHAPE_COLOUR, color: [0.025, 0.025, 0.028] }),
+    shape({ x: cx, y: 0.45, hx: 0.06, hy: 0.035, radius: 0.006, z: 0.415, color: [0.12, 0.12, 0.13], gradAngle: Math.PI / 2, gradAmt: 0.5 }),
   ];
-  const lights = scatterLights(r, 7, [mix(WARM, P.light, 0.3), P.glow], 0.92, 1.0, 1.4, 0.15, 1.3);
+  const lights = scatterLights(r, 8, [mix(P.light, WARM, 0.5), P.glow, [0.9, 0.92, 1]], 0.88, 1.0, 1.5, -0.2, 1.4);
   return {
-    shapes, lights, backTop: mix(P.mid, P.dark, 0.6), backBottom: P.dark, key: [-0.8, 0.8, 1.2, 0.22], keyColor: mix(WARM, P.light, 0.4),
-    haze: mix(P.dark, P.light, 0.3), focus: 0.44,
+    shapes, lights, backTop: mix(P.dark, P.mid, 0.25), backBottom: mul(P.deep, 0.8), key: [cx + 0.5, 0.5, 1.2, 0.18], keyColor: mix(P.light, WARM, 0.5),
+    haze: P.dark, focus: 0.42,
   };
 }
 
-function archGels(r: () => number, P: ReturnType<typeof palette>): Built {
-  const cols: RGB[] = [P.glow, P.comp, P.side, P.light, mix(P.mid, P.comp, 0.5)];
+/** Light painting: trails drawn by a long exposure, at several depths; they keep drifting slowly. */
+function lightScene(r: () => number, P: ReturnType<typeof palette>): Built {
+  const cols: RGB[] = [mul(P.glow, 2.2), mul(mix(P.comp, [1, 1, 1], 0.35), 2.0), mul(WARM, 2.1), mul(mix(P.side, [1, 1, 1], 0.3), 2.0), mul(P.light, 2.0)];
   const shapes: Shape[] = [];
-  const n = 5;
-  for (let i = 0; i < n; i++) {
-    const z = 0.85 - (i / (n - 1)) * 0.6;
+  const n = 6;
+  for (let k = 0; k < n; k++) {
+    const z = k === 2 ? 0.45 : 0.22 + r() * 0.55;
     shapes.push(shape({
-      x: (r() * 2 - 1) * 0.75, y: (r() * 2 - 1) * 0.6, hx: 0.22 + r() * 0.3, hy: 0.25 + r() * 0.35, rot: (r() - 0.5) * 1.2,
-      radius: 0.01 + r() * 0.05, z, color: mul(cols[i % cols.length], 1.15), alpha: 0.42 + r() * 0.25,
-      gradAngle: r() * Math.PI * 2, gradAmt: 0.35, stripeFreq: i % 2 ? 0 : 70 + r() * 60, stripeAmt: i % 2 ? 0 : 0.22,
+      x: (r() - 0.5) * 0.5, y: -0.55 + k * 0.2 + (r() - 0.5) * 0.1, hx: 1.1 + r() * 0.5, hy: 0.06 + r() * 0.22,
+      rot: (r() - 0.5) * 0.7, z, type: SHAPE_TRAIL, color: cols[k % cols.length], glow: 1.0 + r() * 0.6,
+      gradAngle: 1.8 + r() * 3.2, gradAmt: r() * 6.28,
     }));
   }
-  shapes.push(shape({ x: (r() - 0.5) * 0.6, y: (r() - 0.5) * 0.4, hx: 0.34, hy: 0.018, type: 2, z: 0.5, color: mix(P.light, [1, 1, 1], 0.4), alpha: 0.95, glow: 0.2 }));
-  shapes.push(shape({ x: (r() - 0.5) * 0.8, y: 0, hx: 0.004, hy: 1.4, rot: 0.3 + r() * 0.3, z: 0.3, color: [0.92, 0.9, 0.86], alpha: 0.85, radius: 0.002 }));
-  shapes.push(shape({ x: 0.9, y: -1.0, hx: 0.6, hy: 0.4, rot: -0.25, radius: 0.2, z: 0.03, color: mul(P.deep, 0.5), alpha: 0.95 }));
-  const lights = scatterLights(r, 10, [P.glow, mix(P.light, WARM, 0.4)], 0.9, 1.0);
+  shapes.push(shape({ x: 0, y: -0.9, hx: 9, hy: 9, type: 3, z: 0.62, color: mul(P.deep, 0.5), gradAngle: -Math.PI / 2, gradAmt: 0.4 }));
+  const lights = [
+    ...scatterLights(r, 10, [P.glow, mix(WARM, [1, 1, 1], 0.3)], 0.85, 1.0, 1.5, -0.4, 1.4),
+    ...scatterLights(r, 3, [mul(P.glow, 0.8)], 0.04, 0.12, 1.3, -1.2, 1.2).map((l) => ({ ...l, intensity: l.intensity * 0.45 })),
+  ];
   return {
-    shapes, lights, backTop: mix(P.deep, P.dark, 0.5), backBottom: mul(P.deep, 0.7), key: [0, 0, 1.1, 0.22], keyColor: P.glow,
-    haze: P.dark, focus: 0.5,
+    shapes, lights, backTop: mul(P.deep, 0.45), backBottom: mul(P.deep, 0.3), key: [0, 0, 1.2, 0.08], keyColor: P.glow,
+    haze: mul(P.deep, 0.8), focus: 0.45,
   };
 }
 
-const ARCHS = [archWindow, archNight, archStill, archGels];
-const ARCH_NAMES = ['window', 'night', 'still', 'gels'];
+const PLAN: { name: string; label: string; build: (r: () => number, P: ReturnType<typeof palette>) => Built }[] = [
+  { name: 'plate', label: '16:10 screenshot plate', build: (r, P) => plateScene(r, P, 0, true) },
+  { name: 'chart', label: 'focus chart', build: chartScene },
+  { name: 'light', label: 'light painting', build: lightScene },
+  { name: 'colour', label: 'colour chart', build: colourScene },
+  { name: 'plate', label: '16:10 screenshot plate', build: (r, P) => plateScene(r, P, 1, false) },
+  { name: 'light', label: 'light painting', build: lightScene },
+  { name: 'chart', label: 'focus chart', build: chartScene },
+  { name: 'colour', label: 'colour chart', build: colourScene },
+];
 
 function finish(slug: string, kind: 0 | 1 | 2, b: Built, r: () => number, extra: Partial<Scene> = {}): Scene {
   const { S, L, ns, nb } = pack(b.shapes, b.lights);
@@ -279,7 +271,7 @@ function finish(slug: string, kind: 0 | 1 | 2, b: Built, r: () => number, extra:
     backTop: b.backTop, backBottom: b.backBottom, key: b.key, keyColor: b.keyColor, haze: b.haze,
     glass, glass2, focus: b.focus,
     fnum: FNUMS[Math.floor(r() * FNUMS.length)], shutter: SHUTTERS[Math.floor(r() * SHUTTERS.length)], iso: ISOS[Math.floor(r() * ISOS.length)],
-    archetype: ARCH_NAMES[0], depthAt, ...extra,
+    archetype: 'scene', label: 'generated in code', depthAt, ...extra,
   };
 }
 
@@ -291,7 +283,7 @@ function retake(b: Built, mirror: boolean, scale: number, dx: number, dy: number
     const p = mv(sh.x, sh.y);
     const big = sh.type === 3;
     return { ...sh, x: big ? sh.x : p.x, y: big ? sh.y * scale + dy : p.y, hx: big ? sh.hx : sh.hx * scale, hy: big ? sh.hy : sh.hy * scale,
-      radius: sh.radius * scale, rot: sh.rot * m, gradAngle: mirror ? Math.PI - sh.gradAngle : sh.gradAngle };
+      radius: sh.radius * scale, rot: sh.rot * m, gradAngle: mirror && sh.type !== 5 && sh.type !== 6 ? Math.PI - sh.gradAngle : sh.gradAngle };
   });
   b.lights = b.lights.map((l) => ({ ...l, ...mv(l.x, l.y) }));
   b.key = [b.key[0] * m * scale + dx, b.key[1] * scale + dy, b.key[2], b.key[3]];
@@ -300,12 +292,13 @@ function retake(b: Built, mirror: boolean, scale: number, dx: number, dy: number
 
 export function projectScene(p: Project): Scene {
   const r = mulberry(hashStr(p.slug));
-  const a = (p.index * 3 + 2) % 4;
-  let built = ARCHS[a](r, palette(p.tint));
+  const plan = PLAN[p.index % PLAN.length];
+  let built = plan.build(r, palette(p.tint));
   if (p.index >= 4) built = retake(built, true, 0.82 + r() * 0.1, (r() - 0.5) * 0.3, -0.06 + r() * 0.12);
   else built = retake(built, false, 0.96 + r() * 0.12, (r() - 0.5) * 0.2, 0);
   const s = finish(p.slug, 0, built, r);
-  s.archetype = ARCH_NAMES[a];
+  s.archetype = plan.name;
+  s.label = plan.label;
   return s;
 }
 
@@ -325,7 +318,7 @@ export function honourScene(h: Honour, tints: string[]): Scene {
       shapes, lights: scatterLights(r, 8, [mix(WARM, [1, 1, 1], 0.5)], 0.9, 1.0, 1.5, -0.4, 1.4),
       backTop: mul(P.deep, 0.8), backBottom: mul(P.deep, 0.5), key: [0, 0.4, 1.2, 0.2], keyColor: [0.7, 0.75, 0.85], haze: P.dark, focus: 0.4,
     };
-    return finish(h.slug, 1, b, r, { glass: [0, -0.05, 0.34, 0.66], glass2: [0.07, 0.11, 1.0, 0.4], archetype: 'glass' });
+    return finish(h.slug, 1, b, r, { glass: [0, -0.05, 0.34, 0.66], glass2: [0.07, 0.11, 1.0, 0.4], archetype: 'glass', label: 'glass award render' });
   }
   // medal: a ribbon and a disc of unknown metal (rendered neutral, since the metal is not known)
   const rib = palette('#3A3F4F');
@@ -336,7 +329,7 @@ export function honourScene(h: Honour, tints: string[]): Scene {
     shapes, lights: scatterLights(r, 10, [mix(WARM, [1, 1, 1], 0.4), [0.8, 0.85, 1]], 0.88, 1.0, 1.5, -0.6, 1.4),
     backTop: mul(P.deep, 0.9), backBottom: mul(P.deep, 0.45), key: [-0.4, 0.5, 1.0, 0.22], keyColor: mix(WARM, [1, 1, 1], 0.5), haze: P.dark, focus: 0.4,
   };
-  return finish(h.slug, 2, b, r, { glass: [0, -0.18, 0.4, 0], glass2: [0, 0, 0, 0.4], archetype: 'medal' });
+  return finish(h.slug, 2, b, r, { glass: [0, -0.18, 0.4, 0], glass2: [0, 0, 0, 0.4], archetype: 'medal', label: 'medal render' });
 }
 
 /** Focus distance readout from a depth (0 near, 1 far). */

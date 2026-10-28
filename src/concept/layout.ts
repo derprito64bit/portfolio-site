@@ -5,7 +5,7 @@ export type Mode = 'work' | 'play' | 'info' | 'open';
 
 export const isPhone = () => window.innerWidth < 760;
 
-export function topHeight() { return isPhone() ? 96 : 64; }
+export function topHeight() { return isPhone() ? 100 : 64; }
 
 export function frameRect(mode: Mode): Rect {
   const W = window.innerWidth, H = window.innerHeight;

@@ -14,6 +14,7 @@ export interface FrameState {
   peak: number; ca: number; smear: number; vig: number; alpha: number; radius: number; zebra: number; nd: number;
   simA: number; simB: number; simT: number; noise: number; mix: number;
   eyeOn: boolean; eyeP: number; eyeCx: number; eyeCy: number;
+  dim: number; poolX: number; poolY: number; poolR: number; poolAmt: number; rim: number; ndv: number;
 }
 
 export interface Meter { hist: Float32Array; ev: number; clip: boolean }
@@ -29,6 +30,9 @@ export class Engine {
   quality = 1;
   dprCap = 1.5;
   sway = true;
+  /** 1 while the visitor's hand is still: the frame breathes (bokeh) and the focus drifts a little. */
+  idleTarget = 0;
+  private idleAmt = 0;
   onMeter: ((m: Meter) => void) | null = null;
   private pScene!: Program; private pComp!: Program; private pEye!: Program;
   private mScene!: Mesh; private mComp!: Mesh; private mEye!: Mesh;
@@ -46,6 +50,7 @@ export class Engine {
   private t0 = performance.now();
   private swayX = 0; private swayY = 0; private swayR = 0;
   private pixels = new Uint8Array(64 * 40 * 4);
+  private pendingRead = false;
   private used = { w: 1, h: 1 };
   ok = false;
 
@@ -55,6 +60,7 @@ export class Engine {
       rect: { x: 0, y: 0, w: 1, h: 1 }, focus: 0.4, aperture: 0.7, exposure: 1, zoom: 1, zcx: 0, zcy: 0, dolly: 0,
       parx: 0, pary: 0, roll: 0, tilt: 0, peak: 0, ca: 0, smear: 0, vig: 0.28, alpha: 0, radius: 2, zebra: 0, nd: 0,
       simA: 0, simB: 0, simT: 0, noise: 0.02, mix: 1, eyeOn: false, eyeP: 0, eyeCx: 0, eyeCy: 0,
+      dim: 1, poolX: 0, poolY: 0, poolR: 110, poolAmt: 0, rim: 0, ndv: 0,
     };
     this.renderer = new Renderer({ canvas, webgl: 2, alpha: true, premultipliedAlpha: true, antialias: false, depth: false, dpr: 1, powerPreference: 'high-performance' } as any);
     this.gl = this.renderer.gl;
@@ -106,7 +112,7 @@ export class Engine {
       uKey: { value: [0, 0, 1, 0] }, uG: { value: [0, 0, 0, 0] }, uG2: { value: [0, 0, 0, 0] }, uKind: { value: 0 },
       uAspect: { value: 1.5 }, uFocus: { value: 0.4 }, uAperture: { value: 0.7 }, uExposure: { value: 1 }, uZoom: { value: 1 },
       uDolly: { value: 0 }, uTime: { value: 0 }, uPx: { value: 0.002 }, uRoll: { value: 0 }, uTilt: { value: 0 },
-      uZC: { value: [0, 0] }, uPar: { value: [0, 0] },
+      uZC: { value: [0, 0] }, uPar: { value: [0, 0] }, uBreath: { value: 0 },
     };
     await Promise.all([this.prewarm(sceneFrag(0)), this.prewarm(compositeFrag), this.prewarm(eyepieceFrag)]);
     this.buildScene(0);
@@ -122,6 +128,7 @@ export class Engine {
         uSimA: { value: 0 }, uSimB: { value: 0 }, uSimT: { value: 0 }, uNoise: { value: 0 }, uTime: { value: 0 },
         uPeak: { value: 0 }, uCA: { value: 0 }, uSmear: { value: 0 }, uVig: { value: 0 }, uAlpha: { value: 0 },
         uRadius: { value: 0 }, uZebra: { value: 0 }, uND: { value: 0 }, uPeakCol: { value: PEAK_COL },
+        uDim: { value: 1 }, uPool: { value: [0, 0, 100] }, uPoolAmt: { value: 0 }, uRim: { value: 0 }, uDpr: { value: 1 }, uNDV: { value: 0 },
       },
     });
     this.check(this.pComp, 'composite');
@@ -129,7 +136,7 @@ export class Engine {
     this.snapTex = new Texture(gl, { generateMipmaps: false, minFilter: gl.LINEAR, magFilter: gl.LINEAR, width: 2, height: 2 });
     this.pEye = new Program(gl, {
       ...this.common(), fragment: eyepieceFrag,
-      uniforms: { tSnap: { value: this.snapTex }, uP: { value: 0 }, uAspect: { value: 1.6 }, uPhase: { value: 0 }, uC: { value: [0, 0] } },
+      uniforms: { tSnap: { value: this.snapTex }, tScene: { value: this.rtCur.texture }, uFrac: { value: [1, 1] }, uDim: { value: 1 }, uP: { value: 0 }, uAspect: { value: 1.6 }, uPhase: { value: 0 }, uC: { value: [0, 0] } },
     });
     this.check(this.pEye, 'eyepiece');
     step('eyepiece shader');
@@ -204,7 +211,7 @@ export class Engine {
     if (!this.raf && !document.hidden) this.raf = requestAnimationFrame(this.tick);
   }
 
-  wantMeter() { this.meterWanted = performance.now() + 900; }
+  wantMeter() { this.meterWanted = performance.now() + 900; this.invalidate(500); }
 
   start() {
     document.addEventListener('visibilitychange', () => { if (!document.hidden) this.invalidate(100); });
@@ -215,7 +222,7 @@ export class Engine {
     this.raf = 0;
     if (document.hidden) return;
     const hot = now < this.hotUntil;
-    const idleLive = this.sway && this.st.alpha > 0 && !this.st.eyeOn;
+    const idleLive = this.sway && this.st.alpha > 0 && !this.st.eyeOn && !document.hidden;
     const interval = hot ? 0 : idleLive ? 1000 / 30 - 2 : Infinity;
     if (now - this.last >= interval) {
       const dt = this.last ? now - this.last : 16;
@@ -227,10 +234,10 @@ export class Engine {
   };
 
   private adapt(dt: number) {
-    if (dt > 120) return; // a stall (tab switch, screenshot, GC) is not GPU cost
+    if (dt > 60) return; // a stall (tab switch, screenshot, GC) is not GPU cost
     this.frameTimes.push(dt);
-    if (this.frameTimes.length < 60) return;
-    const med = [...this.frameTimes].sort((a, b) => a - b)[30];
+    if (this.frameTimes.length < 90) return;
+    const med = [...this.frameTimes].sort((a, b) => a - b)[45];
     this.frameTimes.length = 0;
     const q = this.quality;
     if (med > 22 && q > 0.56) this.quality = Math.max(0.55, q - 0.15);
@@ -251,9 +258,17 @@ export class Engine {
     gl.viewport(0, 0, W, H);
     gl.clearColor(0, 0, 0, 0);
     gl.clear(gl.COLOR_BUFFER_BIT);
+    this.collect();
+    this.renderer.bindFramebuffer();
+    gl.viewport(0, 0, W, H);
+    this.idleAmt += (this.idleTarget - this.idleAmt) * 0.04;
     if (st.eyeOn) {
+      if (this.scene) this.renderScene(t);
+      this.renderer.bindFramebuffer();
+      gl.viewport(0, 0, W, H);
       const u = this.pEye.uniforms;
       u.uP.value = st.eyeP; u.uAspect.value = W / H; u.uPhase.value = 0; u.uC.value = [st.eyeCx, st.eyeCy];
+      u.tScene.value = this.rtCur.texture; u.uFrac.value = [this.used.w / this.rtCur.width, this.used.h / this.rtCur.height]; u.uDim.value = this.scene ? st.dim : 0;
       this.mEye.draw();
       return;
     }
@@ -272,10 +287,12 @@ export class Engine {
     this.setCompCommon(u, t);
     u.uPeak.value = st.peak; u.uNoise.value = this.sway ? st.noise : 0; u.uAlpha.value = st.alpha;
     u.uRadius.value = st.radius * cd; u.uND.value = st.nd; u.uZebra.value = st.zebra;
+    u.uDim.value = st.dim; u.uPool.value = [st.poolX * cd, st.poolY * cd, st.poolR * cd]; u.uPoolAmt.value = st.poolAmt;
+    u.uRim.value = st.rim; u.uDpr.value = cd; u.uNDV.value = st.ndv;
     this.renderer.bindFramebuffer();
     gl.viewport(0, 0, W, H);
     this.mComp.draw();
-    if (now < this.meterWanted && now - this.lastMeter > 110) { this.lastMeter = now; this.measure(t); }
+    if (now < this.meterWanted && now - this.lastMeter > 110 && !this.pendingRead) { this.lastMeter = now; this.measure(t); }
   }
 
   private setCompCommon(u: any, t: number) {
@@ -295,7 +312,9 @@ export class Engine {
     const aspect = st.rect.w / Math.max(1, st.rect.h);
     const hy = aspect >= 1 ? 1 : 1 / aspect;
     const u = this.pScene.uniforms;
-    u.uAspect.value = aspect; u.uFocus.value = st.focus; u.uAperture.value = st.aperture; u.uExposure.value = st.exposure;
+    const drift = this.sway ? 0.016 * this.idleAmt * Math.sin(t * 0.5) : 0;
+    u.uBreath.value = this.sway ? this.idleAmt : 0;
+    u.uAspect.value = aspect; u.uFocus.value = st.focus + drift; u.uAperture.value = st.aperture; u.uExposure.value = st.exposure;
     u.uZoom.value = st.zoom; u.uDolly.value = st.dolly; u.uTime.value = this.sway ? t : 0; u.uPx.value = (2 * hy) / h / st.zoom;
     u.uRoll.value = st.roll + this.swayR; u.uTilt.value = st.tilt;
     u.uZC.value = [st.zcx, st.zcy]; u.uPar.value = [st.parx + this.swayX, st.pary + this.swayY];
@@ -303,6 +322,19 @@ export class Engine {
     this.renderer.bindFramebuffer(this.rtCur);
     this.gl.viewport(0, 0, w, h);
     this.mScene.draw();
+  }
+
+  /** Mean displayed luminance (0..1) around a point of the last readback (fractions of the frame, y down). */
+  lumAt(fx: number, fy: number) {
+    const px = this.pixels;
+    const cx = Math.round(fx * 63), cy = Math.round((1 - fy) * 39);
+    let sum = 0, n = 0;
+    for (let y = cy - 2; y <= cy + 2; y++) for (let x = cx - 3; x <= cx + 3; x++) {
+      if (x < 0 || y < 0 || x > 63 || y > 39) continue;
+      const i = (y * 64 + x) * 4;
+      sum += (0.2126 * px[i] + 0.7152 * px[i + 1] + 0.0722 * px[i + 2]) / 255; n++;
+    }
+    return n ? sum / n : 0;
   }
 
   /** Renders the graded frame at 64 x 40 and reads it back: the histogram and the meter are the real image. */
@@ -313,12 +345,24 @@ export class Engine {
     u.uRect.value = [0, 0, 64, 40]; u.uRes.value = [64, 40];
     this.setCompCommon(u, t);
     u.uPeak.value = 0; u.uNoise.value = 0; u.uAlpha.value = 1; u.uRadius.value = 0; u.uND.value = 0; u.uZebra.value = 0; u.uMix.value = 1;
+    u.uDim.value = 1; u.uPoolAmt.value = 0; u.uRim.value = 0;
     this.renderer.bindFramebuffer(this.rtSmall);
     gl.viewport(0, 0, 64, 40);
     this.mComp.draw();
-    gl.readPixels(0, 0, 64, 40, gl.RGBA, gl.UNSIGNED_BYTE, this.pixels);
+    // the read happens at the start of the next frame, when the GPU has finished this one: no stall, no buffer games
+    this.pendingRead = true;
     this.renderer.bindFramebuffer();
     u.uRect.value = keep.rect; u.uRes.value = keep.res;
+  }
+
+  /** Reads last frame's 64 x 40 metering render; called first thing in a frame. */
+  private collect() {
+    const gl = this.gl;
+    if (!this.pendingRead) return;
+    this.pendingRead = false;
+    this.renderer.bindFramebuffer(this.rtSmall);
+    gl.readPixels(0, 0, 64, 40, gl.RGBA, gl.UNSIGNED_BYTE, this.pixels);
+    this.renderer.bindFramebuffer();
     const hist = new Float32Array(64);
     let sum = 0, wsum = 0, clipped = 0;
     const px = this.pixels;

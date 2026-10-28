@@ -1,8 +1,8 @@
 // Viewfinder concept: boot, preloader, intro, the raise, the EVF (work, playback, owner info) and the open project.
 import { gsap, Observer, SplitText, Flip, D, E, CHARS, CHARS_UP } from './motion';
-import { Engine, type Meter, type Rect } from './gl/engine';
+import type { Engine, Meter, Rect } from './gl/engine';
 import { projects, honours, phInner, isPlaceholder } from './data';
-import { projectScene, honourScene, distanceLabel, type Scene } from './scenes';
+import type { Scene } from './scenes';
 import { frameRect, writeRect, fitName, isPhone, type Mode } from './layout';
 import { drawSnapshot } from './snapshot';
 
@@ -49,6 +49,12 @@ const pad = (n: number) => String(n).padStart(2, '0');
 const apertureOf = (f: number) => 1.4 / Math.pow(f, 0.8);
 const noiseOf = (iso: number) => 0.012 + Math.log2(iso / 160) * 0.0055;
 const FLS = [23, 27, 33, 35, 40, 50, 56];
+/** Focus distance readout from a depth (0 near, 1 far); mirrors scenes.ts. */
+function distLabel(z: number) {
+  if (z > 0.93) return '∞';
+  const m = 0.3 / Math.max(0.02, 1 - z * 1.02);
+  return m < 1 ? `${m.toFixed(2)}m` : m < 10 ? `${m.toFixed(1)}m` : `${Math.round(m)}m`;
+}
 
 // ------------------------------------------------------------------ state
 type St = 'loading' | 'intro' | 'raising' | 'evf' | 'opening' | 'open' | 'closing' | 'lowering';
@@ -114,12 +120,17 @@ function drawHist(m: Meter) {
 
 // ------------------------------------------------------------------ scenes / subject
 function halfOf(r: Rect) { const a = r.w / Math.max(1, r.h); return a >= 1 ? { x: a, y: 1 } : { x: 1, y: 1 / a }; }
+/** The frame's subject: the largest solid shape on the focus plane. */
 function subjectOf(s: Scene) {
+  let best: { x: number; y: number; z: number } | null = null, area = 0;
   for (let i = 0; i < s.ns; i++) {
     const o = i * 20, z = s.shapes[o + 6];
-    if (Math.abs(z - s.focus) < 0.035 && s.shapes[o + 11] >= 0.9 && s.shapes[o + 19] === 0) return { x: s.shapes[o], y: s.shapes[o + 1], z };
+    const a = s.shapes[o + 2] * s.shapes[o + 3];
+    if (Math.abs(z - s.focus) < 0.035 && s.shapes[o + 11] >= 0.9 && s.shapes[o + 19] === 0 && s.shapes[o + 7] !== 3 && a > area) {
+      area = a; best = { x: s.shapes[o], y: s.shapes[o + 1], z };
+    }
   }
-  return { x: s.glass[0], y: s.glass[1], z: s.focus };
+  return best ?? { x: s.glass[0], y: s.glass[1], z: s.focus };
 }
 function sceneToFrac(q: { x: number; y: number }, r: Rect) {
   const h = halfOf(r);
@@ -142,7 +153,7 @@ function syncDist() {
   const sc = $('.dist__scale');
   distMk.style.setProperty('--sh', `${sc.clientHeight}px`);
   distMk.style.setProperty('--zf', String(Math.max(0, Math.min(0.95, z))));
-  distV.textContent = distanceLabel(z);
+  distV.textContent = distLabel(z);
 }
 function lockAF(on: boolean) {
   afEl.classList.toggle('is-lock', on);
@@ -154,6 +165,10 @@ function updateReadouts(i: number, animate = true) {
   const m = modeOf(i);
   const s = scenes[i];
   idxBtns.forEach((b) => b.setAttribute('aria-current', String(Number(b.dataset.go) === i)));
+  if (isPhone()) {
+    const row = $('.idx'), cur = idxBtns.find((b) => Number(b.dataset.go) === i);
+    if (cur) row.scrollTo({ left: cur.offsetLeft - row.clientWidth / 2 + cur.offsetWidth / 2, behavior: calm ? 'auto' : 'smooth' });
+  }
   idxGrps.forEach((g) => g.classList.toggle('is-cur', g.dataset.grp === m));
   evf.dataset.mode = m;
   const icon = m === 'work' ? '' : m === 'play' ? 'is-play' : 'is-info';
@@ -188,6 +203,7 @@ function updateReadouts(i: number, animate = true) {
   }
   playEl.hidden = m !== 'play';
   infoEl.hidden = m !== 'info';
+  if (s) $('[data-ph-media]').textContent = `Placeholder media · ${s.label}`;
   $('[data-hint]').textContent = m === 'work'
     ? (isPhone() ? 'Swipe to advance · tap to focus · tap again to open' : 'Scroll or drag to advance · hover to focus · ↵ to open')
     : m === 'play' ? 'Playback · scroll or drag for the next honour' : 'Esc or “Lower the camera” to return to the intro';
@@ -225,6 +241,7 @@ async function boot() {
     const ev = -3 + 3 * disp.p;
     meterV.ev = ev;
     setMeter(ev);
+    if (bgReady && engine) { engine.st.dim = dimFor(disp.p); engine.invalidate(60); }
     progress.setAttribute('aria-valuenow', String(Math.round(disp.p * 100)));
     chars.forEach((_, i) => { if (disp.p >= ((i + 1) / (chars.length + 1)) * 0.97) exposeChar(i); });
     if (disp.p >= 0.999 && !done) { done = true; gsap.ticker.remove(tick); release(); }
@@ -250,7 +267,9 @@ async function boot() {
   // 2. WebGL programs
   try {
     const canvas = $<HTMLCanvasElement>('.gl');
-    engine = new Engine(canvas);
+    // the GL engine and the scene builders load as their own chunk, so the first script task stays short
+    const { Engine: EngineClass } = await import('./gl/engine');
+    engine = new EngineClass(canvas);
     engine.sway = !calm;
     engine.resize();
     say('Compiling shaders');
@@ -268,27 +287,41 @@ async function boot() {
 
   // 3. scenes, generated from each slug
   const tints = projects.map((p) => p.tint);
+  const { projectScene, honourScene } = await import('./scenes');
   for (const p of projects) { scenes.push(projectScene(p)); add(0.012); }
   for (const h of honours) { scenes.push(honourScene(h, tints)); add(0.012); }
   say(`Frames ${pad(scenes.length)}/${pad(NW + NP)}`);
   await frame();
 
-  // 4. warm-up: frame one drawn and metered, invisibly
+  // 4. frame one, drawn and metered: it waits behind the page, defocused, and exposes with the load
   if (engine) {
-    const st = engine.st;
-    st.rect = frameRect('work');
-    engine.setScene(scenes[0]);
-    st.alpha = 0.0001; st.exposure = 1; st.focus = scenes[0].focus; st.aperture = apertureOf(scenes[0].fnum);
+    introBackdrop(scenes[0], dimFor(disp.p));
     engine.invalidate(300);
     await frame(); await frame();
-    st.alpha = 0;
+    engine.wantMeter();
+    bgReady = true;
   }
   add(1, 'Frame 01 metered');
   clearTimeout(timeout);
 }
 
 const frame = () => new Promise<void>((r) => requestAnimationFrame(() => r()));
+let bgReady = false;
+const INTRO_DIM = 0.125; // -3 EV
+/** The frame behind the page exposes from -6 EV to -3 EV as the load completes. */
+const dimFor = (p: number) => Math.pow(2, -6 + 3 * Math.min(1, p));
+function introBackdrop(s: Scene, dim: number) {
+  if (!engine) return;
+  const st = engine.st;
+  engine.setScene(s);
+  Object.assign(st, {
+    rect: frameRect('open'), alpha: 1, exposure: 1, focus: 0.12, aperture: apertureOf(s.fnum), zoom: 1, dolly: 0,
+    parx: 0, pary: 0, roll: 0, tilt: 0, peak: 0, ca: 0, smear: 0, vig: 0.32, radius: 0, nd: 0, mix: 1, dim, poolAmt: 0, rim: 0, zebra: 0,
+    noise: calm ? 0 : noiseOf(s.iso), ndv: 0, poolR: isPhone() ? 110 : 150,
+  });
+}
 
+let releaseTl: gsap.core.Timeline | null = null;
 function release() {
   S = 'intro';
   html.classList.remove('is-loading');
@@ -301,11 +334,19 @@ function release() {
     setMeter(0);
     return;
   }
-  // one release: needle lands on zero with a detent, highlight alert flashes once, then the page settles
+  // the release, one beat: the needle lands, the name and the frame behind it bloom to over-exposure (with the
+  // camera's highlight alert), then the name snaps into focus and the frame falls back to -3 EV
   const t = gsap.timeline();
-  t.to(meterV, { ev: 0, duration: D.step, ease: E.detent, onUpdate: () => setMeter(meterV.ev) });
-  t.call(() => nameEl.classList.add('is-zebra'), [], 0.05);
-  t.call(() => nameEl.classList.remove('is-zebra'), [], 0.32);
+  releaseTl = t;
+  t.to(meterV, { ev: 0.6, duration: D.step, ease: E.in, onUpdate: () => setMeter(meterV.ev) });
+  t.to(meterV, { ev: 0, duration: D.step, ease: E.detent, onUpdate: () => setMeter(meterV.ev) }, 0.42);
+  t.to(nameEl, { '--nb': 1, duration: 0.2, ease: E.in }, 0.04);
+  if (engine) t.to(engine.st, { dim: 1.7, zebra: 1, ca: 0.004, duration: 0.2, ease: E.in, onUpdate: reveal }, 0.04);
+  t.call(() => nameEl.classList.add('is-zebra'), [], 0.2);
+  t.call(() => nameEl.classList.remove('is-zebra'), [], 0.4);
+  t.to(nameEl, { '--nb': 0, duration: D.snap, ease: E.detent }, 0.42);
+  if (engine) t.to(engine.st, { dim: INTRO_DIM, zebra: 0, ca: 0, duration: D.land, ease: E.out, onUpdate: reveal }, 0.42);
+  t.call(armIdle, [], 1.0);
   t.call(() => { scramble(lmLabel, 'Exposure', D.step); scramble(lmStep, `Ready · ${pad(NW)} frames · ${pad(NP)} honours`, D.land); }, [], 0.1);
   t.fromTo('.intro__meta > *', { opacity: 0 }, { opacity: 1, duration: 0.01, stagger: 0.06 }, 0.22);
   t.call(() => { $$<HTMLElement>('.intro__meta .mono').forEach((e) => scramble(e, e.textContent ?? '', D.land)); }, [], 0.22);
@@ -339,12 +380,18 @@ function flipMarks(toFrame: boolean, dur: number) {
 function raise() {
   if (S !== 'intro') return;
   S = 'raising';
+  // a raise during the release finishes the release first, so nothing from the intro outlives it
+  if (releaseTl) { releaseTl.progress(1); releaseTl = null; }
+  stopRoam(); clearTimeout(idleTimer);
+  gsap.killTweensOf(spot);
+  if (engine) gsap.killTweensOf(engine.st, 'dim,zebra,ca,poolAmt,poolX,poolY');
+  poolTo.x = poolTo.y = null;
   const rect = frameRect('work');
   writeRect(rect);
   updateReadouts(0, false);
   pos = 0;
   const snap = document.createElement('canvas');
-  drawSnapshot(intro, snap, Math.min(window.devicePixelRatio || 1, 1.5), [meter, marksHome]);
+  drawSnapshot(intro, snap, 1, [meter, marksHome]);
   evf.classList.add('is-on');
   evf.inert = false;
   intro.inert = true;
@@ -359,8 +406,9 @@ function raise() {
     t.add(hudOn(), 0.2);
     if (engine) {
       const st = engine.st;
-      Object.assign(st, { rect, focus: scenes[0].focus, aperture: apertureOf(scenes[0].fnum), exposure: 1, mix: 1, alpha: 0, peak: 0 });
+      engine.holdPrevious();
       engine.setScene(scenes[0]);
+      Object.assign(st, { rect, focus: scenes[0].focus, aperture: apertureOf(scenes[0].fnum), exposure: 1, mix: 1, alpha: 0, peak: 0, dim: 1, poolAmt: 0, rim: 1, vig: 0.28, radius: 5 });
       t.to(st, { alpha: 1, duration: 0.4, onUpdate: reveal }, 0.2);
     } else coverFor(0);
     t.call(() => engine?.wantMeter(), [], 0.7);
@@ -373,7 +421,10 @@ function raise() {
   const asp = window.innerWidth / window.innerHeight;
   st.eyeCx = ((nr.left + nr.width / 2) / window.innerWidth - 0.5) * asp * 0.7;
   st.eyeCy = (0.5 - (nr.top + nr.height / 2) / window.innerHeight) * 0.7;
-  st.eyeOn = true; st.eyeP = 0; st.alpha = 0;
+  stopRoam(); clearTimeout(idleTimer);
+  st.eyeOn = true; st.eyeP = 0; st.poolAmt = 0;
+  engine.idleTarget = 0;
+  raiseBtn.classList.remove('is-idle');
   engine.invalidate(3000);
   requestAnimationFrame(() => requestAnimationFrame(() => { intro.style.visibility = 'hidden'; }));
   const s0 = scenes[0];
@@ -386,7 +437,7 @@ function raise() {
   tl.call(() => {
     st.eyeOn = false;
     engine!.setScene(s0);
-    Object.assign(st, { rect, alpha: 1, exposure: 0, focus: 0.02, aperture: apertureOf(s0.fnum), zoom: 1, dolly: 0, mix: 1, nd: 0, noise: noiseOf(s0.iso), radius: 2 });
+    Object.assign(st, { rect, alpha: 1, exposure: 0, focus: 0.02, aperture: apertureOf(s0.fnum), zoom: 1, dolly: 0, mix: 1, nd: 0, noise: noiseOf(s0.iso), radius: 5, dim: 1, poolAmt: 0, rim: 1, vig: 0.28, zebra: 0, ca: 0 });
     syncDist();
   }, [], 0.82);
   tl.add(hudOn(), 0.76);
@@ -415,12 +466,13 @@ function lower() {
     S = 'intro'; tl = null;
     evf.classList.remove('is-on'); evf.inert = true; intro.inert = false; skipLink.hidden = false; setMeter(0);
     intro.style.visibility = ''; raiseBtn.focus({ preventScroll: true });
+    armIdle();
   };
   hudOff();
   if (!engine || calm) {
     back();
     gsap.fromTo(intro, { opacity: 0 }, { opacity: 1, duration: 0.4, onStart: () => { intro.style.visibility = ''; }, onComplete: done });
-    if (engine) gsap.to(engine.st, { alpha: 0, duration: 0.3, onUpdate: reveal });
+    if (engine) { engine.holdPrevious(); introBackdrop(scenes[Math.min(pos, scenes.length - 1)], INTRO_DIM); engine.st.mix = 0; gsap.to(engine.st, { mix: 1, duration: 0.4, onUpdate: reveal }); }
     return;
   }
   const st = engine.st;
@@ -431,11 +483,12 @@ function lower() {
     intro.style.visibility = 'visible';
     intro.style.opacity = '0';
     const snap = document.createElement('canvas');
-    drawSnapshot(intro, snap, Math.min(window.devicePixelRatio || 1, 1.5), [meter, marksHome]);
+    drawSnapshot(intro, snap, 1, [meter, marksHome]);
     intro.style.visibility = 'hidden';
     intro.style.opacity = '1';
     engine!.setSnapshot(snap);
-    st.alpha = 0; st.eyeOn = true; st.eyeP = 1;
+    introBackdrop(scenes[Math.min(pos, scenes.length - 1)], INTRO_DIM);
+    st.eyeOn = true; st.eyeP = 1;
   });
   tl.to(st, { eyeP: 0, duration: 0.65, ease: E.out, onUpdate: reveal });
   tl.call(() => { st.eyeOn = false; reveal(); });
@@ -547,7 +600,7 @@ function switchMode(from: number, to: number) {
 
 // ------------------------------------------------------------------ the open project
 function zoomCentre(s: Scene, zoom = 2.3) {
-  const target = isPhone() ? { x: 0.5, y: 0.3 } : { x: 0.68, y: 0.5 };
+  const target = isPhone() ? { x: 0.5, y: 0.27 } : { x: 0.68, y: 0.5 };
   const full = frameRect('open');
   const T = fracToScene(target, full);
   const sub = openTarget(s);
@@ -592,17 +645,18 @@ function openProject() {
   const settle = () => { S = 'open'; ($('[data-proj-title]') as HTMLElement).setAttribute('tabindex', '-1'); ($('[data-close]') as HTMLElement).focus({ preventScroll: true }); };
   evf.inert = true;
   evf.classList.add('is-open');
+  if (engine) engine.idleTarget = 0;
   if (!engine || calm) {
     hudOff();
     writeRect(full);
-    if (engine) { const st = engine.st; engine.holdPrevious(); st.rect = full; st.nd = 1; st.radius = 0; st.mix = 0; tl = gsap.timeline({ onComplete: () => { tl = null; settle(); } }); tl.to(st, { mix: 1, duration: 0.4, onUpdate: reveal }); }
+    if (engine) { const st = engine.st; engine.holdPrevious(); st.rect = full; st.nd = 1; st.ndv = isPhone() ? 1 : 0; st.radius = 0; st.rim = 0; st.mix = 0; tl = gsap.timeline({ onComplete: () => { tl = null; settle(); } }); tl.to(st, { mix: 1, duration: 0.4, onUpdate: reveal }); }
     else { writeRect(full); tl = gsap.timeline({ onComplete: () => { tl = null; settle(); } }); }
     tl.fromTo(items, { opacity: 0, y: 0 }, { opacity: 1, duration: 0.4 }, 0);
     return;
   }
   const st = engine.st;
   const s = scenes[pos];
-  const zoom = Math.max(1.3, (56 / 23) / (full.w / st.rect.w));
+  const zoom = isPhone() ? 1.45 : Math.max(1.3, (56 / 23) / (full.w / st.rect.w));
   const zc = zoomCentre(s, zoom);
   gsap.to(st, { peak: 0, duration: D.snap, overwrite: 'auto', onUpdate: reveal });
   st.zcx = zc.x; st.zcy = zc.y;
@@ -620,11 +674,12 @@ function openProject() {
   tl.call(settle, [], D.travel);
   tl.call(() => { $$('.evf .pw.on').forEach((e) => { if (!e.matches('.ro--fl')) e.classList.remove('on'); }); }, [], 0.08);
   tl.to(st.rect, { x: full.x, y: full.y, w: full.w, h: full.h, duration: D.travel, ease: E.lens, onUpdate: () => { writeRect(st.rect); reveal(); } }, 0);
-  tl.to(st, { zoom, dolly: 0.08, focus: subZ, aperture: apertureOf(s.fnum) * 1.6, radius: 0, vig: 0.38, duration: D.travel, ease: E.lens }, 0);
+  tl.to(st, { zoom, dolly: 0.08, focus: subZ, aperture: apertureOf(s.fnum) * 1.6, radius: 0, rim: 0, vig: 0.38, duration: D.travel, ease: E.lens }, 0);
+  st.ndv = isPhone() ? 1 : 0;
   tl.to(fl, { v: 56, duration: D.travel, ease: E.lens, onUpdate: flUp }, 0);
   tl.to(st, { nd: isPhone() ? 0.9 : 1, duration: D.land, ease: E.out }, D.travel - 0.15);
   tl.to(items, { opacity: 1, y: 0, duration: D.land, ease: E.out, stagger: 0.1 }, D.travel - 0.1);
-  tl.call(() => $('.ro--fl').classList.remove('on'), [], D.travel);
+  tl.call(() => $('.ro--fl').classList.remove('on'), [], D.travel - 0.14);
 }
 
 function closeProject() {
@@ -639,7 +694,7 @@ function closeProject() {
     tl.to(items, { opacity: 0, duration: 0.2 });
     tl.call(() => {
       writeRect(rect);
-      if (engine) { const st = engine.st; engine.holdPrevious(); st.rect = rect; st.nd = 0; st.radius = 2; st.mix = 0; gsap.to(st, { mix: 1, duration: 0.3, onUpdate: reveal }); }
+      if (engine) { const st = engine.st; engine.holdPrevious(); st.rect = rect; st.nd = 0; st.radius = 5; st.rim = 1; st.mix = 0; gsap.to(st, { mix: 1, duration: 0.3, onUpdate: reveal }); }
     });
     tl.add(hudOn());
     return;
@@ -651,7 +706,7 @@ function closeProject() {
   tl.to(items, { opacity: 0, y: -8, duration: D.snap, ease: E.in });
   tl.to(st, { nd: 0, duration: D.step * k * 2, ease: E.in }, 0);
   tl.to(st.rect, { x: rect.x, y: rect.y, w: rect.w, h: rect.h, duration: D.travel * k, ease: E.lens, onUpdate: () => { writeRect(st.rect); reveal(); } }, 0.06);
-  tl.to(st, { zoom: 1, dolly: 0, aperture: apertureOf(scenes[pos].fnum), radius: 2, vig: 0.28, duration: D.travel * k, ease: E.lens }, 0.06);
+  tl.to(st, { zoom: 1, dolly: 0, aperture: apertureOf(scenes[pos].fnum), radius: 5, rim: 1, vig: 0.28, duration: D.travel * k, ease: E.lens }, 0.06);
   tl.to(fl, { v: 23, duration: D.travel * k, ease: E.lens, onUpdate: () => { flEl.textContent = String(FLS.reduce((a, b) => (Math.abs(b - fl.v) < Math.abs(a - fl.v) ? b : a))); } }, 0.06);
   tl.add(hudOn(0.025), 0.3);
   tl.call(() => { placeAF(sceneToFrac(subjectOf(scenes[pos]), rect)); lockAF(true); engine!.wantMeter(); });
@@ -681,7 +736,6 @@ $('[data-dial]').addEventListener('keydown', (e) => {
 });
 
 // ------------------------------------------------------------------ pointer: touch-AF, peaking, drag
-let drag: null | { x0: number; y0: number; t0: number; moved: boolean; id: number; type: string } = null;
 let afTimer = 0;
 
 function focusAt(f: { x: number; y: number }, snap = true) {
@@ -700,11 +754,13 @@ function focusAt(f: { x: number; y: number }, snap = true) {
   afTimer = window.setTimeout(() => lockAF(true), 300);
 }
 
-frameEl.addEventListener('pointerenter', (e) => {
+function enterHover(e: PointerEvent) {
   if (S !== 'evf' || !engine || calm || e.pointerType === 'touch' || modeOf(pos) === 'info') return;
   hovering = true;
   gsap.to(engine.st, { peak: 1, duration: D.snap, onUpdate: reveal });
-});
+}
+// a pointer already resting over the frame when the EVF powers on gets no pointerenter: its first move counts
+frameEl.addEventListener('pointerenter', enterHover);
 frameEl.addEventListener('pointerleave', () => {
   if (!engine || !hovering) return;
   hovering = false;
@@ -717,31 +773,65 @@ frameEl.addEventListener('pointerleave', () => {
     lockAF(true);
   }
 });
+type Drag = { x0: number; y0: number; t0: number; moved: boolean; id: number; type: string; f0: number; swapped: number; base: number; vx: number; lastA: number; lastT: number };
+let drg: Drag | null = null;
 frameEl.addEventListener('pointerdown', (e) => {
   if (S !== 'evf' || modeOf(pos) === 'info') return;
-  drag = { x0: e.clientX, y0: e.clientY, t0: performance.now(), moved: false, id: e.pointerId, type: e.pointerType };
+  const now = performance.now();
+  drg = { x0: e.clientX, y0: e.clientY, t0: now, moved: false, id: e.pointerId, type: e.pointerType, f0: engine ? engine.st.focus : 0.4, swapped: 0, base: 0, vx: 0, lastA: 0, lastT: now };
   frameEl.setPointerCapture(e.pointerId);
 });
+const alongOf = (dx: number, dy: number) => (Math.abs(dx) >= Math.abs(dy) ? dx : -dy);
 frameEl.addEventListener('pointermove', (e) => {
   if (S !== 'evf' || !engine) return;
   const st = engine.st;
   const f = { x: (e.clientX - st.rect.x) / st.rect.w, y: (e.clientY - st.rect.y) / st.rect.h };
-  if (drag) {
-    const dx = e.clientX - drag.x0, dy = e.clientY - drag.y0;
-    if (!drag.moved && Math.hypot(dx, dy) > 8) { drag.moved = true; finishTl(); levelEl.classList.add('is-on'); }
-    if (drag.moved && !calm && modeOf(pos) === 'play') { tiltTo({ x: 0.5 + dx / st.rect.w, y: 0.5 }); return; }
-    if (drag.moved && !calm) {
-      const hx = halfOf(st.rect).x;
-      const along = Math.abs(dx) >= Math.abs(dy) ? dx : -dy;
-      st.parx = (along / st.rect.w) * 2 * hx * 0.4;
-      st.roll = (along / st.rect.w) * 0.06;
-      levelEl.style.setProperty('--roll', `${-st.roll}rad`);
-      levelEl.classList.toggle('is-level', Math.abs(st.roll) < 0.002);
-      reveal();
+  if (drg) {
+    const d = drg;
+    const dx = e.clientX - d.x0, dy = e.clientY - d.y0;
+    const along = alongOf(dx, dy);
+    const now = performance.now();
+    d.vx = d.vx * 0.5 + ((along - d.lastA) / Math.max(1, now - d.lastT)) * 0.5;
+    d.lastA = along; d.lastT = now;
+    if (!d.moved && Math.hypot(dx, dy) > 8) {
+      d.moved = true; finishTl(); levelEl.classList.add('is-on');
+      gsap.killTweensOf(st, 'focus,parx,roll,ca,peak');
+      d.f0 = st.focus; st.peak = 0; lockAF(false);
     }
+    if (!d.moved || calm) return;
+    if (modeOf(pos) === 'play') { tiltTo({ x: 0.5 + dx / st.rect.w, y: 0.5 }); return; }
+    const hx = halfOf(st.rect).x;
+    const thr = Math.max(60, st.rect.w * 0.18);
+    const dir = along < 0 ? 1 : -1;
+    const target = pos + dir;
+    if (!d.swapped) {
+      const k = Math.min(1, Math.abs(along) / thr);
+      st.focus = d.f0 * (1 - k);
+      st.ca = 0.006 * k;
+      st.parx = (along / st.rect.w) * 2 * hx * 0.4;
+      if (k >= 1 && target >= 0 && target < NW) {
+        // the detent: under the blur the next frame cuts in, on the side it comes from
+        d.swapped = dir; d.base = along;
+        pos = target;
+        const s = scenes[target];
+        engine.setScene(s);
+        st.aperture = apertureOf(s.fnum); st.noise = noiseOf(s.iso);
+        updateReadouts(target);
+        placeAF(sceneToFrac(subjectOf(s), st.rect));
+        st.parx = dir * 0.14 * hx;
+      }
+    } else {
+      st.parx = d.swapped * 0.14 * hx + ((along - d.base) / st.rect.w) * 2 * hx * 0.4;
+      st.focus = 0;
+    }
+    st.roll = (along / st.rect.w) * 0.05;
+    levelEl.style.setProperty('--roll', `${-st.roll}rad`);
+    levelEl.classList.toggle('is-level', Math.abs(st.roll) < 0.002);
+    reveal(); syncDist();
     return;
   }
   if (e.pointerType === 'touch' || modeOf(pos) === 'info') return;
+  if (!hovering) enterHover(e);
   if (modeOf(pos) === 'play') { tiltTo(f); return; }
   focusAt(f);
 });
@@ -750,9 +840,16 @@ function tiltTo(f: { x: number; y: number }) {
   if (!engine || calm) return;
   gsap.to(engine.st, { tilt: (f.x - 0.5) * 0.7, duration: D.land, ease: E.out, overwrite: 'auto', onUpdate: reveal });
 }
+function springHome(focus: number) {
+  if (!engine) return;
+  const st = engine.st;
+  gsap.to(st, { focus, duration: 0.95, ease: 'elastic.out(1, 0.42)', onUpdate: () => { reveal(); syncDist(); } });
+  gsap.to(st, { parx: 0, roll: 0, ca: 0, duration: 0.85, ease: 'elastic.out(1, 0.55)', onUpdate: reveal });
+  window.setTimeout(() => { lockAF(true); engine?.wantMeter(); if (hovering) gsap.to(st, { peak: 1, duration: D.snap, onUpdate: reveal }); }, 520);
+}
 const endDrag = (e: PointerEvent) => {
-  if (!drag || e.pointerId !== drag.id) return;
-  const d = drag; drag = null;
+  if (!drg || e.pointerId !== drg.id) return;
+  const d = drg; drg = null;
   levelEl.classList.remove('is-on');
   const dx = e.clientX - d.x0, dy = e.clientY - d.y0;
   if (!d.moved) {
@@ -770,15 +867,20 @@ const endDrag = (e: PointerEvent) => {
     openProject();
     return;
   }
-  const along = Math.abs(dx) >= Math.abs(dy) ? dx : -dy;
-  const v = along / Math.max(1, performance.now() - d.t0);
-  if (Math.abs(along) > 70 || Math.abs(v) > 0.55) {
-    const dir = along < 0 ? 1 : -1;
+  // released after the cut: the new frame springs home and the focus rack settles with one overshoot
+  if (d.swapped) { springHome(scenes[pos].focus); return; }
+  const along = alongOf(dx, dy);
+  const v = Math.max(Math.abs(d.vx), Math.abs(along) / Math.max(1, performance.now() - d.t0));
+  const dir = along < 0 ? 1 : -1;
+  const target = pos + dir;
+  // a fast swipe of more than 60 px, or a long drag, goes to the next or previous frame
+  if (target >= 0 && target < N && ((Math.abs(along) > 60 && v > 0.3) || Math.abs(along) > Math.max(60, (engine?.st.rect.w ?? 400) * 0.18))) {
     if (engine) gsap.to(engine.st, { roll: 0, duration: D.step, ease: E.out });
-    const target = pos + dir;
-    if (target >= 0 && target < N) { go(target, dir); return; }
+    go(target, dir);
+    return;
   }
-  if (engine) gsap.to(engine.st, { parx: 0, roll: 0, duration: D.land, ease: 'elastic.out(1, 0.55)', onUpdate: reveal });
+  if (calm) return;
+  springHome(d.f0);
 };
 frameEl.addEventListener('pointerup', endDrag);
 frameEl.addEventListener('pointercancel', endDrag);
@@ -857,22 +959,78 @@ function crossfadeOpen(to: number) {
   updateReadouts(to, false);
 }
 
-// ------------------------------------------------------------------ spot meter on the intro: the needle reads the page under the pointer
+// ------------------------------------------------------------------ the intro at rest: spot meter, exposure pool, idle
 const spot = { ev: 0 };
-let spotTimer = 0;
-window.addEventListener('pointermove', (e) => {
-  if (S !== 'intro' || calm || e.pointerType === 'touch') return;
-  const el = document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null;
-  const target = el?.closest('.name') ? 1.7 : el?.closest('.raise, .intro__meta, .lm, .intro__handle, .intro__clock') ? 0.4 : -2.3;
+let spotTimer = 0, idleTimer = 0;
+const poolTo = { x: null as null | ((v: number) => void), y: null as null | ((v: number) => void) };
+let roam: gsap.core.Tween | null = null;
+const roamT = { t: 0 };
+/** At rest the spot meter keeps metering on its own: the pool wanders the frame and the needle reads it. */
+function startRoam() {
+  if (!engine || calm || roam) return;
+  const st = engine.st;
+  let last = 0;
+  if (lmLabel.textContent !== 'Spot') scramble(lmLabel, 'Spot', D.step);
+  gsap.to(st, { poolAmt: 0.85, duration: D.land, ease: E.out, overwrite: 'auto' });
+  roam = gsap.to(roamT, {
+    t: '+=1', duration: 16, ease: 'none', repeat: -1,
+    onUpdate: () => {
+      const W = window.innerWidth, H = window.innerHeight, a = roamT.t * Math.PI * 2;
+      const tx = W * (0.5 + 0.3 * Math.sin(a)), ty = H * (0.34 + 0.13 * Math.sin(a * 2 + 0.6));
+      st.poolX += (tx - st.poolX) * 0.08; st.poolY += (ty - st.poolY) * 0.08;
+      engine!.invalidate(80);
+      const now = performance.now();
+      if (now - last > 380) {
+        last = now;
+        const ev = Math.max(-3.2, Math.min(3.2, Math.log2(Math.max(engine!.lumAt(st.poolX / W, st.poolY / H), 0.004) / 0.46)));
+        gsap.to(spot, { ev, duration: D.land, ease: E.needle, overwrite: true, onUpdate: () => setMeter(spot.ev) });
+      }
+    },
+  });
+}
+function stopRoam() { if (roam) { roam.kill(); roam = null; } }
+function armIdle() {
+  clearTimeout(idleTimer);
+  stopRoam();
+  raiseBtn.classList.remove('is-idle');
+  if (engine) engine.idleTarget = 0;
+  idleTimer = window.setTimeout(() => {
+    if (calm) return;
+    // the open project is a page to read: no drift there
+    if (engine) engine.idleTarget = S === 'open' || S === 'opening' || S === 'closing' ? 0 : 1;
+    if (S === 'intro') {
+      raiseBtn.classList.add('is-idle');
+      startRoam();
+    }
+  }, S === 'intro' ? 4000 : 1400);
+}
+function spotAt(x: number, y: number, touch: boolean) {
+  if (S !== 'intro' || calm || !engine) return;
+  const st = engine.st;
+  if (!poolTo.x) {
+    poolTo.x = gsap.quickTo(st, 'poolX', { duration: 0.12, ease: 'power3.out', onUpdate: reveal });
+    poolTo.y = gsap.quickTo(st, 'poolY', { duration: 0.12, ease: 'power3.out' });
+  }
+  if (st.poolAmt < 0.05) { st.poolX = x; st.poolY = y; }
+  poolTo.x(x); poolTo.y!(y);
+  if (st.poolAmt < 1) gsap.to(st, { poolAmt: 1, duration: D.step, ease: E.out, overwrite: 'auto', onUpdate: reveal });
+  // the needle reads the frame under the pool (the readback is the real, graded frame)
+  const lum = engine.lumAt(x / window.innerWidth, y / window.innerHeight);
+  const ev = Math.max(-3.2, Math.min(3.2, Math.log2(Math.max(lum, 0.004) / 0.46)));
   if (lmLabel.textContent !== 'Spot') lmLabel.textContent = 'Spot';
-  gsap.to(spot, { ev: target, duration: D.land, ease: E.needle, overwrite: true, onUpdate: () => setMeter(spot.ev) });
+  gsap.to(spot, { ev, duration: D.land, ease: E.needle, overwrite: true, onUpdate: () => setMeter(spot.ev) });
   clearTimeout(spotTimer);
-  spotTimer = window.setTimeout(() => {
-    if (S !== 'intro') return;
-    scramble(lmLabel, 'Exposure', D.step);
-    gsap.to(spot, { ev: 0, duration: D.land, ease: E.needle, overwrite: true, onUpdate: () => setMeter(spot.ev) });
-  }, 1600);
-});
+  if (touch) spotTimer = window.setTimeout(() => gsap.to(st, { poolAmt: 0, duration: D.land, onUpdate: reveal }), 1400);
+}
+window.addEventListener('pointermove', (e) => {
+  armIdle();
+  if (S === 'intro') spotAt(e.clientX, e.clientY, e.pointerType === 'touch');
+}, { passive: true });
+window.addEventListener('pointerdown', (e) => {
+  armIdle();
+  if (S === 'intro' && e.pointerType === 'touch') spotAt(e.clientX, e.clientY, true);
+}, { passive: true });
+window.addEventListener('keydown', () => armIdle(), { passive: true });
 
 // ------------------------------------------------------------------ buttons
 raiseBtn.addEventListener('click', raise);

@@ -74,3 +74,20 @@ No Lenis: nothing scrolls natively except the open project's text column.
 `prefers-reduced-motion`: the same interface with no wheel paging, no focus racks, zoom or eyepiece warp; changes are
 crossfades through the composite pass; the loader is a plain fade; the AF box does not chase the pointer. No WebGL:
 CSS tint frames, same DOM.
+
+## Revision 1 (jury round, 2026-10-28)
+- **Intro:** frame one waits behind the page, defocused, exposing from -6 to -3 EV with the load. A spot-meter pool
+  (about 300 px) opens correct exposure under the hand, and the needle reads the real frame there. The release is one
+  beat: the name and the frame bloom to over-exposure with the highlight alert, then the name snaps into focus. After
+  4 s idle the "Raise to eye" brackets breathe and the spot meter keeps metering on its own, wandering the frame.
+- **Phone:** Back sits above the scrolling column on a solid bar; a fast swipe over 60 px on the frame advances
+  (`touch-action: none`); the index row scrolls with 44 x 44 px targets.
+- **Placeholder media:** EVF test subjects instead of stock 3D: two 16:10 screenshot-shaped plates (light and dark), a
+  focus chart (Siemens star and line pairs), a colour chart with a grey card, and light painting. Each is labelled.
+- **Legibility:** 12 px floor for readouts, 13 px for hints, titles and honours metadata; 2 px focus ring; the
+  histogram canvas is `aria-hidden`.
+- **Hand and life:** a drag defocuses as it pulls, the next frame cuts in under the blur at the threshold, and the
+  release springs the rack home with one overshoot. When the hand rests, the frame breathes (bokeh, a small focus
+  drift). The eyepiece's dispersive rim stays as a thin glass edge on the frame corners.
+- **Boot discipline:** the GL engine and scenes load as a second chunk, the meter's readback is read a frame late (no
+  stall), and shaders link in the background.

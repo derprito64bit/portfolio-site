@@ -18,8 +18,7 @@ export function drawSnapshot(root: HTMLElement, canvas: HTMLCanvasElement, dpr: 
   canvas.height = Math.round(H * dpr);
   const ctx = canvas.getContext('2d')!;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ctx.fillStyle = '#050505';
-  ctx.fillRect(0, 0, W, H);
+  ctx.clearRect(0, 0, W, H); // transparent: the eyepiece pass draws the waiting frame behind the page
   const els = root.querySelectorAll<HTMLElement>('[data-snap], .name .ch');
   els.forEach((el) => {
     if (skip.some((s) => s.contains(el))) return;
