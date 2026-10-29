@@ -59,20 +59,6 @@ export interface Honour {
   source: string;
 }
 
-export interface World {
-  slug: string;
-  key: string;
-  title: string;
-  status: '' | 'live' | 'building' | 'planned';
-  publishAfter: string;
-  credit: { mode: '' | 'public-domain' | 'original'; artist: string; work: string; year: string; museum: string; museumUrl: string };
-  still: string;
-  stillAlt: string;
-  teaser: boolean;
-  placeholder: boolean;
-  source: string;
-}
-
 export interface Profile {
   schema: 2;
   owner: string;

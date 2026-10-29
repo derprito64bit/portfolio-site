@@ -25,7 +25,7 @@ comes back in W-V0b on the engine's frame counters, behind `?vf-test` (D-055).
 
 | npm script | Folder | What it proves |
 |---|---|---|
-| `h:console` | `console/` | 5 injected faults are caught (throw, rejection, 404, failed request, shader error); `/` is clean through raise, frames, open and close, and `/404.html` is clean |
+| `h:console` | `console/` | 8 injected faults are caught (throw, rejection, 404, failed request, shader error, console.assert, CONTEXT_LOST, GL_INVALID); `/` is clean through raise, frames, open and close, and `/404.html` is clean |
 | `h:overflow` | `overflow/` | max(scrollWidth - clientWidth) is 0 at the profiles run (CI: R1 320 px, P2, D2), plus a scan of the loaded page for boxes past the right edge; boxes the raised EVF puts past the edge are listed as `evfOffenders` |
 | `h:contrast` | `contrast/` | every text pair >= 4.5:1 and the focus ring >= 3:1, read from `src/evf/style.css` |
 | `h:content` | `content/` | Content v2 rules and the content hashes |
@@ -38,7 +38,7 @@ comes back in W-V0b on the engine's frame counters, behind `?vf-test` (D-055).
 Every result has `schema`, `instrument`, `pass` and `summary`. Per instrument:
 
 ```text
-console   { fixtures: [{fault, caught, expectedChannel, channels[], byExpectedChannel, sample}], caught: "5/5",
+console   { fixtures: [{fault, caught, expectedChannel, channels[], byExpectedChannel, sample}], caught: "8/8",
             routes: [{profile, route, pass, events, failures[]}], regex }
 overflow  { rows: [{profile, mode, route, maxOverflowPx, samples, offenders[], evfOffenders[], pass}] }
 contrast  { rows: [{kind:"text"|"ring", use, fg, bg, ratio, need, pass}] }

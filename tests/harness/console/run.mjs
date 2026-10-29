@@ -1,5 +1,5 @@
 // Console instrument (W-D030, rt-verify B2). Two parts:
-//   fixtures  five injected faults (throw, rejection, 404, failed request, shader error); the gate must catch 5 of 5,
+//   fixtures  eight injected faults (throw, rejection, 404, failed request, shader error, console.assert, CONTEXT_LOST warning, GL_INVALID warning); the gate must catch 5 of 5,
 //             and report the channel that caught each (GPU-free: CI runs this with --fixtures-only);
 //   routes    the gate over the built routes at D2 and P2 (the home page is driven through raise, frames, open and close), which must be clean.
 // Usage: npm run h:console -- [--fixtures-only] [--out console.json]
@@ -16,6 +16,9 @@ const FAULTS = [
   { file: '404.html', expect: 'response' },
   { file: 'failed-request.html', expect: 'requestfailed' },
   { file: 'shader-error.html', expect: 'console' },
+  { file: 'assert.html', expect: 'console' },
+  { file: 'context-lost.html', expect: 'console' },
+  { file: 'gl-invalid.html', expect: 'console' },
 ];
 const ROUTES = [
   { route: '/', expectStatus: [] },
