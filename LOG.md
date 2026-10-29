@@ -66,3 +66,20 @@ Newest entries last, dates in UTC. The full 2026-10-02 to 10-13 history (about 1
   - PLAN v2 sets the crew order: W-V0 (the landing, two orchestrator PRs), W-V1 (project view and film prints), W-V2 (honours display), W-V3 (EVF and gallery), the content step, W-V4 (floors and performance), W-R (hosting), G3a. W-F-m3 is dropped (D-050). The Darkroom is retired at W-V0 (D-049), after the `darkroom-final` tag.
   - North star v2 replaced v1.2. Budgets v2 are in `budgets.md` as proposed, owner to confirm (D-048). The ownership globs and the crew-config were re-pointed to W-V0 to W-V4 and W-R, with a draft `wv1` entry.
   - Next = W-V0: W-V0a (land, delete, re-point), then W-V0b (counters, gating, smoke, baseline); then W-V1 in a fresh session.
+- **2026-10-29: W-V0 landed; W-V1's spec is posted.**
+  - The owner gave their name in chat ("also my name is Aaron Chen"). It is CONFIRMED in `content/owner-facts.md` (#107) and shown on the intro and the contact screen (#109, after the landing so the pixel proof stayed clean).
+  - Safety first: the backup ran, and main was tagged `darkroom-final` at 35410b8.
+  - **W-V0a #108** (a Sonnet worker, medium; merged as eb8631b):
+    - Viewfinder moved to `src/evf/` with no visible change: 10 shots at 1440 × 900 and 390 × 844 against e53a047, the worst at 0.0375% (limit 0.5%; calibration 0.0381% of 0.1%), only the clock masked.
+    - D-049's deletions; budgets schema 2 (the v2 caps, plus the old `host` keys the fleet tools read); size-limit at the v2 caps; media-caps with negative controls; the harness core on `/`; and the orchestrator's budgets.md prose (the Darkroom rows as one retired line).
+    - An independent Sonnet verifier passed it with no must-fix. One fix pass added #84's console fixtures (8 of 8 caught), lint and ph-gate negative controls, theme tokens on the 404, and removed the dead worlds code.
+  - **W-V0b #110** (an Opus builder, xhigh; merged as 0c72687; #11 closed):
+    - `?vf-test` gating (D-055), per-channel engine counters, the idle check on them, a state-machine smoke in Chromium and WebKit, with GL in CI at 640 × 400, DPR 1 (CI has no GPU).
+    - The verifier passed it with no must-fix. The fix pass re-pointed `crew.mjs lighthouse` to Viewfinder (a per-set GL probe; LCP = the name on `/`, the h1 or `data-lcp="print-1"` on `/work/`). One valid desktop run read perf 0.99, LCP 409 ms, TBT 0, CLS 0.051.
+    - The Lighthouse baseline is blocked (host); its one-command re-run waits for the owner's quiet window.
+  - **Reported to the owner, not must-fix while budgets-v2 is proposed:** fonts about 270 kB in 6 files (cap 130 kB, 3 files); CLS on `/` (0.0978 mobile, host-suspect; 0.051 desktop, one clean run); the intro redraws at the display rate at rest. All are in #106, which now holds 22 open items.
+  - **W-V1's spec:** the planner's draft was refuted twice by a Sonnet refuter. Round 1 found 6 blocking items: a cold `/work/` page with no engine host; Close and Forward against D-041; the roll drawing at rest through `engine.sway`; test hooks outside W-V1's globs; an untestable size rule; and untestable video. It also found 14 should-fix items. Round 2 found none blocking.
+    - Spec v1 (9,990 characters) is posted on #21 (comment 6508708212), with a W-V0 rulings comment (6508712670). Its files are `portfolio-evidence/v2/specs/wv1/`.
+    - `ownership.json` gives W-V1 `src/evf/testhooks.ts` (additions) and a wider main.ts qualifier. The `wv1` crew-config is no longer a draft. The size estimate is now about 2,200 lines.
+  - Clean-up: merged branches and the W-V0a worktree deleted. The live preview runs on :4400 and :4401. A memory notes that Astro builds fail in `portfolio-site/.claude/worktrees/`.
+  - **Next:** launch W-V1 in a fresh session (PLAN.md NEXT STAGE).
