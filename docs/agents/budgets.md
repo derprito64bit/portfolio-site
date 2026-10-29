@@ -44,8 +44,9 @@ Tests read this block instead of parsing the sentences above (requested in the W
 
 ```json budgets
 {
-  "schema": 1,
-  "note": "Mirrors the Site sentences and the Measurement validity rules above, plus W-D012's head-script size and the W-S1 brief's poster parity in docs/direction/front-door-plan.md; those prose sources stay the human source, and a change edits both in the same PR. Units are in the key names. Minimums (>=): site.lighthouse.*, site.focusRing.*, site.layout.targetMinPx, site.layout.sharedTargetFloorPx, site.layout.textMinPx, host.gpuTimer.control.standinMinMs, host.gpuTimer.control.heavyRatioMin and host.gpuTimer.method.areaMinFrac. *StrictMax is <. Every other number is a <= limit, except these parameters: site.protocol.*, site.stillsPx.*, site.idle.windowStartS, windowEndS and windowToleranceMinMs, site.gpu.hostMedianFactor and atRiskFactor, site.hero.delayGlMs and guardAfterFcpMs, and host.* except its *Max keys, the three host.gpuTimer minimums above and five host.gpuTimer <= limits (control.flatMaxMs, control.standinMaxMs, method.issueMaxFactor, method.anchorTolDevPx and method.badSamplesDroppedMax). Strings are labels, site.gpu.method among them. site.homeHtml.bytesWire is a <= limit at information level only (its own note): a script reports it and does not gate on it. Each budget has one key: zero overflow is site.layout.overflowPx.",
+  "schema": 2,
+  "note": "Schema 2 (W-V0a, D-048): the site block is the budgets-v2 caps. Readers: size-limit, media-caps, the harness, crew.mjs. protocol, zero.axeViolationsWcag and focusRing are kept from schema 1 for surviving readers. The host block is unchanged.",
+  "status": "proposed (owner to confirm, D-048)",
   "site": {
     "lighthouse": {
       "perfMobileMin": 90,
@@ -57,113 +58,84 @@ Tests read this block instead of parsing the sentences above (requested in the W
       "mobile": 2500,
       "desktop": 2000
     },
+    "fcpMs": {
+      "lhMobile": 1800,
+      "localDesktop": 600
+    },
     "clsMax": 0.02,
-    "tbtMs": 150,
-    "preGlJsKbGz": 35,
-    "glChunkKbGz": 187.6,
-    "effectsKbGz": 10,
-    "fontsKbWoff2": 100,
-    "fontsPreloadKb": 46,
-    "homeHtml": {
-      "bytesWire": 14600,
-      "note": "Home / HTML on the wire: gzip body plus headers, as serve-dist sends it (#11 comment 6055373919, item 2). Information-level until W-F-m3 adds its build or pre-GL check; Lighthouse mobile stays the judged row."
+    "tbtMsMax": 150,
+    "bootTaskMsMax": 250,
+    "throttle4x": {
+      "idleFpsMin": 45,
+      "travelP5FpsMin": 30,
+      "worstFrameMsMax": 200,
+      "longTasksMax": 12,
+      "longTaskTotalMsMax": 1500
     },
-    "camera": {
-      "lod0Tris": 100000,
-      "lod0KbGz": 800,
-      "lod1Tris": 15000,
-      "lod1KbGz": 150,
-      "manorLodTris": 1500
+    "bytesGz": {
+      "criticalJs": 80000,
+      "engine": 60000,
+      "totalJsHome": 140000,
+      "totalJsProject": 150000,
+      "css": 14000,
+      "htmlHome": 14000,
+      "htmlProject": 16000
     },
-    "models": {
-      "cartridge": {
-        "tris": 1500,
-        "kbGz": 20
+    "fonts": {
+      "bytesMax": 130000,
+      "filesMax": 3
+    },
+    "rest": {
+      "fpsMax": 30,
+      "mainMsPerSecMax": 3,
+      "stopAfterMs": 60000,
+      "rollDrawsAtRest": 0
+    },
+    "media": {
+      "ladder": [
+        480,
+        800,
+        1280,
+        1920
+      ],
+      "capBytes": {
+        "small": 40000,
+        "mid": 90000,
+        "large": 180000,
+        "firstPrint": 150000,
+        "extreme": 120000,
+        "poster": 40000,
+        "lqip": 300
       },
-      "loupe": {
-        "tris": 3000,
-        "kbGz": 40
+      "pathBytes": {
+        "homeCold": 250000,
+        "homeAllFrames": 600000,
+        "projectFirstScreen": 900000
       },
-      "gear": {
-        "tris": 4000,
-        "kbGz": 40
-      },
-      "ownerWork": {
-        "tris": 50000,
-        "kbGz": 1000,
-        "scope": "on its own project only"
+      "video": {
+        "loopMax": 1500000,
+        "featureMax": 4000000,
+        "perProjectMax": 6,
+        "playingMax": 2
       }
     },
-    "threeDPerPageKbGz": 1500,
-    "canvasMpx": {
-      "full": 4.5,
-      "lite": 1.5
-    },
-    "dprCap": {
-      "full": 2,
-      "lite": 1.5
-    },
-    "stillsPx": {
-      "sheetLongEdge": 512,
-      "enlargementAndHero": 1024
-    },
-    "homeImagesFirstScrollKb": 600,
-    "gpu": {
-      "worstMomentMs": 4,
-      "hostMedianFactor": 30,
-      "atRiskFactor": 10,
-      "crewRatioMax": 1.5,
-      "regressionMaxPct": 20,
-      "method": "timer replay, #14 ruling 5996745925"
-    },
-    "idle": {
-      "windowStartS": 1,
-      "windowEndS": 4,
-      "windowToleranceMinMs": 34,
-      "mainThreadMsPerS": 1,
-      "note": "Amended 2026-10-05 (#11 comment 5992928262) and 2026-10-07 (#11 comments 6030949628 and 6031879782); windowStartS and windowEndS are unchanged, and windowToleranceMinMs is new. windowStartS and windowEndS count from the motion end, not from the last input: the motion end is the later of the last input event or arrival (a full load, Back or Forward, a bfcache restore, a Swup visit's end) and the last presented frame, present-tail and clear-only frames included. The window opens at motion end + windowStartS + max(2 frame intervals, windowToleranceMinMs) and closes at motion end + windowEndS; windowToleranceMinMs is the tolerance's floor (2 frames at 60 Hz), a parameter, not a limit. After an input (scroll, wheel, pointer or key) the motion end must fall within 4 s of it. After an arrival there is no such bound, and a motion that never ends fails at the harness's hard stop, 2 x windowEndS + 1 s after the anchor. A layout-only render with no input is a motion and sets a new motion end. The Idle sentence above carries the amendments."
-    },
-    "hero": {
-      "readableAfterGlReadyMs": 3300,
-      "delayGlMs": 3000,
-      "print1VisibleAfterFcpMs": 2600,
-      "guardAfterFcpMs": 2500,
-      "motionCapMs": 5000,
-      "posterParityMax255": 4,
-      "headScriptKbStrictMax": 0.8
-    },
-    "inputBlocking": {
-      "swupOutMs": 160
-    },
     "layout": {
-      "overflowPx": 0,
-      "targetMinPx": 44,
-      "sharedTargetFloorPx": 24,
-      "textMinPx": 12,
-      "contactWithinScreensAt390x844": 5.0
+      "overflowPxMax": 0,
+      "targetPxMin": 44,
+      "textPxMin": 12,
+      "readPxMin": 13,
+      "focusRingPx": 2
+    },
+    "protocol": {
+      "lighthouseVersion": "13.5.0",
+      "lighthouseRuns": 5
+    },
+    "zero": {
+      "axeViolationsWcag": 0
     },
     "focusRing": {
       "contrastMin": 3,
       "coverageMinPct": 90
-    },
-    "soundKbAfterOptIn": 16,
-    "zero": {
-      "idleRafCallbacks": 0,
-      "idleDraws": 0,
-      "inputBlockingMsOutsideSwupOut": 0,
-      "driftPx": 0,
-      "axeViolationsWcag": 0,
-      "sharedFloorAxeSeriousOrCritical": 0,
-      "soundBytesBeforeOptIn": 0
-    },
-    "protocol": {
-      "lighthouseVersion": "13.5.0",
-      "lighthouseRuns": 5,
-      "heroColdLoadsMedianOf": 3,
-      "gpuWorstMomentWetSheetPrints": 8,
-      "driftToolbarCollapsePx": 80,
-      "noClippedTextZoomPct": 200,
-      "noClippedTextWidthPx": 320
     }
   },
   "host": {
@@ -187,7 +159,20 @@ Tests read this block instead of parsing the sentences above (requested in the W
     },
     "watch": {
       "foreignCpuPctMax": 10.1,
-      "allowlist": ["audiodg", "cam_helper", "claude", "discord", "dwm", "gwctlsrv", "musehub", "opera", "robloxplayerbeta", "svchost", "system", "taskmgr"]
+      "allowlist": [
+        "audiodg",
+        "cam_helper",
+        "claude",
+        "discord",
+        "dwm",
+        "gwctlsrv",
+        "musehub",
+        "opera",
+        "robloxplayerbeta",
+        "svchost",
+        "system",
+        "taskmgr"
+      ]
     },
     "benchmarkIndex": {
       "baseline": 2918.5,
@@ -330,33 +315,9 @@ HARD fails the gate. TARGET is reported, and a miss needs a one-line note.
 ### Measurement validity (unchanged)
 R1 (precheck), R2 (host-suspect runs), R3 (replace, never average), R4 (a rerun is a whole new set) and R5 (near a budget, 10 runs) stay exactly as written in budgets.md. Byte caps need no precheck.
 
-### Machine-readable block (proposed; not read by `scripts/check/budgets.cjs` until the owner confirms and W-V0a moves it into the `json budgets` block as schema 2)
+### Machine-readable block
 
-```json budgets-v2
-{
-  "schema": 2,
-  "status": "proposed (owner to confirm, D-048)",
-  "site": {
-    "lighthouse": { "perfMobileMin": 90, "perfDesktopMin": 95, "a11yMin": 100, "bestPracticesMin": 95 },
-    "lcpMs": { "mobile": 2500, "desktop": 2000 },
-    "fcpMs": { "lhMobile": 1800, "localDesktop": 600 },
-    "clsMax": 0.02,
-    "tbtMsMax": 150,
-    "bootTaskMsMax": 250,
-    "throttle4x": { "idleFpsMin": 45, "travelP5FpsMin": 30, "worstFrameMsMax": 200, "longTasksMax": 12, "longTaskTotalMsMax": 1500 },
-    "bytesGz": { "criticalJs": 80000, "engine": 60000, "totalJsHome": 140000, "totalJsProject": 150000, "css": 14000, "htmlHome": 14000, "htmlProject": 16000 },
-    "fonts": { "bytesMax": 130000, "filesMax": 3 },
-    "rest": { "fpsMax": 30, "mainMsPerSecMax": 3, "stopAfterMs": 60000, "rollDrawsAtRest": 0 },
-    "media": {
-      "ladder": [480, 800, 1280, 1920],
-      "capBytes": { "small": 40000, "mid": 90000, "large": 180000, "firstPrint": 150000, "extreme": 120000, "poster": 40000, "lqip": 300 },
-      "pathBytes": { "homeCold": 250000, "homeAllFrames": 600000, "projectFirstScreen": 900000 },
-      "video": { "loopMax": 1500000, "featureMax": 4000000, "perProjectMax": 6, "playingMax": 2 }
-    },
-    "layout": { "overflowPxMax": 0, "targetPxMin": 44, "textPxMin": 12, "readPxMin": 13, "focusRingPx": 2 }
-  }
-}
-```
+The v2 caps now live in the `json budgets` block above (schema 2, still proposed until the owner confirms, D-048).
 
 ## Game (the Manor, in the Manor repo)
 
