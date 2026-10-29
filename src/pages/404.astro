@@ -1,8 +1,22 @@
 ---
-// STUB by W-F (Wave 3a). Owner: W-C8. One blank print, no WebGL (W-D029).
-import Base from '../layouts/Base.astro';
-import NotFound from '../sections/notfound/NotFound.astro';
+// Minimal static 404 (W-V0a): the site name, one line, a link home. Colours are the Viewfinder's (src/evf/style.css).
+import Site from '../layouts/Site.astro';
 ---
-<Base title="This print came out blank" path="/404.html" page="notfound" noindex={true} gl={false}>
-  <NotFound />
-</Base>
+<Site title="Page not found" path="/404.html" noindex={true}>
+  <p class="name">derprito64bit</p>
+  <h1>That page doesn't exist.</h1>
+  <p><a href="/">Back to the portfolio</a></p>
+</Site>
+<style is:global>
+  :root { color-scheme: dark; }
+  html, body { margin: 0; min-height: 100%; background: #050505; color: #ece9e2; }
+  body { font-family: 'Archivo Variable', 'Archivo', 'Arial Narrow', sans-serif; font-size: 16px; line-height: 1.45; }
+  .skip { position: absolute; left: 16px; top: -64px; padding: 8px 12px; background: #ece9e2; color: #050505; }
+  .skip:focus { top: 16px; }
+  main { box-sizing: border-box; min-height: 100vh; display: flex; flex-direction: column; justify-content: center; gap: 12px; padding: 28px; }
+  main p, main h1 { margin: 0; }
+  .name { font-family: 'Chivo Mono Variable', 'Chivo Mono', ui-monospace, monospace; font-size: 12px; letter-spacing: 0.07em; text-transform: uppercase; color: #a29e95; }
+  h1 { font-size: 32px; font-weight: 600; }
+  a { color: #ffb13b; }
+  :focus-visible { outline: 2px solid #ffb13b; outline-offset: 3px; }
+</style>

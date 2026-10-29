@@ -1,0 +1,41 @@
+---
+// The page frame for pages that are not the Viewfinder (W-V0a, D-040): the head, the noindex switch and the skip link.
+// The home page (src/pages/index.astro) keeps its own document. Nothing here loads script.
+import '@fontsource-variable/archivo/wdth.css';
+import '@fontsource-variable/chivo-mono/wght.css';
+
+interface Props {
+  /** Document title without the site suffix; ' · derprito64bit' is appended. */
+  title: string;
+  /** Route path, used for the canonical URL. */
+  path: string;
+  noindex?: boolean;
+  description?: string;
+}
+
+const { title, path, noindex = false, description = 'The portfolio of derprito64bit.' } = Astro.props;
+const SITE = 'https://derprito64bit.github.io';
+const canonical = new URL(path, SITE).href;
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>{`${title} · derprito64bit`}</title>
+    <meta name="description" content={description} />
+    {noindex && <meta name="robots" content="noindex" />}
+    <link rel="canonical" href={canonical} />
+    <meta name="theme-color" content="#050505" />
+    <link rel="icon" href="/favicon.ico" sizes="32x32" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <slot name="head" />
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to content</a>
+    <main id="main" tabindex="-1">
+      <slot />
+    </main>
+  </body>
+</html>

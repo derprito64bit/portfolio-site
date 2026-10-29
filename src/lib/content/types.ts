@@ -102,7 +102,6 @@ export interface Content {
   /** Featured projects in file order; the first 3 are the enlargements, the first is the hero print. */
   featured: ProjectView[];
   honours: { awards: Honour[]; medals: Honour[] };
-  worlds: World[];
   profile: Profile;
   /** True while any token remains anywhere in content (the footer proof line, W-D023). */
   hasPlaceholders: boolean;

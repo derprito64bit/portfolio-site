@@ -64,7 +64,7 @@ export const CLASSES = {
 
 /**
  * Validate the four content files plus the film-look ids from tokens.
- * @param {{ projects: any, honours: any, worlds: any, profile: any, lookIds: string[] }} input
+ * @param {{ projects: any, honours: any, worlds?: any, profile: any, lookIds: string[] }} input
  * @returns {{ errors: string[], warnings: string[] }}
  */
 export function validateContent({ projects, honours, worlds, profile, lookIds }) {
@@ -234,7 +234,8 @@ export function validateContent({ projects, honours, worlds, profile, lookIds })
   }
   if (heroAwards > 1) err('honours.json', '$', 'at most one hero award (the Hall apse)');
 
-  // ---------- worlds.json ----------
+  // ---------- worlds.json (retired by D-049; checked only when a file is passed) ----------
+  if (worlds !== undefined) {
   shape('worlds.json', worlds, 'WorldsFile', '$');
   if (worlds?.schema !== 2) err('worlds.json', '$.schema', 'must be 2');
   hygiene('worlds.json', worlds);
@@ -256,6 +257,7 @@ export function validateContent({ projects, honours, worlds, profile, lookIds })
     }
   });
   if (teasers > 1) err('worlds.json', '$.worlds', 'at most one teaser on the home page');
+  }
 
   // ---------- profile.json ----------
   shape('profile.json', profile, 'ProfileFile', '$');

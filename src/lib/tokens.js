@@ -275,6 +275,3 @@ export const colour = /*#__PURE__*/ Object.freeze({
 });
 
 export const MOTION_KEY = 'ion.motion';
-
-/** The one Manor predicate (W-D021); the same function text as can-enter-manor.js. */
-export const canEnterManor = function(){try{var c=navigator.connection;if(!window.WebGL2RenderingContext||!matchMedia("(any-pointer: fine) and (any-hover: hover)").matches||c&&c.saveData)return!1;var g=document.createElement("canvas").getContext("webgl2"),x=g&&g.getExtension("WEBGL_lose_context");x&&x.loseContext();return!!g}catch(e){return!1}};
