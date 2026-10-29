@@ -1,41 +1,89 @@
 {
-  "$comment": "Crew -> owned globs (Wave 2 lock). A crew may only change files matching its globs. D-023 (2026-10-04): W-C7 is merged into W-C5 and its door globs are retired. W-F's follow-up (crew/w-f-m2) takes the door off / before the content step and G3a, deleting the door and handoff stubs through its one-off globs; W-C2 takes the one-off drip removal and removes the door tokens after that follow-up. D-023 also gives W-S3 the content validator's sourced-field exception (W-D005) and the teaser field's retirement, and W-R the fork's FORK.md / and /manor/ rows and the deletion of the fork's site/index.html; D-024 gives W-S1 the hero drawing durations and heroTimelineMs; content/*.json is otherwise the orchestrator's, including the game's entry (the plan's content step). W-S3's day-one one-offs (#15 comment 5995441183) overlap W-F (src/layouts/Base.astro), W-S2 then W-C4 (src/gl/prints/**) and W-C3 (src/styles/motion.css); none of those crews is active while W-S3 runs, and each heir inherits the changes. W-F-m3's one-offs (#11 comment 6144848501, ruling 4) overlap W-S1 and W-C14 (src/gl/camera/index.ts and src/gl/camera/look.js), limited to the context-loss and restore paths; neither crew is active while W-F-m3 runs (one track at a time), W-F-m3 posts each root cause before its code, and W-C14 inherits the changes. O (2026-10-27, the tooling PR for #91 slot 2): the orchestrator's own branches (docs/*, tooling/*, orchestrator/*) are checked against ORCHESTRATOR's globs (scripts/check/run.mjs passes --crew ORCHESTRATOR for them): the agent docs, direction docs and the plan files, the fleet and check tooling, CI, and content/*.json with the two token outputs scripts/build/tokens.mjs generates from content/tokens.json (only a regeneration); never site code, public assets or tests, which go through a crew.",
+  "$comment": "Crew -> owned globs. PLAN v2 (D-038 to D-056, 2026-10-29) replaced the Darkroom crews (W-F, W-S*, W-C*) with W-V0 (a one-off landing, two orchestrator PRs, not a crew loop), W-V1 to W-V4 and W-R; the earlier entries are in git history. A crew may only change files matching its globs. The check expands no braces and cannot express exclusions, so each pattern is listed alone and 'except' is a note. Only one W crew is active at a time (one track), so overlaps between W-V1, W-V2 and W-V3 on src/evf/main.ts and src/pages/index.astro are sequential: each heir inherits the previous crew's changes. W-V4's src/** applies only while no other W crew is active. The game's M-* entries are unchanged and paused. The orchestrator's own branches (docs/*, tooling/*, orchestrator/*) are checked against ORCHESTRATOR's globs (scripts/check/run.mjs passes --crew ORCHESTRATOR for them): the agent docs, direction docs and the plan files, the fleet and check tooling, CI, and content/*.json with the two token outputs scripts/build/tokens.mjs generates from content/tokens.json (only a regeneration); never site code, public assets or tests, which go through a crew.",
   "W": {
-    "W-F": [
+    "W-V0": [
+      "src/**",
+      "public/**",
+      "assets-src/**",
+      "tests/**",
+      "scripts/build/**",
+      "scripts/check/**",
+      ".github/workflows/**",
       "package.json",
       "package-lock.json",
       "astro.config.mjs",
-      "tsconfig.json",
       ".size-limit.cjs",
       "playwright.config.ts",
-      ".github/workflows/**",
-      "scripts/crew.mjs",
-      "scripts/serve-dist.mjs",
-      "scripts/check/**",
-      "scripts/build/tokens.mjs",
-      "scripts/build/images.mjs",
-      "scripts/build/fonts/**",
-      "src/stage/**",
-      "src/lib/content/**",
-      "src/lib/tokens.js",
+      "content/awards.json (W-V0 one-off: delete)",
+      "content/worlds.json (W-V0 one-off: delete)",
+      "content/tokens.json (the outputs list only)"
+    ],
+    "W-V1": [
+      "src/pages/work/**",
+      "src/pages/index.astro (the #proj container markup only)",
       "src/layouts/**",
-      "src/styles/base.css",
-      "src/styles/tokens.css",
-      "src/components/slot/**",
+      "src/components/project/**",
+      "src/components/print/**",
+      "src/evf/project/**",
+      "src/evf/router.ts",
+      "src/evf/style/project.css",
+      "src/evf/style/print.css",
+      "src/evf/main.ts (only to move the project code out, wire the router and set the HUD print counter)",
+      "src/evf/style.css (only to move the project code out)",
+      "src/evf/layout.ts (the open mode only)",
+      "src/evf/data.ts (the project media fields only)",
+      "src/lib/prints/**",
+      "src/lib/content/**",
+      "scripts/build/images.mjs",
+      "scripts/build/media-fixtures.mjs",
+      "astro.config.mjs (only to hook the fixtures into the build)",
+      ".size-limit.cjs (the /work/ rows only)",
+      ".github/workflows/check.yml (the w-v1 test step only)",
+      "content/projects.json (placeholder media entries only)",
+      "content/README.md",
+      "tests/w-v1/**",
+      "tests/unit/prints/**",
+      "tests/unit/content/**",
+      "package.json (scripts and deps)",
+      "package-lock.json",
+      "docs/agents/deps.md (rows only)"
+    ],
+    "W-V2": [
+      "src/evf/gl/**",
+      "src/evf/honours/**",
+      "src/components/honours/**",
+      "src/pages/honours/**",
+      "src/pages/work/[slug].astro (the honours slot only)",
+      "src/pages/index.astro (the honours section markup only)",
+      "src/evf/scenes.ts (the honours parts only)",
+      "src/evf/data.ts (the honours parts only)",
+      "src/evf/layout.ts (the honours parts only)",
+      "src/evf/style/honours.css",
+      "src/evf/style.css (only to move the honours rules out)",
+      "src/evf/main.ts (only to move the playback code out)",
+      "src/lib/content/** (the honours link only)",
+      "tests/w-v2/**"
+    ],
+    "W-V3": [
+      "src/evf/** (all of it except src/evf/project/** and src/evf/honours/**, which stay with W-V1 and W-V2; the check cannot express the exclusion)",
       "src/pages/index.astro",
-      "src/pages/work/index.astro",
-      "src/pages/bench/**",
-      "public/fonts/**",
-      "public/favicon.*",
-      "public/apple-touch-icon.png",
-      "tests/harness/**",
-      "tests/w-f/**",
-      "content/*.json (Wave 3a migration only; afterwards the orchestrator)",
-      "Stub files for every other crew's paths (initial commit only)",
-      "src/sections/door/** (D-023: delete, in the crew/w-f-m2 door removal only)",
-      "src/lib/handoff/** (D-023: delete, in the crew/w-f-m2 door removal only)",
-      "src/gl/camera/index.ts (W-F-m3 only, ruling 4 on #11, comment 6144848501: the context-loss and restore paths only: an entity restore hook, re-creating the AA target, the slot retake)",
-      "src/gl/camera/look.js (W-F-m3 only, ruling 4 on #11, comment 6144848501: the context-loss and restore paths only: re-rendering the environment)"
+      "src/components/intro/**",
+      "src/components/evf/**",
+      "src/components/contact/**",
+      "content/tokens.json (motion tokens)",
+      "src/styles/tokens.css (generated from content/tokens.json; only a regeneration)",
+      "src/lib/tokens.js (generated from content/tokens.json; only a regeneration)",
+      "scripts/check/lint.mjs (the ticker and duration rules only)",
+      "tests/harness/idle/** (the D-053 thresholds only)",
+      "tests/w-v3/**"
+    ],
+    "W-V4": [
+      "src/** (only while no other W crew is active)",
+      "scripts/build/og/**",
+      "public/*.ico",
+      "public/*.svg",
+      "public/*.png",
+      "tests/w-v4/**"
     ],
     "W-R": [
       "scripts/release/**",
@@ -45,116 +93,6 @@
       "fork: scripts/fork/compose-check.ps1",
       "fork: docs/FORK.md (D-023: the / and /manor/ rows only)",
       "fork: site/index.html (D-023: delete)"
-    ],
-    "W-S1": [
-      "src/sections/hero/**",
-      "src/components/wordmark/**",
-      "src/components/camera-strip/**",
-      "src/gl/camera/**",
-      "src/gl/effects/develop/**",
-      "src/motion/spring/**",
-      "public/posters/camera/**",
-      "tests/w-s1/**",
-      "content/tokens.json (D-024: the three hero drawing durations and heroTimelineMs only)",
-      "src/styles/tokens.css (D-024: regenerated output only)",
-      "src/lib/tokens.js (D-024: regenerated output only)"
-    ],
-    "W-S2": [
-      "src/sections/work/**",
-      "src/sections/sheet/**",
-      "src/components/print/**",
-      "src/lib/teststrip/**",
-      "src/gl/prints/**",
-      "tests/w-s2/**"
-    ],
-    "W-S3": [
-      "src/pages/work/[slug].astro",
-      "src/sections/project/**",
-      "src/gl/flight/**",
-      "tests/w-s3/**",
-      "src/lib/content/validate.js (D-023: the sourced-field exception and the teaser retirement only)",
-      "src/lib/content/types.ts (D-023: the sourced-field exception and the teaser retirement only)",
-      "scripts/check/ph-gate.mjs (D-023: the same exception, only if it repeats the rule)",
-      "src/layouts/Base.astro (W-S3 day one rulings 1 and 2, #15 comment 5995441183: one import of src/sections/project/flight.ts in its module script, and data-swup-fade on main, only)",
-      "src/gl/prints/** (W-S3 day one ruling 1, #15 comment 5995441183: the flying entity's persistence, the flight's pose, print entities' bounds() and the destination entity's hold, only what W-S2's merge lacks)",
-      "src/styles/motion.css (W-S3 day one ruling 2, #15 comment 5995441183: the Swup out, in and reduced rules only; W-C3 inherits them)"
-    ],
-    "W-C13": [
-      "assets-src/3d/**",
-      "scripts/build/glb/**",
-      "scripts/build/posters/**",
-      "public/models/**",
-      "public/posters/wire/**",
-      "tests/w-c13/**"
-    ],
-    "W-C2": [
-      "src/gl/effects/**",
-      "src/gl/shaders/**",
-      "scripts/build/looks/**",
-      "tests/w-c2/**",
-      "src/stage/effects.ts (D-023: drip removal only)",
-      "src/stage/rail.ts (D-023: drip removal only)",
-      "src/styles/base.css (D-023: the drip rule only)",
-      "scripts/build/tokens.mjs (D-023: drip and handoff tokens only)",
-      "content/tokens.json (D-023: remove the door, drip and handoff keys only)",
-      "src/styles/tokens.css (D-023: regenerated output only)",
-      "src/lib/tokens.js (D-023: regenerated output only)"
-    ],
-    "W-C3": [
-      "src/motion/**",
-      "src/styles/motion.css",
-      "tests/w-c3/**"
-    ],
-    "W-C14": [
-      "src/gl/camera/**",
-      "src/gl/scenes/**",
-      "src/sections/hero/**",
-      "src/components/wordmark/**",
-      "src/components/camera-strip/**",
-      "src/components/exhibit/**",
-      "public/posters/camera/**",
-      "tests/w-c14/**"
-    ],
-    "W-C4": [
-      "src/sections/work/**",
-      "src/sections/sheet/**",
-      "src/components/print/**",
-      "src/lib/teststrip/**",
-      "src/gl/prints/**",
-      "tests/w-c4/**"
-    ],
-    "W-C5": [
-      "src/pages/work/[slug].astro",
-      "src/sections/project/**",
-      "src/gl/flight/**",
-      "src/pages/og/**",
-      "scripts/build/og/**",
-      "tests/w-c5/**",
-      "src/components/play/**",
-      "src/lib/play/**"
-    ],
-    "W-C6": [
-      "src/sections/honours/**",
-      "src/sections/footer/**",
-      "tests/w-c6/**"
-    ],
-    "W-C8": [
-      "src/pages/404.astro",
-      "src/sections/notfound/**",
-      "src/styles/tier-static.css",
-      "tests/w-c8/**"
-    ],
-    "W-C9": [
-      "src/styles/interaction.css",
-      "src/lib/sound/**",
-      "src/components/sound-toggle/**",
-      "src/components/motion-switch/**",
-      "public/sound/**",
-      "tests/w-c9/**"
-    ],
-    "W-C10": [
-      "src/** (only while no other W crew is active)",
-      "tests/w-c10/**"
     ]
   },
   "M": {
@@ -267,6 +205,7 @@
       "scripts/check/**",
       ".github/**",
       "content/*.json",
+      "content/README.md",
       "src/styles/tokens.css (generated from content/tokens.json by scripts/build/tokens.mjs; only a regeneration)",
       "src/lib/tokens.js (generated from content/tokens.json by scripts/build/tokens.mjs; only a regeneration)",
       "content/owner-facts.md (the content step, from the owner's word only)"

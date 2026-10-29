@@ -329,7 +329,7 @@ const SCENARIOS = [
   {
     name: 'a diff that touches the GL or navigation paths gets a second breaker pass',
     mut: ['breakerPasses'],
-    go: (tpl) => run(tpl, { crew: (r) => Object.assign(DEF.crew(r), { changedFiles: ['src/gl/prints/index.ts'] }) }),
+    go: (tpl) => run(tpl, { crew: (r) => Object.assign(DEF.crew(r), { changedFiles: ['src/evf/gl/engine.ts'] }) }),
     expect: (x) => has(called(x, 'W-X:break#1.1') && called(x, 'W-X:break#1.2'), `breaker calls ${x.calls.filter((l) => /break/.test(l))}`),
   },
   {

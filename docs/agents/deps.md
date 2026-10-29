@@ -26,4 +26,8 @@ Only the foundation crew (W-F) edits `package.json` and the lockfile. Everyone e
 | lighthouse | 13.5.0 (exact) | Apache-2.0 | 0 (dev, npx; Node >=22.19) | Performance and accessibility gate (no @lhci/cli) |
 | size-limit + @size-limit/file | 14.1.0 | MIT | 0 (dev) | Per-chunk budgets from the Vite manifest |
 | NVDA (desktop tool, not in package.json) | current stable | GPL-2.0 | 0 | Screen-reader transcripts at G3a and W-C10 |
-| REJECTED: gsap, ScrollTrigger, SplitText, CustomEase, @paper-design/shaders, troika-three-text, postprocessing, detect-gpu, ogl, stegu/webgl-noise, @swup/astro, @swup/head-plugin, @swup/preload-plugin, @lhci/cli, @fontsource packages | n/a | n/a | saves about 46-120 kB gz | No beat needs them |
+| gsap | 3.15.0 | GSAP Standard "no charge" licence (gsap.com/standard-license; portfolio use permitted, notices kept) | about 52 (core 27.5 + Observer, ScrambleText, CustomEase, SplitText, Flip; LIBRARIES.md) | Viewfinder concept: every timeline, detent eases, readout scrambles, the meter's Flip from intro to EVF, wheel/touch intent |
+| ogl | 1.0.11 | Unlicense | about 13 (Renderer, Program, Mesh, Triangle, Texture, RenderTarget) | Viewfinder concept: the one WebGL2 canvas (procedural depth-of-field scene, EVF composite, eyepiece pass, histogram readback) |
+| @fontsource-variable/archivo | 5.3.0 | OFL-1.1 (font), MIT (package) | 88 woff2, latin wdth+wght axes (measured) | Viewfinder concept: display and EVF numerals (width 75 to 125 used) |
+| @fontsource-variable/chivo-mono | 5.3.0 | OFL-1.1 (font), MIT (package) | 26 woff2, latin wght (measured) | Viewfinder concept: labels and metadata |
+| REJECTED: ScrollTrigger, @paper-design/shaders, troika-three-text, postprocessing, detect-gpu, stegu/webgl-noise, @swup/astro, @swup/head-plugin, @swup/preload-plugin, @lhci/cli | n/a | n/a | saves about 46-120 kB gz | No beat needs them |

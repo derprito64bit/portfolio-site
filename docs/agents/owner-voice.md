@@ -4,9 +4,15 @@ These are the owner's own words, quoted verbatim (spelling kept). Agents read th
 - If anything in a plan, brief or decision contradicts these words, these words win.
 - Do not paraphrase them into stronger or weaker claims.
 
-Owner: **derprito64bit**. Collected 2026-10-01 → 2026-10-28.
+Owner: **derprito64bit**. Collected 2026-10-01 → 2026-10-29.
 
-## The redirection (2026-10-28): read this first
+## The pick (2026-10-29): read this first
+
+> "wow all of these are so good i don't know how to choose i love every single concept for some parts of how they display things, but i'd say ill go with the first option viewfinder combined with flux's unique way of displaying awards and medals for each project, along with fluxes film prints integrated into viewfinder's view project feature having different  sizes of film prints fordifferent images sizes respectively"
+
+Viewfinder is the base; Flux's honours display and film prints are grafted in (D-038, D-039).
+
+## The redirection (2026-10-28)
 
 After viewing main with W-S2's work index on the local preview. It reopens the site's direction from scratch (#101, D-036);
 where it differs from anything below (the Darkroom prints, the X-T5 camera opening), it wins.

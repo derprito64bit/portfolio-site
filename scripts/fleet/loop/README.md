@@ -24,8 +24,8 @@ The owner adopted this operating model on 2026-10-27 (#91, comment 6452312126; P
 **Launch** (on launch day, from the main checkout):
 
 ```
-node scripts/fleet/loop/launch.cjs ws2 --spec <spec.md> --spec-meta <meta.json> --out <dir>
-# prints LAUNCH READY, then: Workflow({ scriptPath: '<dir>/crew-loop.ws2.js' }) with no args
+node scripts/fleet/loop/launch.cjs wv1 --spec <spec.md> --spec-meta <meta.json> --out <dir>
+# prints LAUNCH READY, then: Workflow({ scriptPath: '<dir>/crew-loop.wv1.js' }) with no args
 ```
 
 `meta.json` is `{ "version": "v1", "postedAt": "<the spec comment's ISO time>", "commentUrl": "<its URL>" }`. The spec
@@ -35,8 +35,8 @@ two. A quote in the spec is written `"<text>" [c<comment id>]`, and the check co
 **Continue** (after a cap, a ruling, a busy host or a died agent):
 
 ```
-node scripts/fleet/loop/prior-from-journal.cjs <dir>/crew-loop.ws2.js <run>/journal.jsonl --write <dir>/crew-loop.ws2.c1.js [--grant code=1] [--refresh scripts/fleet/loop/crew-config.json]
-node scripts/fleet/loop/crew-loop.check.cjs <dir>/crew-loop.ws2.c1.js
+node scripts/fleet/loop/prior-from-journal.cjs <dir>/crew-loop.wv1.js <run>/journal.jsonl --write <dir>/crew-loop.wv1.c1.js [--grant code=1] [--refresh scripts/fleet/loop/crew-config.json]
+node scripts/fleet/loop/crew-loop.check.cjs <dir>/crew-loop.wv1.c1.js
 ```
 
 **Cost:** `node scripts/fleet/cost-line.mjs <run transcript dir>` prints one cost line per round.
