@@ -11,6 +11,9 @@ comes back in W-V0b on the engine's frame counters, behind `?vf-test` (D-055).
   and Playwright's Chromium in CI (`CI=true`) or with `PW_BUNDLED=1`. WebKit is Playwright's. Audio is muted.
 - **Ready.** `waitSettled` in `lib.mjs` waits for the preloader to finish (`html` loses `is-loading`).
 - **CI.** All six checks run on `/`: console, overflow at 320 px, contrast, keyboard, flash, axe (`.github/workflows/check.yml`).
+  CI has no GPU and software GL renders the engine at 1 to 4 fps, so the instruments that drive the page run with
+  `H_NO3D=1` (Chromium `--disable-3d-apis`: the page's flat-frame path, every state reachable). The console gate also
+  loads `/` with WebGL in CI. On the reference host, run them without `H_NO3D`.
 - **The console gate** (`consoleGate` in `lib.mjs`, W-D030). Error-level messages (`error` and `assert`), page errors,
   failed requests, unexpected statuses and any message with a W-D030 word (`GL_INVALID*`, `CONTEXT_LOST*`) fail. A
   warning passes only when every line of it passes an entry of `console-allow.json`.
