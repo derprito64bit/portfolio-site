@@ -15,6 +15,12 @@ export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 /** The json budgets block of docs/agents/budgets.md (readBudgets) and one number from it by path (budget). */
 export const { readBudgets, budget } = budgetsCjs;
 export const CI = Boolean(process.env.CI);
+/**
+ * H_NO3D=1 runs Chromium with --disable-3d-apis, so the Viewfinder takes its flat-frame path (html.nogl) and every state
+ * is reachable at speed. CI has no GPU and software GL renders the engine at 1 to 4 fps, so CI sets it for the
+ * interactive instruments; the reference host runs them with GL.
+ */
+export const NO3D = Boolean(process.env.H_NO3D);
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // ---------------------------------------------------------------- GES-1 device profiles (W-D030)
@@ -86,7 +92,7 @@ export async function closeBrowsers() {
 
 export async function newContext(profileName, mode = 'auto', extra = {}) {
   const p = PROFILES[profileName];
-  const b = await browser(extra.browser ?? p.browser);
+  const b = await browser(extra.browser ?? (NO3D && p.browser === 'chromium' ? 'chromium-no3d' : p.browser));
   return b.newContext({
     viewport: p.viewport,
     deviceScaleFactor: p.deviceScaleFactor,

@@ -62,7 +62,8 @@ export async function run(opts = {}) {
           if (route === '/') {
             // Raise into the viewfinder with the page's own input, then measure the EVF state too.
             await page.keyboard.press('Enter');
-            await sleep(2500);
+            await page.waitForFunction(() => document.getElementById('intro')?.hidden === true, null, { timeout: 30000 });
+            await sleep(300);
             const m2 = await measure(page);
             m = { maxOverflowPx: Math.max(m.maxOverflowPx, m2.maxOverflowPx), samples: m.samples + m2.samples, offenders: m.offenders, evfOffenders: m2.offenders };
           }

@@ -48,14 +48,25 @@ jobs:
           npm run h:contrast
           npm run h:flash -- --self-test
 
-      - name: Harness on / (console with fault injection, overflow at 320 px, keyboard, axe)
+      # CI has no GPU: software GL renders the engine at 1 to 4 fps. The console gate loads / with WebGL (no error, no
+      # GL_INVALID or CONTEXT_LOST, only the one allow-listed driver advisory). Every instrument that drives the page through
+      # raise, frames, open and close runs with H_NO3D=1 (--disable-3d-apis: the page's flat-frame path), which is fast and
+      # reaches every state. The reference host runs them all with GL.
+      - name: Harness on / (console: fault injection, then / with WebGL)
+        run: npm run h:console
+
+      - name: Harness on / (console driven through every state, overflow at 320 px, keyboard, axe)
+        env:
+          H_NO3D: '1'
         run: |
-          npm run h:console
+          npm run h:console -- --routes-only
           npm run h:overflow -- --profiles R1,P2,D2
           npm run h:keyboard -- --profiles D2
           npm run h:axe
 
       - name: Harness on / (flash analysis of the raise, fake clock; an empty capture fails)
+        env:
+          H_NO3D: '1'
         run: npm run h:flash -- --url /
 
       - name: Crew-loop self-test (the lean loop's rules on a stubbed loop, each with a negative control; no agents)

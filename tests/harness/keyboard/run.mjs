@@ -122,14 +122,15 @@ async function viewfinder(page, base) {
   const intro = await walk(page);
   await page.evaluate(() => document.activeElement?.blur?.());
   await page.keyboard.press('Enter');
-  await sleep(2600);
+  await page.waitForFunction(() => document.getElementById('intro')?.hidden === true, null, { timeout: 30000 });
+  await sleep(300);
   const raised = await page.evaluate(() => document.getElementById('evf')?.classList.contains('is-on') && !document.getElementById('evf').inert);
   await page.evaluate(() => document.getElementById('evf').focus());
   const evf = await walk(page);
   // Open the current frame with Enter on the Open control, then Tab around: focus must stay inside the dialog.
   await page.focus('[data-open]');
   await page.keyboard.press('Enter');
-  await sleep(2600);
+  await page.waitForFunction(() => !document.getElementById('proj')?.hidden && Boolean(document.activeElement?.closest('#proj')), null, { timeout: 30000 });
   const open = await focusInfo(page);
   const trapped = [];
   for (let i = 0; i < 12; i++) {
@@ -137,7 +138,8 @@ async function viewfinder(page, base) {
     trapped.push((await focusInfo(page)).inProj);
   }
   await page.keyboard.press('Escape');
-  await sleep(1800);
+  await page.waitForFunction(() => document.getElementById('proj')?.hidden === true, null, { timeout: 30000 });
+  await sleep(300);
   const back = await focusInfo(page);
   const closed = await page.evaluate(() => document.getElementById('proj')?.hidden === true);
   const result = {

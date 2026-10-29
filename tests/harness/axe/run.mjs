@@ -33,14 +33,15 @@ export async function run(opts = {}) {
       await scan(page, `${profile} / intro`, rows);
       if (profile !== 'R1') {
         await page.keyboard.press('Enter');
-        await sleep(2600);
+        await page.waitForFunction(() => document.getElementById('intro')?.hidden === true, null, { timeout: 30000 });
+        await sleep(300);
         await scan(page, `${profile} / raised`, rows);
         await page.focus('[data-open]');
         await page.keyboard.press('Enter');
-        await sleep(2600);
+        await page.waitForFunction(() => !document.getElementById('proj')?.hidden && Boolean(document.activeElement?.closest('#proj')), null, { timeout: 30000 });
         await scan(page, `${profile} / open project`, rows);
         await page.keyboard.press('Escape');
-        await sleep(1800);
+        await page.waitForFunction(() => document.getElementById('proj')?.hidden === true, null, { timeout: 30000 });
       }
       await page.goto(`${srv.base}/404.html`, { waitUntil: 'load' });
       await scan(page, `${profile} /404.html`, rows);
