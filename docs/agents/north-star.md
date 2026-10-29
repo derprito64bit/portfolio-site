@@ -1,108 +1,109 @@
-# North Star — v1.2 (signed by the owner, 2026-10-02; v1.1 adds the owner's "2D with heavy 3D" clarification; v1.2 applies the owner's D-023 to D-026, 2026-10-04)
+# North Star v2: Viewfinder, with Flux's honours and prints
 
-> **Suspended for design (owner, 2026-10-28: D-036, D-037, #101).** This page's design direction (the Darkroom light table, prints that develop, the X-T5 camera) no longer binds: the direction reset designs the site from scratch with full autonomy and writes v2. What stands: one person, one portfolio, many projects; the audience; honesty about owner facts; accessibility and reduced motion.
+> v1.2 (Darkroom) is in git history, before the commit that landed PLAN v2 (D-038). This v2 replaces it.
 
-Every agent's output is judged against this page. It changes only with a new version number. Where it conflicts
-with `owner-voice.md`, the owner's words win.
+Planner draft, 2026-10-29. It replaces v1.2's design (suspended by D-036 and D-037) once the orchestrator merges it. The owner may overturn any line. Where this page conflicts with `owner-voice.md`, the owner's words win.
 
-## Purpose
+The owner's pick (D-038), verbatim:
 
-derprito64bit's portfolio: **one person, one portfolio, many projects** (D-023).
+> "wow all of these are so good i don't know how to choose i love every single concept for some parts of how they display things, but i'd say ill go with the first option viewfinder combined with flux's unique way of displaying awards and medals for each project, along with fluxes film prints integrated into viewfinder's view project feature having different  sizes of film prints fordifferent images sizes respectively"
 
-The site (`/`) shows all of the owner's work, to anyone, on any hardware, in minutes: every project the owner
-chooses to show, of any kind (the content kinds in W-D005: software, game, 3D art, robotics and CAD), plus awards and
-medals. Each project has a print on the proof sheet and its own page. The owner's Unity game is one of these
-projects (see "What the game owns"); it is not the site's destination, finale or door.
+## Intent
 
-## Audience
+derprito64bit's portfolio: **one person, one portfolio, many projects.** It is a standalone project (D-037). The game is one project in it, nothing more.
 
-Recruiters, mentors, teammates and competition judges. Most are not gamers. Most give it 3–10 minutes, often on a
-work laptop or a phone.
+The site is a camera's interface, not a camera. You raise it to your eye and the work is what you see. Every readout reads something real. Each project opens into its own page, where its images lie as film prints, each print as big as its image deserves. Each award and medal hangs as a piece of glass or a medal on a thread, over the work it came from, and it moves when you push it.
 
-## The four beats (everything must serve at least one)
+Three words to check every decision against: **precise, optical, alive.**
+- Precise: every number is a real value. Every mark has a job. Nothing is decoration.
+- Optical: the effects are what light and lenses do: exposure, focus, depth of field, refraction, dispersion. Never noise for its own sake.
+- Alive: it answers the hand at once, and at rest the work still breathes.
+
+## Audience and beats (kept from v1)
+
+Recruiters, mentors, teammates and competition judges. Most are not gamers. Most give it 3 to 10 minutes, often on a work laptop or a phone.
 
 | Beat | Deadline | The visitor knows… |
 |---|---|---|
-| 1. Identity | 10 s | who derprito64bit is and what they make |
-| 2. Best work | 60 s | the strongest projects, *shown*, not described |
+| 1. Identity | 10 s | who the owner is, and that this is a personal portfolio |
+| 2. Best work | 60 s | the strongest projects, shown big in the frame |
 | 3. Everything | 3 min | every project, award and medal, and how to reach the owner |
-| 4. Depth | on demand, any device | how a piece was made, on its project page |
+| 4. Depth | on demand, any device | how a piece was made: its page, its prints, its honours |
 
-The home page carries beats 1 to 3 and ends on beat 3: awards and medals, then contact. Beat 4 lives on the project
-pages: the lead exhibit, "Show the mesh" and the process media.
+## The experience, beat by beat (desktop timings)
 
-## What the site owns
+1. **Preload, as an underexposed intro (at least 1.6 s; 6 s timeout).** The intro is already composed, black on black. Real tasks move an exposure needle from −3 EV to 0: fonts, the GL programs, the scenes, the first frame drawn and metered, and the first cover decoded. Each letter of the name exposes as the needle passes it. A step label names the task. Never a spinner, never a bare percentage.
+2. **Release (one beat, 0.6 s).** The needle lands on 0. The name and the frame bloom to over-exposure with the highlight alert, then snap into focus. The meter stays: it is the meter the EVF uses later.
+3. **Intro at rest.** The name, huge, in lens-barrel caps. "Personal portfolio". The handle and a live clock. Frame one waits behind the page, defocused at −3 EV. A spot-meter pool opens correct exposure under the hand. With no hand, the meter roams on its own and "Raise to eye" breathes after 4 s.
+4. **The raise (about 1.9 s).** Scroll, swipe, click or Enter. The page bends through the eyepiece with a dispersive rim and goes black. The HUD powers on in 40 to 60 ms detents. Frame one exposes from −6 EV with a focus rack and one small AF hunt. The title arrives last.
+5. **Work: one frame per project, in date order.** Wheel, swipe, drag, flick, arrows or the index. Each move is a focus pull: defocus, a cut under the blur, a rack in with one overshoot. The meter swings to the new frame's real EV. Hover is touch-AF: the AF box snaps, focus racks to the depth under it, and peaking traces the sharp edges. The film dial regrades everything. At rest the frame breathes. Placeholder projects show EVF test subjects. Real projects show their own cover in the frame.
+6. **Open a project (1.1 s in, 0.6 s out).** The focal length runs 23 to 56 mm while the frame zooms until it becomes the page (`/work/<slug>/`). A graduated ND darkens the left, and the details arrive 100 ms apart. Scrolling on, the frame recedes to −4 EV and the **roll** begins: the project's film prints expose in order, each at its image's own aspect and a size that follows its pixels. Tall phone shots stand narrow, wide desktop shots run long, small images stay small. The AF brackets follow the print you are looking at, and the counter reads "03 / 12". Tap a print and it rises into playback. After the prints, the project's **honours** hang over its own frame: a glass award that bends the work behind it, and a medal on a thread that mirrors it. Push them and they swing, spin and settle. Then the next project.
+7. **Honours = playback.** Past the last frame the display switches to review. Every award and medal gets a frame of its own, large, over the frame of the project it came from, with "From Project NN" to open that project.
+8. **Contact = owner info.** The camera's owner-info menu: name, handle, links. "Lower camera" returns to the intro.
 
-- Beats 1 to 4 completely, on every device.
-- **A 2D site with heavy 3D.** The layout, reading order and navigation are 2D and editorial. Real three.js 3D
-  (models, scenes, mesmerising effects and transitions) is a core ingredient, not decoration. The owner named two
-  references: portfolio-zxc (3D models used heavily) and Jesper Landberg (3D-driven effects in a 2D site). On weak
-  hardware the 3D degrades to designed stills and posters, never to a broken page.
-- **The opening** (D-024): the X-T5 line drawing develops into the real camera, generated from the 3D model. No copy
-  says the owner drew it.
-- It is the SEO and sharing surface.
-- Phones see the whole portfolio, every project page included.
+## Principles
 
-## What the game owns
+**Motion.**
+- Four durations only: snap 0.12 s (readouts, detents), step 0.24 s (defocus, regrade, bracket travel, exits), land 0.6 s (rack in, settle, prints exposing), travel 1.1 s (raise, zoom). Exits run at about 0.55 ×.
+- Eases are named and few: `vf.detent`, `vf.lens`, `vf.out`, `vf.in`, `vf.needle`. Springs only for physical things: the honours (firm k260 c22, kick k160 c7, a real pendulum) and the AF brackets.
+- Answer the hand in under 100 ms. Land a change in 0.65 to 1.4 s. The chosen thing becomes the destination. Detail arrives after the landing. Exits are faster.
+- One focal mass per view: the frame, the focused print, or the honour.
+- At rest the work supplies the life, within D-053's limits.
+- The calm path is a designed version, not a broken one: crossfades, no zoom, no warp, no swing.
 
-- Its own world: the candlelit royal home (seven rooms, D-003), with the Grand Gallery always one step away inside
-  it, and the Painting Worlds. It is served at `/manor/` (`/play/` redirects there) and needs a desktop browser.
-- Its own budgets (portfolio-site `docs/agents/budgets.md`, "Game").
-- On the site it is one project: a print on the proof sheet and a project page with "Play" for desktop browsers
-  (W-D021) and stills and video for phones. Nothing on the site waits for it, and the site is not a way into it: its
-  only links to the game are Play on its project page and its cartridge (W-D020).
+**Type.**
+- Archivo Variable for the name (width 125, weight 300, caps) and the readouts (width 75, weight 500, tabular figures). Chivo Mono for labels and metadata.
+- No third family, no italic file.
+- 12 px floor for readouts. 13 px floor for anything a visitor reads. Body text 16 to 18 px, at most 62 characters a line.
 
-## One maker, shared marks
+**Colour.**
+- Surround `#050505`, EVF panel `#0B0B0A`, ink `#ECE9E2`, ink-2 `#A29E95`, ink-3 `#817D76`.
+- One phosphor, `#FFB13B`, for state only: focus lock, peaking, the AF brackets, alerts. Never a brand fill.
+- Project tints live only inside frames and prints.
+- No gradients except the optical ones the shader makes.
 
-- **Shared by the site and the game (invariant):**
-  - the name and monogram;
-  - the voice: first person, plain, specific and confident, never hype;
-  - the content: one source, `content/`;
-  - **one accent colour**;
-  - **one bridging typeface**;
-  - **one spring table** for motion constants.
-- **Different on purpose:**
-  - The site has its own look, the Darkroom (D-001). It is not candlelit and not royal.
-  - The game keeps the candlelit royal home.
-  - Each does what only it can.
+**Glass.** Only where optics explain it: the eyepiece during the raise, the thin dispersive rim on the frame corners, and the honours glass. Never frosted UI panels.
 
-## Is / is not (the owner's picks)
+**Copy.** First person, plain, specific. UI copy only until the content step. Placeholders stay visible and typed.
 
-- **It is:** **crafted · playful · tactile**
-  - Every detail is made by hand.
-  - Surprises reward curiosity.
-  - Things feel physical: springy, weighty, touchable.
-- **It is not:** **templated · corporate · loud**
-  - No stock layouts or card grids.
-  - No sterile business tone.
-  - No visual shouting.
+## What it must never become
 
-Every design decision is checked against these six words.
+**The AI-generic tells:**
+- a hero with three cards; uniform card grids, bento grids or masonry templates for the prints;
+- frosted glassmorphism panels, gradient blobs, purple-to-blue washes, glow for its own sake;
+- fade-up-on-scroll applied to everything; decorative parallax; a cursor blob that follows the mouse;
+- a spinner or bare percentage loader;
+- scrambled text that shows impossible values (every readout rolls through real values);
+- stock 3D primitives (spheres, capsules) as placeholder art;
+- Inter or Space Grotesk; emoji in UI;
+- filler copy ("crafting digital experiences") or the banned words: seamless, elevate, immersive journey, unleash, cutting-edge, revolutionize, next-level, world-class.
 
-## Non-negotiables
+**[project]ion residue (D-037 standalone):**
+- no darkroom, light table, instant prints, "develop" language or instant-film borders;
+- no X-T5 or any camera body or model, for now (owner, #101);
+- no Manor, candles, royal rooms, red carpet or brass;
+- no `[ ]` monogram shared with the game; no shared accent, typeface or spring table with the game.
 
-1. **No invented facts.** `content/owner-facts.md` is the only fact source; everything else is a visibly marked placeholder.
-2. **Free tools only:** no paid tiers, watermarks or licences that bar a personal portfolio.
-3. **A weak-hardware floor:** the site is complete and beautiful with WebGL off, on a 5-year-old laptop and a mid-range phone.
-4. **WCAG 2.2 AA**, with reduced motion fully respected.
-5. **Budgets:**
-   - Site: page budgets as listed in portfolio-site `docs/agents/budgets.md`.
-   - Game (Manor): ≤120 batches, ≤60k triangles per zone, ≤8 Ultra-only lights.
-6. **Slop:**
-   - Nothing generic. No templates, no unearned cards or gradients, no decoration without a beat.
-   - Banned copy: seamless, elevate, immersive journey, unleash, cutting-edge, revolutionize, next-level, world-class.
+**Trade dress (D-052):** no Fujifilm (or any maker's) logos, names, icons, dial layouts, fonts, signature green or film-simulation names.
 
-## The signature idea
+**Flux leftovers:** no fluid simulation, marbling, ink drops or Roboto Flex. Flux gives only the honours and the prints (D-039).
 
-**Everything develops** (D-001, D-024). The site opens on a line drawing of the X-T5 that develops into the real
-camera, and every project arrives as an instant print that develops in front of you.
+## Floors
 
-## When things conflict
+- **WCAG 2.2 AA.** Full keyboard paths for every action. A 2 px focus ring at 3:1 or better. Targets at least 44 px. Reflow at 320 px, 200% zoom and text spacing without clipping. Forced colours and `prefers-contrast` respected. Dialog semantics for the open project and playback, with `inert` behind them. The canvas is `aria-hidden`, and its meaning is in the DOM (the frame's caption, the honour's details). No flashing above WCAG 2.3.1.
+- **Reduced motion.** The same site, calm: crossfades, no wheel paging, no zoom, warp, rack or blur, no swing (a static tilt), no inline video play, and no life-at-rest loop.
+- **No WebGL.** Complete and designed: frames are CSS covers (the cover image, or the tint), prints and playback work, and the honours are CSS silhouettes with the same details. A lost context shows the fallback at once and restores to a visible frame, never black.
+- **No JS.** Every page is complete, readable HTML: the intro, the project list, every project page with its prints, the honours and contact.
+- **Phone.** The whole site at 390 × 844 and at 320 px wide. Every gesture has a button. Back always closes on the first tap.
+- **Weak hardware.** A governor lowers quality before frames drop. The budgets in budgets-v2 hold at 4x CPU.
+- **Honesty.** `content/owner-facts.md` is the only source of owner facts; everything else is a visible typed placeholder. No AI-generated images. Free tools only, with no visible third-party branding.
+
+## When things conflict (kept from v1)
 
 1. owner-voice;
-2. non-negotiables;
+2. the floors above;
 3. locked decisions (`decisions.md`);
-4. the role that owns the topic;
+4. the crew that owns the topic;
 5. whichever option serves a beat more directly;
 6. fewer dependencies, less code, less motion;
 7. the orchestrator decides and logs the decision.

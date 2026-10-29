@@ -3,7 +3,7 @@
 Every W prompt includes a 6–8 line summary of this block and the path to it. When this block and a prompt
 disagree, this block wins; report the conflict in `conflictsWithLocked`.
 
-**During the direction reset (D-037, owner 2026-10-28), rules 1, 3, 4 and 5 are relaxed.** Concept prototypes on `concept/*` branches are allowed. Free tiers are allowed when no third-party branding or watermark shows on the site (paid tiers stay out). The design agent installs the libraries and tools it needs itself and records them in `deps.md` in the same PR. Rule 2 (owner facts, no AI images) and rule 7 (use every tool) stand.
+**PLAN v2 (2026-10-29) ends the direction reset and replaces the Darkroom crews with W-V0 to W-V4 and W-R; see rules 3 and 5 below. During the direction reset (D-037, owner 2026-10-28), rules 1, 3, 4 and 5 were relaxed.** Concept prototypes on `concept/*` branches are allowed. Free tiers are allowed when no third-party branding or watermark shows on the site (paid tiers stay out). The design agent installs the libraries and tools it needs itself and records them in `deps.md` in the same PR. Rule 2 (owner facts, no AI images) and rule 7 (use every tool) stand.
 
 1. **The repo is the source of truth.** Work only in this repo and your crew worktree. Inspect before changing.
    No side projects, parallel demo repos or throwaway prototypes.
@@ -12,10 +12,12 @@ disagree, this block wins; report the conflict in `conflictsWithLocked`.
    `"placeholder": true` in data). No AI-generated images, ever.
 3. **Free tools only.** No paid tiers, trials or branded free tiers (unicorn.studio, Spline, Rive, Motion+).
    No licences that block a portfolio (LYGIA non-commercial, AGPL).
+   *Changed by PLAN v2 (D-054, 2026-10-29): GSAP (every plugin is now free) and OGL are the site's libraries; three.js, Lenis and Swup are not used in v2. The rule's limits themselves are unchanged.*
 4. **Every dependency needs a decision.** A package or asset lands only after it has an entry in
    [`docs/agents/deps.md`](../deps.md) with its decision id, licence and gzip kB.
 5. **Only the foundation crew edits `package.json` or the lockfile.** Everyone else lists `depRequests[]` and
    files a request issue. Installs go through `npm ci`. No global installs; `npx` one-offs are fine.
+   *Changed by PLAN v2 (D-037, D-054): the foundation crew no longer exists. W-V0 (the landing) and then any W-V crew may `npm install` a free library it needs and records it in `deps.md` in the same PR. A library that breaks a v2 hard cap in `budgets.md` needs the owner's budget change.*
 6. **Stay in your globs.** Edit only what [`ownership.json`](../ownership.json) gives your crew. Outside them,
    file a request or bug issue ([`PROTOCOL.md`](../PROTOCOL.md) section 5).
 7. **Use every tool that makes the work better. The owner wants agents empowered, not restricted.**

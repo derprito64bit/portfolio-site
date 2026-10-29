@@ -5,7 +5,8 @@
 - One crew at a time, one stage per session.
 - The owner gives each stage the go-ahead and caps crew rounds.
 
-## Where things stand (2026-10-28)
+## Where things stand (2026-10-29)
+- **The owner picked on 2026-10-29 (D-038): Viewfinder with Flux's honours display and film prints. PLAN v2 landed (D-038 to D-056); next = W-V0 (two orchestrator PRs), then W-V1.**
 - **main = the stage-close merge after be3049f.** Merged so far:
   - W-F foundation #30;
   - the X-T5 model and GLB pipeline (#28, #56);
@@ -57,104 +58,296 @@ The rules are the review's "Proposed operating model".
    - No budget pause; the owner cares that spend buys visible quality.
    - The global CLAUDE.md token rules apply: Opus at xhigh only for crew, gate, judge and jury; sonnet or haiku at low or medium for search, mechanical and verify stages; the muse-worker agent for routine scripting while its router runs.
 
-## NEXT STAGE: the direction reset (#101, D-036, D-037): waiting for the owner's pick
-The owner reopened the site's design from scratch and gave the design **full autonomy** (D-037). Their words are first in `docs/agents/owner-voice.md`. The ideas in #101 are guidelines, taken lightly: keep what flows and drop or reshape what doesn't. The portfolio is a **standalone** project, not connected to [project]ion. Don't stall on questions: decide, build, and show the owner.
+### Operating model: kept, with small changes (PLAN v2)
 
-### Where the reset is (2026-10-28)
-Steps 1 to 3 below are done; the stage stopped for the owner's pick. Everything is in `portfolio-evidence/research-reset/2026-10-28/`: `TECHNIQUES.md` and `LIBRARIES.md` (research), `BRIEF-common.md` (the builders' shared brief), `JURY-brief.md`, `JURY.md` (rounds 1 and 2, with each concept's open items), `concepts/<name>/` (the builders' shots and opening webm) and `jury/<name>/`.
+The lean loop stays as written in PLAN.md. Changes:
+- **Crew ids:** `W-V0` to `W-V4`, then `W-R`. Branches `crew/w-v<n>`. Config keys `wv<n>`. Evidence root: `C:\Users\Aaron\Documents\GitHub\portfolio-evidence\v2`.
+- **crew-config defaults:** `breaker.extraPassGlobs` becomes `src/evf/gl/**`, `src/evf/router.ts`, `src/evf/project/**`, `src/pages/**` and `src/layouts/**`. A diff there gets 2 breaker passes (navigation or GL lifecycle).
+- **Jury:** the motion benchmark stays the bar. Each slice's spec names its rows. The jury also checks the "never become" list in docs/agents/north-star.md.
+- **Caps:** slices get 3 code rounds plus 1 evidence round. Stop early when the must-fix count is flat for 2 rounds. At the cap, give the owner the 5-line summary with costs.
+- **Budgets:** budgets-v2 binds as must-fix only after the owner confirms it (D-048). Until then a breach goes to the owner at the cap.
+- **W-V0 is not a crew loop.** It is two orchestrator PRs, built from `C:\Users\Aaron\Documents\GitHub\portfolio-evidence\research-reset\2026-10-29\plan\w-v0-checklist.md`. W-V0a (land, delete, re-point) is mechanical: one Sonnet worker (medium). W-V0b (engine counters, `?vf-test` gating, the smoke, the baseline) is the base of every later gate: one Opus builder (xhigh, as for crews). One Sonnet verifier checks each PR, and CI must be green. W-V1 cannot start until both have merged.
+- **Cost basis:** W-S2 took 4 rounds for about $140 in crew runs (rounds of $59, $32, $28 and $20), plus about $70 for the orchestrator session.
 
-| Concept | Branch @ head | Jury r1 → r2 | The idea |
-|---|---|---|---|
-| Viewfinder | `concept/viewfinder` @ e53a047 | 7.4 → 7.9 | The owner's EVF idea as the whole site: a precise name intro, the "raise to eye" through an eyepiece shader to black, then an original EVF HUD (live histogram, meter, AF, focus pulls, a film-grade dial, playback for honours). The soundest engineering |
-| Refraction | `concept/refraction` @ 8faa8a8 | 7.1 → 7.7 | Liquid glass (OGL refraction of DOM-mirrored type) as the one material: droplets merge into the lens that bends the name, grows into an EVF moment, then sweeps the work as a slab |
-| Flux | `concept/flux` @ 528a30f | 7.1 → 7.6 | A real fluid sim of ink on dark water; a variable-font name that swells at the cursor; an endless throwable gallery. A name-response fix landed after the jury's round 2 (weight 280 to 700, measured by the builder) |
+## The pick (D-038, D-039)
 
-- **Stack in all three:** GSAP 3.15 (free, every plugin), OGL 1.0.11, Lenis; OFL fonts (Mona Sans, Roboto Flex, Archivo with Chivo Mono). Each branch adds its rows to `deps.md` and sets `cssCodeSplit: true` in `astro.config.mjs`, so the old Darkroom CSS stays off `/`. Code lives under `src/concept/` plus a new `src/pages/index.astro`. Old code is untouched.
-- **Ruled out by the research:** Spline and Unicorn Studio (badges on free tiers), lygia (Prosperity licence), bklit ui and Kokonut UI (React kits: ideas only), manus.im (an AI agent product, not a library).
-- **The owner sees them at** `http://127.0.0.1:4420` (a chooser page), with the builds at 4421 (Refraction), 4422 (Flux) and 4423 (Viewfinder), served from each worktree's `dist/` by `python C:\Users\Aaron\Documents\GitHub\portfolio-preview\concepts_serve.py`. The worktrees are `portfolio-site.wt/concept-<name>`. Leftover dev servers from a builder sit on 4412 and 4415 (pids 27664, 30944); stopping them was denied in the builder's session, so they are left for the owner (their to-do).
-- **Cost:** about $126 in agents (builders $31 to $39 each over two rounds, the jury $18 over two, research about $4), not counting the orchestrator session.
-- **The real name** is still not in `owner-facts.md`; every concept reads one `OWNER_NAME` constant with a visible placeholder tag.
+> "wow all of these are so good i don't know how to choose i love every single concept for some parts of how they display things, but i'd say ill go with the first option viewfinder combined with flux's unique way of displaying awards and medals for each project, along with fluxes film prints integrated into viewfinder's view project feature having different  sizes of film prints fordifferent images sizes respectively"
 
-### When the owner picks (or asks for a blend)
-1. Record the pick as **D-038** in `decisions.md`, with the owner's words in `owner-voice.md`.
-2. Fold the chosen concept's open items (JURY.md "Round 2"; the build log's "Known gaps") into the first crew's spec.
-3. Then do step 4 below. The concept branch is the starting point, not merged as-is: the new plan decides whether the crew builds on it or ports it into a clean slice structure.
-4. Keep the other two branches and worktrees until the new plan merges. They are never merged; delete them only after checking that nothing in them is still needed.
+- **Base:** Viewfinder (`concept/viewfinder` @ e53a047).
+- **Graft 1:** Flux's honours display (the arched refracting glass and the medal on a thread, both pushable). It shows on each project that has honours, and in the honours section (D-043).
+- **Graft 2:** Flux's film prints, inside Viewfinder's open-project view, each sized by its image's aspect and pixels (D-044).
+- Nothing else from Flux: no fluid, marbling, Roboto Flex, Lenis or second engine.
 
-1. **Start:**
-   - read `owner-voice.md` ("The redirection"), #101, #65, `CLAUDE.md` and `content/owner-facts.md`;
-   - ask the owner one thing only if needed: their real name for the intro, when `owner-facts.md` lacks it (else a visible placeholder).
-2. **Research** (lean, parallel):
-   - Awwwards-level sites and techniques: preloaders, liquid glass, shader transitions, kinetic and split text, viewfinder or EVF UI, dark immersive layouts, galleries;
-   - libraries and tools: #65 and anything better; GSAP with ScrollTrigger and SplitText, Motion, three.js shaders and post-processing, Unicorn Studio and Spline when unbranded;
-   - the installed skills: the GSAP set, threejs-*, animate, design-motion-principles, emil-design-eng, design-taste-frontend, frontend-design.
-   Install what you'll use and record it in `deps.md`.
-3. **Concepts:** 2 or 3 genuinely different directions as working prototypes on `concept/*` branches (never main).
-   - Old byte checks may fail there; that's expected.
-   - A design jury (Opus, xhigh) scores each against the references with the owner's bar: sleek, smooth, immersive, never generic.
-   - Show them on the local preview (`portfolio-preview/preview.py`, or a dev server per branch) and in the build log, and the owner picks one.
-4. **New plan** for the chosen concept:
-   - a new north star (v2) and decisions;
-   - budgets re-set with the owner;
-   - the crew order;
-   - what of the old code carries over: the content model, the stage, the tooling, the lean loop;
-   - hosting (the site stands alone; the Manor is one project linked from the gallery);
-   - W-F-m3 re-scoped or dropped.
-5. Then stop, log, back up, and start the first new crew in a fresh session.
+## Plan v2 files
 
-### Paused: W-F-m3 (#11 follow-up crew), to re-scope after the reset
-1. **Fill the `wfm3` entry of `scripts/fleet/loop/crew-config.json`** through an orchestrator PR (`docs/...`). It is a draft now; `launch.cjs` refuses drafts. Set:
-   - the code paths: W-F's globs, plus the W-F-m3 camera one-offs (decisions.md row 'W-F-m3 one-off globs'), plus a one-off in `src/gl/prints` if it takes the lost-context develop item below;
-   - the gate's visitor paths and frame probes;
-   - the breaker list (context loss, restore, Swup, bfcache);
-   - the perf sets: copy ws2's mobile TBT set (it measures the deferred W-S2 TBT on /) and add what the frozen list reaches;
-   - `jury.enabled: false` (not a slice).
-   - Caps are already set: 2 code rounds (evidence 1) and 2 breaker passes.
-2. **Write one versioned spec** (10,000 chars or less) on launch day, from the frozen list:
-   - #91 comment 6144848977 (must-fix before G3a: C and B, the WK-P2 regressions against main; the .astro lint regions; A1 to A3; D1 to D4; perf rows 40 and 45);
-   - round 5's carry-over (6097618297);
-   - the lint AST check, the getAnimations() idle check and the home HTML check;
-   - bugs #76 (first), #75, #74, #88 and #89, and requests #79, #80 and #70;
-   - the W-F-m3 group of W-S2's follow-ups (#91 comment 6476370307);
-   - the deferred W-S2 mobile TBT.
-   Quote rulings word for word as `"..." [c<id>]` (the check verifies them). Post the spec on #11 as an Orchestrator comment, write its `meta.json`, and run 1 refuter (Sonnet, medium), at most 2 rounds.
-3. **Launch** from the main checkout (agents start in their caller's directory):
-   - `node scripts/fleet/loop/launch.cjs wfm3 --spec <md> --spec-meta <json> --out C:\Users\Aaron\Documents\GitHub\portfolio-evidence\runs\wfm3` must print LAUNCH READY;
-   - copy the launched file into the repo's gitignored `evidence/runs/wfm3/`, because the Workflow tool loads a scriptPath only from inside the working directory;
-   - then run `Workflow({ scriptPath })` with no args.
-4. **Per round:**
-   - arm `round-watch.mjs` (`portfolio-evidence/orchestrator-tools/2026-10-27/`) as a background task (no LLM polling);
-   - read the verdict with `judged.mjs`;
-   - post the cost line (`scripts/fleet/cost-line.mjs <run dir> --round <n>`);
-   - answer rulings on the PR before the next crew agent starts;
-   - refresh the build log;
-   - reap browsers after each run.
-5. **Perf needs a quiet PC.** W-S2's TBT failed to get a clean set five times: other sessions' headless browsers and node, and `benchmarkIndex` under 0.9 x the baseline. Ask the owner for a quiet window at launch (see owner questions). Use `quiet-watch.mjs` before a perf continuation, and stop it before launching (its own prechecks add load).
-6. **Continuations** come from `prior-from-journal.cjs <launched file> <journal> --write <next> [--grant code=1] [--refresh crew-config.json]`, then the check. On the result: merge if approved with CI green; at the cap, ask the owner. Then stop, log, back up, and say "fresh session for the next stage".
+- Decisions D-038 to D-056: `docs/agents/decisions.md`. North star v2: `docs/agents/north-star.md`. Budgets (proposed, D-048): the budgets-v2 section of `docs/agents/budgets.md`.
+- The landing checklist and the first crew spec stay in the evidence repo: `C:\Users\Aaron\Documents\GitHub\portfolio-evidence\research-reset\2026-10-29\plan\w-v0-checklist.md` and `C:\Users\Aaron\Documents\GitHub\portfolio-evidence\research-reset\2026-10-29\plan\first-crew-spec.md`.
+- Owner questions: the "Owner questions" section below.
 
-## After W-F-m3 (the order to go-live): paused by #101 until the reset's plan replaces it
-1. **TRANSITIONS final pass:** close rev 8's last budget must-fix, add `docs/direction/transitions.md`, amend W-S3 and W-D015, and run prototypes P0-P5, then P6 (the EVF, D-034; it did not run during W-S2), whose numbers go to the owner.
-2. **W-S3 (#15):** the project page.
-3. **W-C13 m3 (#16):** grip leatherette, dial teeth, XF16-50 legends, cartridge and loupe, #84, re-rendered posters.
-4. **W-C14 items (#19):** hero hand-offs, the hero's mobile TBT long task, #57 item 3, #85.
-5. **The content step:**
-   - the owner supplies real facts, the project order (D-029) and a film look per project (D-032);
-   - #32;
-   - reset the placeholder looks to `''`.
-6. **W-R (#12):** the composed site at `/`, with the Manor kept at `/manor/` by the game repo's publish.
-7. **G3a:** the owner's review, then go-live **hidden from search** (D-013).
-8. **After launch:** W-C2 with optimization pass #82 (the 3D budget D-033 is decided at its launch), W-C3, W-C4 (#78), W-C5, W-C6, W-C8, W-C9, W-C10, and watchlist #65.
+## NEXT STAGE: land the plan, then W-V0, then launch W-V1
 
-## Owner questions to ask at the right stage (not before)
-- **At the direction reset:** only the owner's real name, if `owner-facts.md` lacks it. The design calls are the agent's (D-037). When a timed set is due, ask for a PC window for it (no other Claude sessions running tests; Unity, Roblox and most Opera tabs closed), or approve recalibrating the host key. W-S2's TBT was blocked five times without one.
-- **The EVF:** #101 makes an EVF transition part of the intro, so the reset's concepts replace P6's cells (D-034).
-- **Before W-C14:**
-  - camera and print composition, and camera size on laptops;
-  - the strap style;
-  - the phone opening (recommended: print ready plus a tap cue).
-- **Content step:** real facts, order, looks, and the moving material (recommended: screen recordings first).
-- **At G3a:** approval, the 4.7 s opening trim, the default theme, and hiding Lens/Look until they work.
-- **At W-C2:** the GL budget (recommended: about 192.9-195.4 kB), the warp location (recommended: flying prints swim), and a phone develop.
+Do these in order. Use a fresh session per stage.
+
+1. **Docs PR `docs/plan-v2` (orchestrator):**
+   - PLAN.md: replace the two sections with this plan, and update "Where things stand" (the pick; W-V0 next);
+   - decisions.md: add D-038 to D-056 and apply the status edits (`docs/agents/decisions.md`);
+   - north-star.md: becomes v2;
+   - budgets.md: add budgets-v2 as a "proposed" section; keep R1 to R5; mark the Darkroom rows "retired at W-V0";
+   - owner-voice.md: add the pick, verbatim, under "The pick (2026-10-29)";
+   - ownership.json: the W-V globs below; drop the W-S*, W-C* and W-F globs (history stays in git);
+   - crew-config.json: a `wv1` entry, draft until W-V0b merges; drop `wfm3` and `ws2` (history in git);
+   - deps.md: rows for gsap, ogl and the two fontsource packages; edit the REJECTED row;
+   - rules.web.md rules 3 and 5, README.md and content/README.md: say what changed;
+   - LOG.md: the pick and this plan.
+2. **Ask the owner** the 5 questions in the "Owner questions" section below, in one message. Don't wait for answers, except where a step says so.
+3. **Issues (orchestrator):** create the label `status:retired-by-reset`. Apply the queue table below. Open "Follow-up queue (v2)". Retitle #21 for W-V1.
+4. **W-V0, the landing** (below; `C:\Users\Aaron\Documents\GitHub\portfolio-evidence\research-reset\2026-10-29\plan\w-v0-checklist.md`). W-V0a, then W-V0b, each its own PR. Merge each when CI is green and its verifier passes. Point the preview's :4400 at main after W-V0a.
+5. **W-V1, only once W-V0a and W-V0b have both merged:** post its spec v1 (`C:\Users\Aaron\Documents\GitHub\portfolio-evidence\research-reset\2026-10-29\plan\first-crew-spec.md`) on #21 as an Orchestrator comment, with its `meta.json`. Run 1 refuter (Sonnet, medium), at most 2 rounds. Fill `wv1` in crew-config. Then stop, log, back up, and launch W-V1 in a fresh session. When the crew's first checkpoint lists how its prints differ from Flux's, pass that list to the owner in the first progress note.
+
+## The crew order to go-live
+
+| # | Id | What | Issue | Jury | Caps | Rough cost |
+|---|---|---|---|---|---|---|
+| 0 | W-V0 | Landing, two PRs. W-V0a: Viewfinder on main, Darkroom deleted, checks and harness re-pointed. W-V0b: engine counters, test gating, smoke, baseline | #11 | no | each: 1 build + 1 fix pass | $50-90 |
+| 1 | W-V1 | The project view and the film prints (needs W-V0 merged) | #21 | yes | 3 code + 1 evidence; 2 breaker passes | $140-230 |
+| 2 | W-V2 | The honours display (Flux's glass and medal), per project and in the honours section | #22 | yes | 3 + 1; 2 breaker passes | $110-180 |
+| 3 | W-V3 | The EVF and gallery: real media in the frame, life at rest, the jury's open items | #20 | yes | 3 + 1; 2 breaker passes | $100-170 |
+| 4 | Content | The owner's facts, media, honours and order | #32 | no | 1 PR | $10-25 |
+| 5 | W-V4 | Floors and performance: no-WebGL, no-JS, WCAG 2.2 AA, phone, perf, meta | #24 (+#26, #82) | yes, 2 rows | 2 + 1 | $80-130 |
+| 6 | W-R | Hosting (option A) | #12 | no | 1 + 1 | $20-40 |
+| 7 | G3a | The owner's review, then go-live hidden from search (D-013) | #101 | no | 1 must-fix round if needed | $15-60 |
+
+**Why this order.** W-V0 gives a clean base: one codebase, no dead weight, green checks, and the counters every later gate reads. No crew starts before it has merged. The owner sees the blend first in W-V1: Flux's prints inside Viewfinder's open project. It is built on its permanent parts: a real route, the static article, content model v3 and the image ladder. W-V2 adds the honours to that same page, and the honours section. W-V3 polishes the EVF once both grafts are in, so its jury judges the whole blend. The content step comes before W-V4, so the floors and the perf pass run on real media.
+
+Crew totals: about $525 to $925. Add about $50 to $70 of orchestrator time per stage (8 stages; W-V0a and W-V0b share one). All in: about $0.9k to $1.5k.
+
+### W-V0: the landing (two orchestrator PRs, not a crew loop)
+
+**Scope:** bring Viewfinder e53a047 onto main, unchanged in behaviour. Delete the Darkroom. Re-point the checks, CI and harness core. Add the engine counters and the test gating, so W-V1's gate works. Record the Lighthouse baseline for the budgets. The binding checklist is `C:\Users\Aaron\Documents\GitHub\portfolio-evidence\research-reset\2026-10-29\plan\w-v0-checklist.md`; this is its summary.
+
+**Owns (one-off, both parts):** `src/**`, `public/**`, `assets-src/**`, `tests/**`, `scripts/build/**`, `scripts/check/**`, `.github/workflows/**`, `package.json`, `package-lock.json`, `astro.config.mjs`, `.size-limit.cjs`, `playwright.config.ts` (created; it does not exist on main), `content/awards.json`, `content/worlds.json`, `content/tokens.json` (outputs list only).
+
+**W-V0a: land, delete, re-point** (Sonnet worker, medium; about $15-25):
+1. Tag main `darkroom-final` at its pre-landing SHA, and run `backup.py` first.
+2. `src/concept/**` from e53a047 lands as `src/evf/**` (git mv). `src/pages/index.astro` is the concept's. The build matches e53a047's at five checkpoints (intro at rest, raise end, frame 3, open, honours) at 1440 × 900 and 390 × 844: pixel diff at most 0.5%. **Deterministic by method:** e53a047 is built in a fresh scratch worktree (never in `portfolio-site.wt/concept-viewfinder`). Both builds run under the same Playwright init script: `Math.random` replaced by a fixed-seed PRNG, and time driven by Playwright's clock API to each checkpoint. The clock readout is masked. First, two runs of e53a047 against each other must differ by 0.1% or less; any region that still varies (film grain, the roaming spot meter) is masked in both and listed in the PR.
+3. Everything in D-049's code list is deleted. `src/layouts/Base.astro` is trimmed to the head, the noindex switch and the skip link, and renamed `Site.astro`; `Text.astro` goes. `src/pages/404.astro` becomes a minimal static page in the new tokens. The favicons stay until W-V4.
+4. `package.json` keeps only what is used: astro, gsap, ogl, both fontsource packages, and the dev tools (sitemap, check, typescript, sharp, playwright, axe, lighthouse, size-limit). deps.md has a row for each new one.
+5. `npm run check` is green:
+   - lint: the "one requestAnimationFrame in src/" rule becomes a file allowlist (`src/evf/gl/engine.ts`, `src/evf/main.ts`); W-V3 narrows it to the engine only;
+   - css-lint: fix the 10 findings (replace 100vw with inset, 100% or container units). The only allow-listed rule is `html.js body { overflow: hidden }`, by name;
+   - ph-gate: the OWNER_NAME marker in the `.ph` form;
+   - size-limit: groups for critical JS, engine, total JS, CSS and HTML, at the budgets-v2 hard caps. The HTML check has a negative control;
+   - media-caps (new, `scripts/check/media-caps.mjs`, wired into `run.mjs`): budgets-v2's per-class image, poster and LQIP caps on `dist`, read from the budgets block. It passes with no media and has a negative control. W-V1 brings the media;
+   - stacking: retired;
+   - tokens-determinism: the new outputs list;
+   - ownership: the new globs;
+   - `astro check` and deps.
+6. Harness core re-pointed to `/`: console (fails on any error, `console.assert`, `GL_INVALID*` and `CONTEXT_LOST*`; #84), overflow at 320 px, contrast, keyboard, flash (an empty capture fails), and axe. The retired harness parts (with `idle`) and their CI steps are deleted together.
+
+**W-V0b: counters, gating, smoke, baseline** (Opus builder, xhigh; about $35-65; starts after W-V0a merges):
+7. Engine frame counters per channel (scene, composite, eyepiece, readback; #92) and `window.__vf` attach only with `?vf-test` (D-055). A unit test checks both ways. The idle check is rebuilt on these counters; it asserts only what e53a047 meets, and W-V3 tightens it to D-053.
+8. A Playwright state-machine smoke in Chromium and WebKit: boot, intro, raise, go to frame 3, open, close, honours, contact, lower. 0 console errors.
+9. The Lighthouse baseline on `/`: 5 runs mobile and 5 desktop, under R1 to R5, saved to `portfolio-evidence/v2/baseline/`. A busy host means "blocked (host)", recorded, and it is retried in the owner's quiet window. It does not block the merge.
+
+### W-V1: the project view and the film prints (#21; the first crew)
+
+**Scope:** `/work/<slug>/` as a real static page, opened in-app from the EVF with history. Content model v3 and the image ladder. Flux's film prints, sized by each image, in the roll. Playback (lightbox). Phone Back fixed. Full spec: `C:\Users\Aaron\Documents\GitHub\portfolio-evidence\research-reset\2026-10-29\plan\first-crew-spec.md`. Starts only after W-V0a and W-V0b have merged.
+
+**Size:** about 1,500 changed lines, tests and fixtures aside (16 rows; 800 was too low). If round 1 shows it will not fit, the orchestrator moves A10 and A11 (playback and video) into a W-V1b slice with jury row J4, and W-V1 keeps J1, J2, J3 and J5.
+
+**Owns:**
+- `src/pages/work/**`, `src/pages/index.astro` (the `#proj` container markup only), `src/layouts/**`;
+- `src/components/project/**`, `src/components/print/**`;
+- `src/evf/project/**`, `src/evf/router.ts`, `src/evf/style/{project,print}.css`;
+- `src/evf/main.ts` and `src/evf/style.css` (only to move the project code out, wire the router and set the HUD print counter); `src/evf/layout.ts` (the open mode only); `src/evf/data.ts` (the project media fields only);
+- `src/lib/prints/**`, `src/lib/content/**`;
+- `scripts/build/images.mjs`, `scripts/build/media-fixtures.mjs`; `astro.config.mjs` (only to hook the fixtures into the build);
+- `.size-limit.cjs` (the `/work/` rows only); `.github/workflows/check.yml` (the w-v1 test step only); the media caps themselves are W-V0's `media-caps` check;
+- `content/projects.json` (placeholder media entries only), `content/README.md`;
+- `tests/w-v1/**`, `tests/unit/{prints,content}/**`;
+- `package.json` (scripts and deps), `package-lock.json`, `docs/agents/deps.md` (rows only).
+
+**Acceptance (short form; the spec is binding):**
+1. Static `/work/<slug>/` pages, complete without JS.
+2. In-app open and close with pushState and popstate; deep links; focus returns to the opener.
+3. Content model v3 and its validation.
+4. The image ladder and its byte caps.
+5. The print look.
+6. The print size rule, unit-tested.
+7. The layout on desktop and phone, with overflow 0 and CLS 0.
+8. Prints expose in order.
+9. Focus and dim, with the AF brackets.
+10. Playback.
+11. Video prints.
+12. Phone Back works on the first tap.
+13. Calm, no-WebGL and no-JS paths.
+14. The engine is idle in the roll.
+15. Budgets.
+16. Tests.
+
+**Jury rows:** the open-to-roll arrival; the roll at rest as one curated set; the focus brackets and dim; the playback Flip; the blend's coherence.
+
+### W-V2: the honours display (#22; also #17, #88, #52)
+
+**Scope:** D-043 in full. The engine's honours pass, the physics port, the per-project row, the honours section and `/honours/`, the fallbacks, and context-loss restore for the whole engine.
+
+**Owns:** `src/evf/gl/**`, `src/evf/honours/**`, `src/components/honours/**`, `src/pages/honours/**`, `src/pages/work/[slug].astro` (the honours slot only), `src/pages/index.astro` (the honours section markup only), `src/evf/{scenes,data,layout}.ts` (the honours parts only: delete scene kinds 1 and 2, change `honourScene`, link honours to projects), `src/evf/style/honours.css`, `src/evf/style.css` (only to move the honours rules out), `src/evf/main.ts` (only to move the playback code out), `src/lib/content/**` (the honours link only), `tests/w-v2/**`.
+
+**Acceptance:**
+1. One extra pass, only when an honour is within one viewport. With none, the composite draws straight to the screen, and the honours channel counts 0 frames.
+2. The glass and medal match D-043's optics. Flux's constants are unchanged. Unit tests pin the settles: the medal settles face-on within 4 s of a click, and the glass tilt settles within 1 s.
+3. The backdrop is the linked project's own frame scene, drawn in the anchor rect. Unlinked honours use the all-tints light bars. No film tint. The metal tint comes from `metal`.
+4. The per-project row appears after the prints only when the project has honours. One award and one medal at a time; Prev and Next; a DOM caption with typed placeholders; a Push button (Enter or Space).
+5. The honours section shows one honour per frame, the object about 60% of the frame's height. "From Project NN" opens that project. `/honours/` deep-links in without the intro. Scene kinds 1 and 2 and their shader code are deleted.
+6. Anchoring: the objects stay within 1 px of their DOM anchor under wheel, touch, keys, resize and an 80 px toolbar collapse, in Chromium and WebKit (#52, re-scoped). No layout reads per frame.
+7. Calm: a static tilt. Touch: a tap pushes, with a slow auto sway. No WebGL: designed CSS silhouettes. No JS: the honours lists are in the document.
+8. Context loss (W-F-m3's lesson): the CSS fallback shows at once. On restore, programs, targets and textures rebuild, and a visible frame renders within 1 s. Never black. Tested with `WEBGL_lose_context` in Chromium and WebKit. A WebKit resize or realloc keeps the GL frame (#88).
+9. The governor scales the pass (half-res refraction under quality 0.75). The 4x CPU floors hold on the honours section.
+10. The engine chunk stays within its cap (estimate +5 to +7 kB gz).
+
+**Jury rows:** the glass reads as glass that bends the work; the medal's hang and push feel bouncy yet firm; the per-project row is a memorable placement, not a badge; the honours section is memorable; the blend's coherence.
+
+### W-V3: the EVF and the gallery (#20; also #18)
+
+**Scope:** real media in the frame, the jury's round-2 open items, life at rest, one motion source, one ticker, and the rest of the main.ts split.
+
+**Owns:** `src/evf/**` except `src/evf/project/**` and `src/evf/honours/**`; `src/pages/index.astro`; `src/components/{intro,evf,contact}/**`; `content/tokens.json` (motion tokens) and its generated outputs; `scripts/check/lint.mjs` (the ticker and duration rules only); `tests/harness/idle/**` (the D-053 thresholds only); `tests/w-v3/**`.
+
+**Acceptance:**
+1. A "photo" scene kind: a project with a cover, or a media entry marked hero, shows it in the frame at its own aspect (letterboxed, never stretched). Focus comes from `focus`, with rack, depth of field, exposure, peaking and the dial. The meter and histogram read it. Placeholder projects keep the test subjects.
+2. The preloader's real tasks include decoding and uploading the first frame's cover.
+3. On phones, vertical and horizontal swipes over 60 px on the frame both advance.
+4. The index row at 390 px: every entry reachable, with a visible cue (an edge fade and the count), scroll snap and 44 px targets.
+5. Life at rest (D-053): with no pointer, the intro moves at least 0.3% of pixels, and the frames at rest have a median of at least 0.3%. All of it stops under calm, in a hidden tab, and after 60 s without input.
+6. At 4x CPU the raise's worst frame is 100 ms or less as the target, and 200 ms at most as the hard cap, as in budgets-v2 (round 2: 150 ms).
+7. One motion source (#18): the durations and eases come from `content/tokens.json`. Lint fails a literal duration in `src/evf` outside `motion.ts`.
+8. One ticker: requestAnimationFrame appears only in `src/evf/gl/engine.ts`, driven by the GSAP ticker. Lint enforces it.
+9. main.ts is split into store, input, `hud/`, intro and raise, with one store and no module-level mutable state outside it. The state-machine suite passes unchanged.
+10. The film dial uses plain descriptors; "Chrome" is renamed (D-052).
+11. A forced quality drop in WebKit keeps a visible frame (#74's lesson).
+
+**Jury rows:** the intro is fully impressive, at rest too (benchmark points 4 and 9); the focus pull and the flick; the photo frame reads as the work; the HUD is legible and original; the blend as a whole.
+
+### The content step (#32; owner plus orchestrator)
+
+- **The owner supplies:** the real name and the one line; which projects, and each one's title, role, year, blurb, body, tools and links; the media, at source resolution; the order; and each award and medal (title, event, placement, year, metal, a photo if they have one, and the project it belongs to, if any).
+- **The orchestrator:**
+  - writes `content/owner-facts.md` first (TO CONFIRM, then CONFIRMED with the date and how);
+  - then the JSON;
+  - puts the originals in portfolio-assets `media/<slug>/`;
+  - runs `images.mjs` (and ffmpeg for video, a free build tool recorded in deps.md);
+  - commits the ladder and `media.json` (D-056);
+  - removes the placeholder media entries the real ones replace;
+  - runs validate and the byte caps.
+- **One content PR per batch.** The owner may send material at any time. A content PR lands between crews, never during a crew's round.
+- **No invented facts.** Anything not supplied stays a visible typed placeholder.
+
+### W-V4: floors and performance (#24; also #26, #82, #79's rest)
+
+**Scope:** the floors in docs/agents/north-star.md on real media, the perf pass, meta for sharing, and the 404.
+
+**If no real media has arrived:** the perf rows run on the fixtures, rendered at representative real sizes (phone shots at 1170 × 2532, desktop shots at 2560 × 1440, one 720p loop clip). Those rows are marked "provisional" and re-run in the content PR that brings the media. Go-live does not wait for them.
+
+**Owns:** `src/**` (only while no other W crew is active), `scripts/build/og/**`, `public/*.{ico,svg,png}`, `tests/w-v4/**`.
+
+**Acceptance:**
+1. No WebGL: every beat is complete and designed.
+2. No JS: every page is complete, and nothing is hidden without JS.
+3. WCAG 2.2 AA: axe 0 on every route and state; a keyboard path for every action; forced colours and `prefers-contrast`; the wheel lock applies to the frame only, never to the document; an NVDA transcript of the full path.
+4. Reduced motion: an inventory of every motion, each with a live calm path, tested.
+5. Phone: the whole site at 390 × 844, 320 × 640 and landscape.
+6. Perf: every budgets-v2 row on real media. A clean TBT set (10 runs) on `/` and on the heaviest project. The 4x CPU floors. The media byte caps.
+7. Meta: a title and description per page from content; canonical; an OG image per project (1200 × 630, built from its first print); JSON-LD Person only once the name is confirmed. noindex stays on every page with a placeholder. The sitemap follows D-013.
+8. A 404 page and favicons in the site's own language. No `[ ]` monogram.
+9. `?vf-test` hooks are absent without the parameter.
+
+**Jury (2 rows):** the no-WebGL and calm paths are beautiful, not merely working; the phone composition.
+
+### W-R: hosting (#12)
+
+**Scope:** option A (D-047). It needs the owner's yes to run the fork's publish script once (owner question 3). Without that yes, W-R stops before step 3 and asks again. Nothing is published.
+
+**Acceptance:**
+1. The live Pages source is checked (`gh api .../pages`) and recorded.
+2. `scripts/release/` builds `dist` with a `build-sha` meta and runs the link check.
+3. The fork's `publish.ps1` composes `/` = this `dist`, leaving `/manor/`, `/play/` and `/arcade/` as they are, with a normal push.
+4. The live site serves that SHA. Every placeholder page carries noindex. The sitemap excludes them. `/manor/` loads and `/play/` redirects. The root 404 is the portfolio's. 0 broken links. One Lighthouse run on the live site.
+5. Rollback is written down: re-run publish with the previous `dist`.
+
+**Jury:** none.
+
+### G3a and go-live hidden from search (D-013)
+
+1. **Pre-G3a perf set** on main: a clean TBT set and the 4x floors, in the owner's quiet window.
+2. **The full gate** on main: Chromium, WebKit, phone, calm, no-WebGL and keyboard.
+3. **The owner's review** on the preview (:4400), with a one-page checklist: the intro, the raise, every project with its prints and honours, the honours section, contact, the phone and the calm path. The G3a questions follow.
+4. **Must-fix:** at most one small crew round (W-V5, cap 1 code round).
+5. **Go-live:** W-R publishes. Every page that still holds a placeholder stays noindex and out of the sitemap. Once a page's placeholders are all replaced, a later PR lifts its noindex (D-013).
+
+### After launch
+- The owner gives design feedback on the live site (memory: owner-feedback-after-live); collect the small defaults for that review.
+- Watchlist #65.
+- Lift noindex page by page as content lands.
+- Hosting B or D if the owner wants it.
+- The game track (the fork, the Manor) resumes only when the owner says so.
+
+## What carries over from main, and what retires
+
+| Area | Keep or adapt | Retire |
+|---|---|---|
+| Content | `projects.json`, `honours.json`, `profile.json` and `owner-facts.md` (kept; v3 is additive, D-042); `tokens.json` and the generator with its determinism test (adapted: new palette, Manor outputs dropped); `src/lib/content` types and validate (adapted) | `awards.json`, `worlds.json` |
+| Build | `scripts/build/images.mjs` (adapted: the ladder, `media.json`); `tokens.mjs`; `astro.config.mjs` (site, static, trailingSlash, sitemap with its noindex filter, the chunk manifest for size-limit, the empty-sitemap fallback; drop the Manor and arcade NEVER_INDEXED paths and the seams hook) | `scripts/build/{glb,posters,fonts}`, `assets-src/3d`, `public/{models,posters,fonts}` |
+| Code | Viewfinder's `src/concept` as `src/evf`; the layout's head, noindex switch and skip link (as `Site.astro`) | The whole Darkroom `src` (D-049): stage, gl, sections, components, motion, styles, sound, teststrip, bench pages |
+| Checks | deps, lint (adapted), css-lint (adapted), ph-gate, size-limit (re-pointed), tokens-determinism, ownership, astro check, budgets.cjs (schema 2) | stacking; h:spring; the w-c13, w-s1 and w-s2 steps |
+| Harness | lib, console, overflow, contrast, content, keyboard, flash; the unit tests of surviving scripts (size-groups, tokens, console-allow, crew-lighthouse, hostload) | drift, gpu, swap, counters, spring; idle (replaced by W-V0b's counters-based check); tests/w-f stage, pregl, fonts and m2; tests/w-c13, w-s1, w-s2 |
+| Fleet | `scripts/fleet` (lane, hostload, perfq, waitfor, build-once, cost-line), `crew.mjs`, `serve-dist.mjs`, the lean loop (new evidence root, new extra-pass globs), the issue and PR templates | the `wfm3` and `ws2` config entries (history in git) |
+| Docs | PROTOCOL.md, `blocks/*`, `refs/*`, owner-voice, LICENSE, CONTENT-LICENSE, `concepts/viewfinder.md` (add the blend notes) | Archive `docs/direction/{creative-direction,front-door-plan,fx-playbook,darkroom/}` under `docs/direction/archive/` |
+
+**Removing the Darkroom** happens once, in W-V0, after the `darkroom-final` tag and the backup. Git history keeps everything. No crew re-adds a retired path.
+
+## Hosting
+
+- **Today:** the game repo (derprito64bit.github.io) owns Pages. Its `scripts/fork/publish.ps1` (run by hand) composes the root from `../portfolio-site/dist`, plus `/manor/`, `/play/` and `/arcade/`. It also has a manual `web.yml` that deploys through "GitHub Actions" Pages. Which source is live is not yet known.
+- **The plan (D-047): option A at go-live.**
+- **Needs the owner:** a one-off yes to run the fork's publish script while the fork is paused (question 3). There is no silent default: without a yes, W-R stops and asks again.
+- **Does not need the owner:** checking which Pages source is live. The orchestrator reads it with `gh api` (read-only) before W-R. If it is the Actions source, publish.ps1's gh-pages push would not go live; then W-R asks the owner which path to use.
+- **After launch, owner calls only:** a repo rename (B), a token secret (C) or a paid domain (D).
+
+## W-F-m3's disposition (D-050)
+
+- **Dropped as a crew.** Its code half fixed the old GL stage, which is deleted.
+- **Dropped items:** context-loss items A1 to A3, B, C and D1 to D4; perf rows 40 and 45; S1, S2 and S6; the camera and prints one-off globs; ctxloss-unrestored-develop-blank; m1-prerange-stacking; swup-arrival-prints; view-param-after-back; toggle-height-snap; list-title-offset-d2; webkit-governor-long-walk; home-html-delta; the deferred W-S2 TBT; and, as moot, glbytes-helper-split (the GL cap is retired) and w-s2-probes-outside-tests (the W-S2 tests are retired).
+- **Into W-V0:** the console gate (#84) and flash-harness-zero-frame (W-V0a); the home HTML check with a negative control (W-V0a); the engine frame counters (#92) and the idle check, rebuilt on D-053's counters (W-V0b).
+- **Into W-V2:** "a lost WebGL context restores to a visible frame, never black".
+- **Into the v2 queue, each with a done-when line:** the lint AST check; run-mjs plant fixes; hostload MsMpEng; the reaper nits; the blender_gpu nits (fork, paused).
+- **Gate:** mobile TBT on a clean set, at W-V1's approval candidate and before G3a.
+- **Docs items:** budgets.md R2 and R4 wording and the HTML byte row go into the plan's docs PR.
+
+## The queue (#91) disposition
+
+#91 closes with "Superseded by PLAN v2 and the Follow-up queue (v2)". The orchestrator opens "Follow-up queue (v2)". It uses the same rule as before: anything not a must-fix goes there with a done-when line.
+
+| Action | Issues |
+|---|---|
+| Close, label `status:retired-by-reset`, with a one-line note | #98, #89, #85, #80, #76, #75, #74, #70, #57, #19, #16 |
+| Close as merged | #25 into #21 (W-V1 carries hover, press and focus); #15 into #21 |
+| Close when the plan lands | #91 (v2 queue); #11 closes with W-V0b's PR |
+| Retitle and relabel | #21 "W-V1: open-project view with film prints" (`needs:w-v1`; carries #79 and #78); #22 "W-V2: honours display (Flux award and medal)" (`needs:w-v2`; carries #17, #88 and #52); #20 "W-V3: Viewfinder gallery and frame" (`needs:w-v3`; carries #18); #24 "W-V4: floors and performance" (`needs:w-v4`; carries #26 and #82); #32 "Content step v2" (drop @types/three; awards.json becomes honours.json); #84 and #92 into W-V0 |
+| No change | #101 (open until live), #65 (mark GSAP and OGL done), #12 (W-R) |
+| Remove stale labels | `needs:W-F`, `needs:W-C13`, `needs:W-C14`, `role:W-F` on re-scoped issues |
+
+## Owner questions, at the right stage
+
+- **Now, with the plan (one message; the "Owner questions" section below):**
+  1. confirm budgets-v2;
+  2. the real name and the one line;
+  3. hosting option A's one-off publish run;
+  4. what media to expect, and which project each honour belongs to;
+  5. a quiet PC window for the timed sets.
+  Questions 1 and 5 matter by W-V1's approval candidate. Questions 2 to 4 can wait until their stage, but early answers save rework. Each has a no-answer default that is an action, never an assumed yes: without a yes to question 1, budgets-v2 stays "proposed" and breaches are reported; without a yes to question 3, W-R stops and asks again.
+- **At the content step (material, not questions):** the facts themselves, the order, and the media files. Default: the placeholders stay visible.
+- **Asked later, at G3a, with defaults:** approval to go live (default: go-live waits for a yes); whether any page with real content may be indexed yet (default: stay noindex); the default film-dial setting (default: Standard). These do not count against the five now.
+- **Retired questions:** the camera and print composition, the strap, the phone opening, the 4.7 s opening trim, the GL budget, the warp location, and hiding Lens and Look. The old design they belonged to is gone.
 
 ## Paths and tools
 - **Repo:** `C:\Users\Aaron\Documents\GitHub\portfolio-site`. Crew worktrees go in `C:\Users\Aaron\Documents\GitHub\portfolio-site.wt\` (`node scripts/crew.mjs open <id>`).
@@ -186,3 +379,6 @@ Steps 1 to 3 below are done; the stage stopped for the owner's pick. Everything 
 - **Nothing heavy while the perf lane is held.** Reap browsers after every workflow.
 - **A ruling reaches a crew agent only if it is posted before that agent starts.** The crew prompt reads Orchestrator comments at its start; a re-read at every checkpoint is a queued tooling fix (#91 comment 6476370307, item a).
 - **The owner's to-do list** is `C:\Users\Aaron\.claude\user-todo.md`, and every reply ends with it (global CLAUDE.md).
+- **Read-only concept worktrees.** `portfolio-site.wt/concept-*` stay as references until go-live. Crews read Flux's code there (`concept-flux/src/concept/flux/`) and never build into it.
+- **No content through innerHTML** (D-055). No retired path comes back (D-049).
+- **Placeholders stay visible** until the content step replaces them. Fixture media is generated, labelled and never committed (D-045).

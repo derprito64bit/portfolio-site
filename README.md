@@ -8,6 +8,8 @@ One of its projects, the owner's Unity game (the Manor), is served at `/manor/` 
 one project with its own page. The plan and the locked decisions are in [`docs/direction/`](docs/direction/) and
 [`docs/agents/decisions.md`](docs/agents/decisions.md).
 
+The site is the owner's pick of 2026-10-29 (D-038): **Viewfinder** (an electronic-viewfinder interface) with **Flux's honours display and film prints** grafted in. The earlier Darkroom build is retired at W-V0 and kept in git history under the tag `darkroom-final`. The plan is in [`PLAN.md`](PLAN.md); the decisions are D-038 to D-056.
+
 ## One domain, two repos
 
 | Path | Served from |
@@ -18,7 +20,7 @@ one project with its own page. The plan and the locked decisions are in [`docs/d
 | `/arcade/**` | the fork's `site/arcade/` |
 
 The fork's `scripts/fork/publish.ps1` composes both repos into the fork's `gh-pages` branch. **GitHub Pages stays
-off for this repo**, so the site exists at one address only.
+off for this repo**, so the site exists at one address only. At go-live this is hosting option A (D-047, proposed): W-R builds `dist` here and the fork's publish script composes it at `/`, with a one-off run that needs the owner's yes.
 
 ## Content is placeholder until the owner confirms it
 

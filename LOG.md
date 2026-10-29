@@ -60,3 +60,9 @@ Newest entries last, dates in UTC. The full 2026-10-02 to 10-13 history (about 1
   - The builds are served by `portfolio-preview/concepts_serve.py` (a chooser on 4420), and the build log shows the three concepts.
   - Cost: about $126 in agents.
   - **Next:** the owner's pick (D-038), then step 4 of the stage (the new plan).
+- **2026-10-29: the owner picked; PLAN v2 landed (D-038 to D-056).**
+  - The owner's pick, verbatim: "wow all of these are so good i don't know how to choose i love every single concept for some parts of how they display things, but i'd say ill go with the first option viewfinder combined with flux's unique way of displaying awards and medals for each project, along with fluxes film prints integrated into viewfinder's view project feature having different  sizes of film prints fordifferent images sizes respectively".
+  - D-038 and D-039: Viewfinder (`concept/viewfinder` @ e53a047) is the base; Flux's honours display and film prints are grafted in. Refraction is not used.
+  - PLAN v2 sets the crew order: W-V0 (the landing, two orchestrator PRs), W-V1 (project view and film prints), W-V2 (honours display), W-V3 (EVF and gallery), the content step, W-V4 (floors and performance), W-R (hosting), G3a. W-F-m3 is dropped (D-050). The Darkroom is retired at W-V0 (D-049), after the `darkroom-final` tag.
+  - North star v2 replaced v1.2. Budgets v2 are in `budgets.md` as proposed, owner to confirm (D-048). The ownership globs and the crew-config were re-pointed to W-V0 to W-V4 and W-R, with a draft `wv1` entry.
+  - Next = W-V0: W-V0a (land, delete, re-point), then W-V0b (counters, gating, smoke, baseline); then W-V1 in a fresh session.
