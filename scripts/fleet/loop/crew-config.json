@@ -117,7 +117,6 @@
   },
   "crews": {
     "wv1": {
-      "draft": "W-V1 launches only after W-V0a and W-V0b have both merged (PLAN.md, NEXT STAGE step 5); its spec is first-crew-spec.md in portfolio-evidence/research-reset/2026-10-29/plan, posted on #21 as an Orchestrator comment with its meta.json and one refuter pass. Fill codePaths from docs/agents/ownership.json (W-V1) and remove this line then",
       "id": "W-V1",
       "issue": 21,
       "branch": "crew/w-v1",

@@ -5,20 +5,18 @@
 - One crew at a time, one stage per session.
 - The owner gives each stage the go-ahead and caps crew rounds.
 
-## Where things stand (2026-10-29)
-- **The owner picked on 2026-10-29 (D-038): Viewfinder with Flux's honours display and film prints. PLAN v2 landed (D-038 to D-056); next = W-V0 (two orchestrator PRs), then W-V1.**
-- **main = the stage-close merge after be3049f.** Merged so far:
-  - W-F foundation #30;
-  - the X-T5 model and GLB pipeline (#28, #56);
-  - the W-S1 hero #53;
-  - the W-F-m2 foundation follow-up #69 (95b3928, merged by owner decision after 6 rounds with known gaps);
-  - docs batch #93 and the orchestrator context #94;
-  - **the lean crew loop #95** (d1ba6cd), W-S2's launch config #96, owner decision D-035 #99 (the GL budget is now 187.6 kB);
-  - **W-S2, the work index, #97** (be3049f). The owner chose to merge it with mobile TBT deferred: the timed set was blocked five times by a busy host. TBT is measured at W-F-m3's approval candidate and before G3a (a must-fix before G3a if it fails). Its follow-ups are #91 comment 6476370307.
-- **Owner redirection (2026-10-28, #101, D-036):** the site's direction is reopened from scratch (sleek, dark, immersive; a preloader; intro, then an EVF transition, then galleries, then achievements; the X-T5 camera removed for now). The queue after W-S2 is paused until the direction reset's concept is chosen.
-- **Direction reset, steps 1 to 3 done (2026-10-28): three working concepts wait for the owner's pick.** Viewfinder (jury 7.9), Refraction (7.7) and Flux (7.6) are on `concept/*` branches; see the stage below.
-- **The queue is issue #91.** Its body lists the slots in order; slots 1 to 3 are done.
-- **Lean-loop cost:** W-S2 took 4 rounds (3 code plus 1 granted) for about $140 in crew runs, and this orchestrator session about $70. For comparison, W-S1 was about $362 and #69 about $1,987.
+## Where things stand (2026-10-29, after W-V0)
+- **W-V0 is done: Viewfinder is on main and the Darkroom is retired. Next = launch W-V1 in a fresh session (NEXT STAGE below).** Its spec v1 and a W-V0 rulings comment are posted on #21.
+- **main = 0c72687 plus this stage's docs PR.** Merged this stage:
+  - #107: the owner's name in `content/owner-facts.md` (Aaron Chen, CONFIRMED 2026-10-29, from the owner in chat);
+  - **W-V0a #108** (eb8631b): Viewfinder at `src/evf/`, pixel-proven unchanged against e53a047 (worst 0.0375% of a 0.5% limit; only the clock masked); D-049's deletions (tag `darkroom-final` = 35410b8, backup run first); budgets schema 2 in the `json budgets` block; checks, CI and the harness core re-pointed to `/`; media-caps and the HTML `/` row with negative controls;
+  - #109 (3f9ef98): the name on the intro and the contact screen;
+  - **W-V0b #110** (0c72687): `?vf-test` hooks only (D-055), per-channel engine counters (#92 in part), the idle check on them, a state-machine smoke in Chromium and WebKit with GL in CI at 640 × 400, DPR 1, and `crew.mjs lighthouse` re-pointed to Viewfinder; #11 closed.
+- **CI has no GPU.** GL runs in CI only at 640 × 400, DPR 1; the rest runs on the flat path (`H_NO3D=1`). Full-size GL runs (smoke, idle, Lighthouse) are one command each on the reference host.
+- **The Lighthouse baseline is blocked (host):** the PC was busy (6 host-suspect mobile runs; the desktop precheck stayed busy 30 minutes). Re-run it in the owner's quiet window with the one command in `portfolio-evidence/v2/baseline/README.md`. budgets-v2 stays proposed until then and the owner's yes (D-048).
+- **Reported to the owner (not must-fix while budgets are proposed):** fonts about 270 kB in 6 files against 130 kB and 3; CLS on `/` 0.0978 mobile (host-suspect runs) and 0.051 desktop (one clean run); the intro redraws at the display rate at rest (about 240 fps on the 238 Hz host). Each is in #106 with its stage.
+- **The queue is #106** ("Follow-up queue (v2)", 22 open items with done-when lines). #91 is closed.
+- **Session cost (W-V0):** agent tokens W-V0a worker about 392k (Sonnet), W-V0b builder about 465k (Opus xhigh), two verifiers and the spec refuter about 350k (Sonnet). No dollar ledger for this non-loop stage.
 - **System review:** `portfolio-evidence/loop-audit/SYSTEM-REVIEW-2026-10-13.md`.
 
 ## Operating model (adopted by the owner 2026-10-27; recorded on #91)
@@ -84,31 +82,25 @@ The lean loop stays as written in PLAN.md. Changes:
 - The landing checklist and the first crew spec stay in the evidence repo: `C:\Users\Aaron\Documents\GitHub\portfolio-evidence\research-reset\2026-10-29\plan\w-v0-checklist.md` and `C:\Users\Aaron\Documents\GitHub\portfolio-evidence\research-reset\2026-10-29\plan\first-crew-spec.md`.
 - Owner questions: the "Owner questions" section below.
 
-## NEXT STAGE: land the plan, then W-V0, then launch W-V1
+## NEXT STAGE: launch W-V1 (#21)
 
-Do these in order. Use a fresh session per stage.
+Done before this point: the plan's docs PR (#105), the owner questions, the issue moves, W-V0a (#108), the name (#109), W-V0b (#110), and W-V1's spec v1 (refuted twice, posted on #21 with a W-V0 rulings comment). Start a fresh session.
 
-1. **Docs PR `docs/plan-v2` (orchestrator):**
-   - PLAN.md: replace the two sections with this plan, and update "Where things stand" (the pick; W-V0 next);
-   - decisions.md: add D-038 to D-056 and apply the status edits (`docs/agents/decisions.md`);
-   - north-star.md: becomes v2;
-   - budgets.md: add budgets-v2 as a "proposed" section; keep R1 to R5; mark the Darkroom rows "retired at W-V0";
-   - owner-voice.md: add the pick, verbatim, under "The pick (2026-10-29)";
-   - ownership.json: the W-V globs below; drop the W-S*, W-C* and W-F globs (history stays in git);
-   - crew-config.json: a `wv1` entry, draft until W-V0b merges; drop `wfm3` and `ws2` (history in git);
-   - deps.md: rows for gsap, ogl and the two fontsource packages; edit the REJECTED row;
-   - rules.web.md rules 3 and 5, README.md and content/README.md: say what changed;
-   - LOG.md: the pick and this plan.
-2. **Ask the owner** the 5 questions in the "Owner questions" section below, in one message. Don't wait for answers, except where a step says so.
-3. **Issues (orchestrator):** create the label `status:retired-by-reset`. Apply the queue table below. Open "Follow-up queue (v2)". Retitle #21 for W-V1.
-4. **W-V0, the landing** (below; `C:\Users\Aaron\Documents\GitHub\portfolio-evidence\research-reset\2026-10-29\plan\w-v0-checklist.md`). W-V0a, then W-V0b, each its own PR. Merge each when CI is green and its verifier passes. Point the preview's :4400 at main after W-V0a.
-5. **W-V1, only once W-V0a and W-V0b have both merged:** post its spec v1 (`C:\Users\Aaron\Documents\GitHub\portfolio-evidence\research-reset\2026-10-29\plan\first-crew-spec.md`) on #21 as an Orchestrator comment, with its `meta.json`. Run 1 refuter (Sonnet, medium), at most 2 rounds. Fill `wv1` in crew-config. Then stop, log, back up, and launch W-V1 in a fresh session. When the crew's first checkpoint lists how its prints differ from Flux's, pass that list to the owner in the first progress note.
+1. **Preflight.** At least 4 GB of free memory. The live preview (`portfolio-preview/preview.py`, :4400 main and :4401 the crew PR) running; start it detached if not (`Start-Process python preview.py -WindowStyle Hidden`). No other perf-lane holder.
+2. **Launch** from a sibling worktree at origin/main (never from `portfolio-site/.claude/worktrees/`: Astro builds fail there):
+   `node scripts/fleet/loop/launch.cjs wv1 --spec C:\Users\Aaron\Documents\GitHub\portfolio-evidence\v2\specs\wv1\spec-v1.md --spec-meta C:\Users\Aaron\Documents\GitHub\portfolio-evidence\v2\specs\wv1\meta-v1.json --out C:\Users\Aaron\Documents\GitHub\portfolio-evidence\v2\runs\wv1`
+   It prints LAUNCH READY; then run `Workflow({ scriptPath: '<out>\crew-loop.wv1.js' })` with no args.
+3. **Watch** each round with `orchestrator-tools/2026-10-27/round-watch.mjs`, and post a cost line per round (`scripts/fleet/cost-line.mjs`). Reap browsers after each round.
+4. **First progress note to the owner:** the crew's first-checkpoint list of how its prints differ from Flux's.
+5. **At the cap** (3 code rounds plus 1 evidence round): the 5-line summary with cost per round; merge with follow-ups, one more round, or hold.
+6. **Size check after round 1:** about 2,200 changed lines is expected. Over 2,500, or A10 and A11 not started: move A10, A11 and J4 into a W-V1b slice.
+7. **After merge:** update the build-log artifact, back up, log, and move on to W-V2 (#22) in a fresh session.
 
 ## The crew order to go-live
 
 | # | Id | What | Issue | Jury | Caps | Rough cost |
 |---|---|---|---|---|---|---|
-| 0 | W-V0 | Landing, two PRs. W-V0a: Viewfinder on main, Darkroom deleted, checks and harness re-pointed. W-V0b: engine counters, test gating, smoke, baseline | #11 | no | each: 1 build + 1 fix pass | $50-90 |
+| 0 | W-V0 | **Done 2026-10-29** (#108, #110; the name #109). Landing, two PRs. W-V0a: Viewfinder on main, Darkroom deleted, checks and harness re-pointed. W-V0b: engine counters, test gating, smoke, baseline | #11 | no | each: 1 build + 1 fix pass | $50-90 |
 | 1 | W-V1 | The project view and the film prints (needs W-V0 merged) | #21 | yes | 3 code + 1 evidence; 2 breaker passes | $140-230 |
 | 2 | W-V2 | The honours display (Flux's glass and medal), per project and in the honours section | #22 | yes | 3 + 1; 2 breaker passes | $110-180 |
 | 3 | W-V3 | The EVF and gallery: real media in the frame, life at rest, the jury's open items | #20 | yes | 3 + 1; 2 breaker passes | $100-170 |
@@ -151,15 +143,15 @@ Crew totals: about $525 to $925. Add about $50 to $70 of orchestrator time per s
 
 ### W-V1: the project view and the film prints (#21; the first crew)
 
-**Scope:** `/work/<slug>/` as a real static page, opened in-app from the EVF with history. Content model v3 and the image ladder. Flux's film prints, sized by each image, in the roll. Playback (lightbox). Phone Back fixed. Full spec: `C:\Users\Aaron\Documents\GitHub\portfolio-evidence\research-reset\2026-10-29\plan\first-crew-spec.md`. Starts only after W-V0a and W-V0b have merged.
+**Scope:** `/work/<slug>/` as a real static page, opened in-app from the EVF with history. Content model v3 and the image ladder. Flux's film prints, sized by each image, in the roll. Playback (lightbox). Phone Back fixed. Full spec: v1 as posted on #21 (`C:\Users\Aaron\Documents\GitHub\portfolio-evidence\v2\specs\wv1\spec-v1.md`; the planner's draft was `research-reset\2026-10-29\plan\first-crew-spec.md`). Starts only after W-V0a and W-V0b have merged.
 
-**Size:** about 1,500 changed lines, tests and fixtures aside (16 rows; 800 was too low). If round 1 shows it will not fit, the orchestrator moves A10 and A11 (playback and video) into a W-V1b slice with jury row J4, and W-V1 keeps J1, J2, J3 and J5.
+**Size:** about 2,200 changed lines, tests and fixtures aside (16 rows; the spec refuter's count; 1,500 was too low). If round 1 is over 2,500 or shows it will not fit, the orchestrator moves A10 and A11 (playback and video) into a W-V1b slice with jury row J4, and W-V1 keeps J1, J2, J3 and J5.
 
 **Owns:**
 - `src/pages/work/**`, `src/pages/index.astro` (the `#proj` container markup only), `src/layouts/**`;
 - `src/components/project/**`, `src/components/print/**`;
 - `src/evf/project/**`, `src/evf/router.ts`, `src/evf/style/{project,print}.css`;
-- `src/evf/main.ts` and `src/evf/style.css` (only to move the project code out, wire the router and set the HUD print counter); `src/evf/layout.ts` (the open mode only); `src/evf/data.ts` (the project media fields only);
+- `src/evf/main.ts` and `src/evf/style.css` (only to move the project code out, wire the router and deep links, set the HUD print counter and `engine.sway` while open); `src/evf/testhooks.ts` (additions only); `src/evf/layout.ts` (the open mode only); `src/evf/data.ts` (the project media fields only);
 - `src/lib/prints/**`, `src/lib/content/**`;
 - `scripts/build/images.mjs`, `scripts/build/media-fixtures.mjs`; `astro.config.mjs` (only to hook the fixtures into the build);
 - `.size-limit.cjs` (the `/work/` rows only); `.github/workflows/check.yml` (the w-v1 test step only); the media caps themselves are W-V0's `media-caps` check;
