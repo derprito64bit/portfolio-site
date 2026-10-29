@@ -6,13 +6,15 @@ show it as a placeholder.
 - Every entry is **TO CONFIRM** until the owner confirms it. Only then does it become **CONFIRMED** (with the
   date and how it was confirmed).
 - Only add what the owner has literally stated, with its source. Never infer, embellish or fill gaps.
-- Last reviewed: 2026-10-02 (Wave 0).
+- Last reviewed: 2026-10-29 (W-V0).
 
 ## Identity
 
+- **CONFIRMED (2026-10-29, the owner in the orchestrator chat: "also my name is Aaron Chen"):** the owner's
+  name is Aaron Chen. The site shows it as written, "Aaron Chen", unless the owner gives another form.
 - **TO CONFIRM:** the GitHub account is `derprito64bit`. Source: the GitHub account.
-- **TO CONFIRM:** the display name, pronouns, location and one-line description to use on the site. Source:
-  none yet; ask the owner.
+- **TO CONFIRM:** the pronouns, location and one-line description to use on the site. Source: none yet; ask
+  the owner.
 
 ## Projects
 
