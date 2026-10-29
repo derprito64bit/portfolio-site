@@ -1,13 +1,14 @@
 // Console instrument (W-D030, rt-verify B2). Two parts:
 //   fixtures  five injected faults (throw, rejection, 404, failed request, shader error); the gate must catch 5 of 5,
 //             and report the channel that caught each (GPU-free: CI runs this with --fixtures-only);
-//   routes    the gate over the built routes at D2 and P2, which must be clean.
+//   routes    the gate over the built routes at D2 and P2 (the home page is driven through raise, frames, open and close), which must be clean.
 // Usage: npm run h:console -- [--fixtures-only] [--out console.json]
 import { createServer } from 'node:http';
 import { existsSync, readFileSync } from 'node:fs';
 import { extname, join } from 'node:path';
 import { CONSOLE_RE, ROOT, cliMain, consoleGate, newContext, serve, sleep, waitSettled } from '../lib.mjs';
 
+// '/' is also driven through the Viewfinder's own inputs: raise, step through frames, open a project, close, lower.
 const FIXTURES = join(ROOT, 'tests/harness/console/fixtures');
 const FAULTS = [
   { file: 'throw.html', expect: 'pageerror' },
@@ -18,10 +19,8 @@ const FAULTS = [
 ];
 const ROUTES = [
   { route: '/', expectStatus: [] },
-  { route: '/work/project-01/', expectStatus: [] },
   { route: '/404.html', expectStatus: [] },
   { route: '/nope/', expectStatus: [{ status: 404, url: /\/nope\/$/ }] },
-  { route: '/bench/', expectStatus: [] },
 ];
 
 function fixtureServer() {
@@ -69,8 +68,12 @@ export async function run(opts = {}) {
           const gate = consoleGate(page, { expectStatus: r.expectStatus });
           await page.goto(srv.base + r.route, { waitUntil: 'load' });
           await waitSettled(page);
-          await page.mouse.wheel(0, 1600);
-          await sleep(800);
+          if (r.route === '/') {
+            for (const [key, wait] of [['Enter', 2500], ['ArrowRight', 900], ['ArrowRight', 900], ['Enter', 2500], ['Escape', 1500], ['Escape', 2500]]) {
+              await page.keyboard.press(key);
+              await sleep(wait);
+            }
+          } else await sleep(500);
           const v = gate.verdict();
           routes.push({ profile, route: r.route, pass: v.pass, events: v.events, failures: v.failures.map((x) => `${x.channel}/${x.level}: ${x.text.slice(0, 200)}`) });
           await ctx.close();

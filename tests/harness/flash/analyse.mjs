@@ -111,7 +111,8 @@ function maxFlashesPerSecond(trans, fps) {
 }
 
 export function analyse(frames, fps = 60) {
-  if (frames.length < 2) return { pass: true, frames: frames.length, generalPerSecond: 0, redPerSecond: 0 };
+  // An empty capture proves nothing: it fails (W-V0a; budgets.md 'an empty capture fails').
+  if (frames.length < 2) return { pass: false, empty: true, frames: frames.length, generalPerSecond: 0, redPerSecond: 0 };
   const t = transitions(frames);
   const generalPerSecond = maxFlashesPerSecond(t.general, fps);
   const redPerSecond = maxFlashesPerSecond(t.red, fps);
