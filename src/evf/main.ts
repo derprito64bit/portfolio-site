@@ -5,6 +5,7 @@ import { projects, honours, phInner, isPlaceholder } from './data';
 import type { Scene } from './scenes';
 import { frameRect, writeRect, fitName, isPhone, type Mode } from './layout';
 import { drawSnapshot } from './snapshot';
+import { testHooks } from './testhooks';
 
 // ------------------------------------------------------------------ elements
 const $ = <T extends Element = HTMLElement>(s: string, r: ParentNode = document) => r.querySelector(s) as T;
@@ -59,6 +60,8 @@ function distLabel(z: number) {
 // ------------------------------------------------------------------ state
 type St = 'loading' | 'intro' | 'raising' | 'evf' | 'opening' | 'open' | 'closing' | 'lowering';
 let S: St = 'loading';
+// D-055: the test hooks and the engine's frame counters exist only under ?vf-test, read once here
+const hooks = testHooks(window, location.search);
 let pos = 0;
 let sim = 0;
 let engine: Engine | null = null;
@@ -269,14 +272,14 @@ async function boot() {
     const canvas = $<HTMLCanvasElement>('.gl');
     // the GL engine and the scene builders load as their own chunk, so the first script task stays short
     const { Engine: EngineClass } = await import('./gl/engine');
-    engine = new EngineClass(canvas);
+    engine = new EngineClass(canvas, { stats: hooks.stats });
     engine.sway = !calm;
     engine.resize();
     say('Compiling shaders');
     await engine.compile((name) => { add(0.09, `Compiled ${name}`); });
     engine.onMeter = (m) => { drawHist(m); if (S === 'evf' || S === 'open') swingMeter(m.ev); };
     engine.start();
-    (window as any).__vfEngine = engine;
+    hooks.engine(engine);
   } catch (err) {
     console.warn('[viewfinder] WebGL unavailable, using flat frames', err);
     engine = null;
@@ -1075,5 +1078,5 @@ boot().catch((err) => {
   raiseBtn.disabled = false;
 });
 
-// test hooks for the evidence recorder (harmless in production)
-(window as any).__vf = { go, openProject, closeProject, lower, raise, setSim, state: () => S, pos: () => pos };
+// the test API (only under ?vf-test; a no-op otherwise)
+hooks.attach({ go, openProject, closeProject, lower, raise, setSim, state: () => S, pos: () => pos }, () => engine);
