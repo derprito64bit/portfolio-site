@@ -321,7 +321,7 @@ Crew totals: about $525 to $925. Add about $50 to $70 of orchestrator time per s
 - **Into W-V2:** "a lost WebGL context restores to a visible frame, never black".
 - **Into the v2 queue, each with a done-when line:** the lint AST check; run-mjs plant fixes; hostload MsMpEng; the reaper nits; the blender_gpu nits (fork, paused).
 - **Gate:** mobile TBT on a clean set, at W-V1's approval candidate and before G3a.
-- **Docs items:** budgets.md R2 and R4 wording and the HTML byte row go into the plan's docs PR.
+- **Docs items (W-V0a):** budgets.md R2 and R4 wording and the HTML byte row are written by the orchestrator in W-V0a, when the Darkroom rows retire. The plan's docs PR (#105) does not change them; the HTML byte row stays marked "Retired at W-V0" until then.
 
 ## The queue (#91) disposition
 
