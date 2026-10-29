@@ -15,7 +15,7 @@
 //                                               must request GL after the observed FCP (D-005), and the medians must
 //                                               meet the Lighthouse, LCP, TBT and CLS budgets; host load per
 //                                               Measurement validity R1-R5 (hostload.ps1 precheck and -Watch, #67)
-// Options: --routes /,/work/project-01/,/404.html  --profiles D1,D2,...  --modes auto,static,reduced
+// Options: --routes /,/404.html  --profiles D1,D2,...  --modes auto,static,reduced
 //          --crew W-F  --wave wave3a  --role crew|gate  --out <dir>
 //          lighthouse: --runs n  --budgets <budgets.md>  --precheck-wait <min>  --plant bench-low:<n|all>,watch-flagged:<n|all>,a11y-low:<n|all>
 //                      --stub <file> (tests only: planted hostload and Lighthouse results, see STUB below)
@@ -103,7 +103,7 @@ async function shoot() {
   const lib = await harness();
   const { measure } = await import('../tests/harness/overflow/run.mjs');
   const dir = outDir(lib, 'shoot');
-  const routes = list(o.routes, '/,/work/project-01/,/404.html');
+  const routes = list(o.routes, '/,/404.html');
   const profiles = list(o.profiles, Object.keys(lib.PROFILES).join(','));
   const modes = list(o.modes, lib.MODES.join(','));
   const srv = await lib.serve();
@@ -119,8 +119,8 @@ async function shoot() {
           await page.goto(lib.routeUrl(srv.base, route, mode), { waitUntil: 'load' });
           const settled = await lib.waitSettled(page, 10000);
           const st = await lib.stageState(page);
-          const wantTier = mode === 'static' ? 'static' : lib.expectedTier(profile);
-          const tierOk = st && (st.tier === wantTier || (wantTier === 'full' && st.tier === 'lite' && st.tierReason === 'probe'));
+          const wantTier = lib.expectedTier(profile);
+          const tierOk = st && st.tier === wantTier;
           const base = `${slug(route)}/${profile}-${mode}`;
           mkdirSync(join(dir, slug(route)), { recursive: true });
           for (const s of await stops(page)) {
@@ -140,7 +140,7 @@ async function shoot() {
           const logFile = `${base}-console.json`;
           lib.writeJson(join(dir, logFile), { verdict, events: gate.events });
           items.push(lib.item(dir, logFile, { kind: 'console', route, profile, mode, tier: st?.tier ?? null, pass: verdict.pass, metrics: { failures: verdict.failures.length } }));
-          items.push({ kind: 'page', path: null, sha256: null, route, profile, mode, tier: st?.tier ?? null, pass: settled && tierOk && ovf.maxOverflowPx <= lib.budget('site.layout.overflowPx') && ovf.offenders.length === 0, metrics: { settled, expectedTier: wantTier, tierReason: st?.tierReason ?? null, renderer: st?.renderer ?? null, overflowPx: ovf.maxOverflowPx, overflowOffenders: ovf.offenders } });
+          items.push({ kind: 'page', path: null, sha256: null, route, profile, mode, tier: st?.tier ?? null, pass: settled && tierOk && ovf.maxOverflowPx <= lib.budget('site.layout.overflowPxMax') && ovf.offenders.length === 0, metrics: { settled, expectedTier: wantTier, tierReason: st?.tierReason ?? null, renderer: st?.renderer ?? null, overflowPx: ovf.maxOverflowPx, overflowOffenders: ovf.offenders } });
           await ctx.close();
         }
       }
@@ -161,14 +161,14 @@ async function a11y() {
   const { walk } = await import('../tests/harness/keyboard/run.mjs');
   const { measure } = await import('../tests/harness/overflow/run.mjs');
   const dir = outDir(lib, 'a11y');
-  const routes = list(o.routes, '/,/work/project-01/,/404.html');
+  const routes = list(o.routes, '/,/404.html');
   const srv = await lib.serve();
   const items = [];
   try {
     // 1. axe at D2, T2 and P2 in auto, static, reduced and dark. W fails on any violation, and on any
     //    color-contrast 'incomplete' in static.
     for (const profile of list(o.profiles, 'D2,T2,P2')) {
-      for (const mode of ['auto', 'static', 'reduced', 'dark']) {
+      for (const mode of ['auto', 'reduced', 'dark']) {
         for (const route of routes) {
           const ctx = await lib.newContext(profile, mode === 'dark' ? 'auto' : mode, mode === 'dark' ? { colorScheme: 'dark' } : {});
           const page = await ctx.newPage();
@@ -178,7 +178,7 @@ async function a11y() {
           const contrastIncomplete = r.incomplete.filter((x) => x.id === 'color-contrast');
           const file = `axe/${slug(route)}-${profile}-${mode}.json`;
           lib.writeJson(join(dir, file), { violations: r.violations, incomplete: r.incomplete.map((x) => ({ id: x.id, nodes: x.nodes.map((n) => ({ target: n.target, why: n.any.map((a) => a.message).join(' | ') })) })), passes: r.passes.length, testEngine: r.testEngine });
-          items.push(lib.item(dir, file, { kind: 'axe', route, profile, mode, tier: null, pass: r.violations.length <= lib.budget('site.zero.axeViolationsWcag') && !(mode === 'static' && contrastIncomplete.length), metrics: { violations: r.violations.length, incomplete: r.incomplete.length, contrastIncomplete: contrastIncomplete.length } }));
+          items.push(lib.item(dir, file, { kind: 'axe', route, profile, mode, tier: null, pass: r.violations.length <= lib.budget('site.zero.axeViolationsWcag') , metrics: { violations: r.violations.length, incomplete: r.incomplete.length, contrastIncomplete: contrastIncomplete.length } }));
           await ctx.close();
         }
       }
@@ -228,7 +228,7 @@ async function a11y() {
         const tsFile = `spacing/${slug(route)}-${profile}.png`;
         mkdirSync(join(dir, 'spacing'), { recursive: true });
         await tp.screenshot({ path: join(dir, tsFile), fullPage: true });
-        items.push(lib.item(dir, tsFile, { kind: 'text-spacing', route, profile, mode: 'auto', tier: null, pass: clipped.length === 0 && ovf.maxOverflowPx <= lib.budget('site.layout.overflowPx'), metrics: { clipped, overflowPx: ovf.maxOverflowPx } }));
+        items.push(lib.item(dir, tsFile, { kind: 'text-spacing', route, profile, mode: 'auto', tier: null, pass: clipped.length === 0 && ovf.maxOverflowPx <= lib.budget('site.layout.overflowPxMax'), metrics: { clipped, overflowPx: ovf.maxOverflowPx } }));
         await ts.close();
 
         // Forced colours: the focus ring stays visible (an outline, not only a box-shadow).
@@ -254,7 +254,7 @@ async function a11y() {
         mkdirSync(join(dir, 'dark'), { recursive: true });
         await dp.screenshot({ path: join(dir, dkFile), fullPage: true });
         const dovf = await measure(dp);
-        items.push(lib.item(dir, dkFile, { kind: 'dark', route, profile, mode: 'auto', tier: null, pass: dovf.maxOverflowPx <= lib.budget('site.layout.overflowPx'), metrics: { overflowPx: dovf.maxOverflowPx } }));
+        items.push(lib.item(dir, dkFile, { kind: 'dark', route, profile, mode: 'auto', tier: null, pass: dovf.maxOverflowPx <= lib.budget('site.layout.overflowPxMax'), metrics: { overflowPx: dovf.maxOverflowPx } }));
         await dk.close();
       }
     }

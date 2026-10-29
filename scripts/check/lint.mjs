@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Source lint (W-F). No ESLint on the allowlist, so the rules that matter are checked directly:
-// - exactly one mention of requestAnimationFrame in src/ (the ticker's call site, W-D002), in any form or letter case;
+// - requestAnimationFrame is mentioned only in the allowlisted files (RAF_ALLOWED: the engine and main; W-V3 narrows it to
+//   the engine), in any form or letter case;
 // - no reads of navigator.hardwareConcurrency or maxTouchPoints in src/ (W-D017), direct or computed, through navigator,
 //   clientInformation or a computed member of the global object;
 // - src/styles/tokens.css and src/lib/tokens.js match content/tokens.json (tokens.mjs --check);
@@ -77,6 +78,7 @@ function stripComments(t, file) {
 // (navigator.connection): a computed read, a cast, destructuring, an alias or passing navigator on would all reach them
 // by a name built at run time. A computed member of the global object itself (window[...], globalThis[...], self[...],
 // a cast of one included) can reach either by a name built at run time, so it is flagged under both rules.
+const RAF_ALLOWED = new Set(['src/evf/gl/engine.ts', 'src/evf/main.ts']);
 const raf = [];
 const forbidden = [];
 const computedGlobal = [];
@@ -94,7 +96,8 @@ for (const f of src) {
 report.rafCallSites = raf;
 report.forbiddenReads = forbidden;
 report.computedGlobals = computedGlobal;
-if (raf.length !== 1) problems.push(`requestAnimationFrame call sites in src/: ${raf.length} (exactly 1, the ticker): ${raf.join(', ')}`);
+const rafOutside = raf.filter((r) => !RAF_ALLOWED.has(r.slice(0, r.lastIndexOf(':'))));
+if (rafOutside.length) problems.push(`requestAnimationFrame outside the allowlist (${[...RAF_ALLOWED].join(', ')}): ${rafOutside.join(', ')}`);
 if (forbidden.length) problems.push(`tier code must not read core or touch-point counts: ${forbidden.join(', ')}`);
 if (computedGlobal.length) problems.push(`a computed member of the global object can reach requestAnimationFrame or core or touch-point counts: ${computedGlobal.join(', ')}`);
 
@@ -130,4 +133,4 @@ if (problems.length) {
   console.error(`lint: ${problems.length} problem(s):\n  ${problems.join('\n  ')}`);
   process.exit(1);
 }
-console.log(`lint: 1 rAF call site (${raf[0]}); 0 core or touch-point reads; tokens current; ${copyFiles.length} files clean`);
+console.log(`lint: ${raf.length} rAF mentions, all in the allowlist; 0 core or touch-point reads; tokens current; ${copyFiles.length} files clean`);

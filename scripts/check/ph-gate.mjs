@@ -19,7 +19,7 @@ const add = (where, msg) => problems.push(`${where}: ${msg}`);
 // ---------- 1. content/ ----------
 const read = (f) => JSON.parse(readFileSync(join(ROOT, 'content', f), 'utf8'));
 const tokens = read('tokens.json');
-const { errors } = validateContent({ projects: read('projects.json'), honours: read('honours.json'), worlds: read('worlds.json'), profile: read('profile.json'), lookIds: tokens.filmLooks.ids });
+const { errors } = validateContent({ projects: read('projects.json'), honours: read('honours.json'), profile: read('profile.json'), lookIds: tokens.filmLooks.ids });
 errors.forEach((e) => add('content', e));
 
 // ---------- 2. dist/ ----------

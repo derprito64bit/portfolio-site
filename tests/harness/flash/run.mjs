@@ -1,14 +1,15 @@
 // Flash instrument (W-D030): WCAG 2.3.1 general and red flash analysis.
 //   --self-test           synthetic sequences with known answers (GPU-free; CI runs this): the analyser must fail a
 //                         5 Hz full-screen flash and a 5 Hz red flash, and pass a 2 Hz flash and a small-area flash.
-//   --url <route> --seek  capture a seeked 60 fps filmstrip through __stage.seek on <route>?t=0 (reference host)
-//                         over --ms (default 2000) after --trigger (a JS expression run once), then analyse it.
+//   --url <route>         capture a 60 fps filmstrip of <route> under Playwright's fake clock (page.clock): load, then
+//                         press --key (default Enter, the raise) and step 1/60 s per frame for --ms (default 2000), then
+//                         analyse it. CI runs this on /. An empty capture fails.
 //   --frames <dir>        analyse PNG frames already on disk (name order), at --fps (default 60).
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import sharp from 'sharp';
 import { analyse } from './analyse.mjs';
-import { cliMain, closeBrowsers, newContext, serve, waitSettled } from '../lib.mjs';
+import { cliMain, closeBrowsers, newContext, serve, sleep } from '../lib.mjs';
 
 const W = 256;
 const H = 192;
@@ -43,6 +44,9 @@ function selfTest() {
     { name: '5 Hz flash over 4% of the screen', frames: sequence(5, black, solid([240, 240, 240], 0.04)), expect: false },
     { name: '5 Hz saturated red flash', frames: sequence(5, black, solid([200, 0, 0])), expect: false },
     { name: 'no change', frames: sequence(0, black, white), expect: true },
+    // Negative control: nothing captured must not read as a pass.
+    { name: 'empty capture', frames: [], expect: false },
+    { name: 'single frame', frames: [black], expect: false },
   ];
   const rows = cases.map((c) => {
     const r = analyse(c.frames, 60);
@@ -56,17 +60,27 @@ async function decode(buf, width = 512) {
   return { data, width: info.width, height: info.height, channels: info.channels };
 }
 
-export async function capture({ route, profile = 'D2', ms = 2000, fps = 60, trigger = '' }) {
+/**
+ * A 60 fps filmstrip under Playwright's fake clock: the page boots on fake time (advanced in steps until the preloader
+ * is done), `key` is pressed, then every frame is one runFor(1000 / fps) and one screenshot.
+ */
+export async function capture({ route, profile = 'D2', ms = 2000, fps = 60, key = 'Enter' }) {
   const srv = await serve();
   try {
     const ctx = await newContext(profile);
     const page = await ctx.newPage();
-    await page.goto(`${srv.base}${route}${route.includes('?') ? '&' : '?'}t=0`, { waitUntil: 'load' });
-    await waitSettled(page, 5000);
-    if (trigger) await page.evaluate(trigger);
+    await page.clock.install();
+    await page.goto(`${srv.base}${route}`, { waitUntil: 'load' });
+    for (let i = 0; i < 60; i++) {
+      await page.clock.runFor(250);
+      await sleep(40);
+      if (await page.evaluate(() => !document.documentElement.classList.contains('is-loading'))) break;
+    }
+    await page.clock.runFor(500);
+    if (key) await page.keyboard.press(key);
     const frames = [];
     for (let i = 0; i <= (ms * fps) / 1000; i++) {
-      await page.evaluate((t) => window.__stage.seek(t), (i * 1000) / fps);
+      await page.clock.runFor(1000 / fps);
       frames.push(await decode(await page.screenshot()));
     }
     await ctx.close();
@@ -83,7 +97,7 @@ export async function run(opts = {}) {
     const files = readdirSync(opts.frames).filter((f) => f.endsWith('.png')).sort();
     frames = await Promise.all(files.map((f) => decode(readFileSync(join(opts.frames, f)))));
   } else if (opts.url) {
-    frames = await capture({ route: opts.url, profile: opts.profile, ms: Number(opts.ms) || 2000, trigger: opts.trigger || '' });
+    frames = await capture({ route: opts.url, profile: opts.profile, ms: Number(opts.ms) || 2000, key: opts.key ?? 'Enter' });
     await closeBrowsers();
   } else {
     return selfTest();

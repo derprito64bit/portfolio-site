@@ -2,39 +2,27 @@
 
 A change that exceeds a budget fails its gate. Evidence standard: GES-1 (W-D030).
 
-**Direction reset (D-037, owner 2026-10-28):** concept prototypes are not bound by the byte, GL or camera budgets below. They are judged on design, smoothness and accessibility. The budgets are re-set with the owner for the chosen concept; the measurement rules (R1 to R5) stay.
+**Direction reset (D-037, owner 2026-10-28):** concept prototypes are not bound by the byte, GL or camera budgets below. They are judged on design, smoothness and accessibility. The budgets are re-set with the owner for the chosen concept; the measurement rules (R1 to R5) stay. **Since W-V0a (2026-10-29)** main is Viewfinder, and its checks read budgets-v2 (below; proposed until the owner confirms, D-048).
 
 All dates and times in this file are UTC, except a time written with its own offset (the host calibration's -04:00 times) and that calibration's date, 2026-10-04, which is the host's local date (2026-10-05 UTC).
 
 ## Site (portfolio-site, `/`)
 
-- **Retired at W-V0 (D-048; replaced by the budgets-v2 section below):** **X-T5 camera (D-021, overrides the 3D camera line below):** LOD0 at most 100k tris and 800 kB gz, full tier only, after first paint; LOD1 at most 15k tris and 150 kB gz; Manor LOD about 1.5k tris.
+- **Retired at W-V0a (2026-10-29, D-048, D-049):** the Darkroom rows: the X-T5 camera, pre-GL JS and the GL chunk, the home HTML on the wire, fonts, 3D, canvas, print stills, the GPU worst moment, idle, the hero, input blocking, drift and sound. Git history keeps them (tag `darkroom-final`). Their replacements are the budgets-v2 section below.
 
 - Lighthouse 13.5.0 under the GES-1 protocol (built dist over gzip, 5 runs, median by score, auto tier, valid only on a real renderer and under Measurement validity R1-R5 below): performance >= 90 mobile and >= 95 desktop; accessibility 100; best practices >= 95. SEO is not gated while noindex is on.
-- LCP <= 2.5 s mobile and <= 2.0 s desktop. The LCP element is the h1 on mouse profiles, or the h1 or print 1's still on touch profiles. On `/work/<slug>/` pages it is the h1 or the dock print's still (`data-lcp="dock"`), on mouse and touch profiles (orchestrator ruling 9 on #15, comment 5995441183, W-S3 day one, 2026-10-05). CLS <= 0.02. TBT <= 150 ms, mobile and desktop.
-- **Retired at W-V0 (D-048; replaced by the budgets-v2 section below):** JS: pre-GL JS <= 35 kB gz, summed from the network log before the stage:gl-start mark. GL chunk (three, addons, anime, stage GL, effects) <= 187.6 kB gz (raised 2026-10-06, owner D-027; raised 2026-10-28, owner D-035). Effects <= 10 kB gz (6.0 measured; `docs/direction/fx-playbook.md` section 6 books 9.2 kB with D-025's effects, estimate).
-- **Retired at W-V0 (D-048; replaced by the budgets-v2 section below):** HTML: home `/` HTML at most 14,600 B on the wire (gzip body plus headers, as `serve-dist` sends it), so it fits TCP's first congestion window. Information-level until W-F-m3 adds its build or pre-GL check (with a negative control); Lighthouse mobile stays the judged row. (orchestrator ruling on #11, comment 6055373919, item 2, 2026-10-08)
-- **Retired at W-V0 (D-048; replaced by the budgets-v2 section below):** Fonts <= 100 kB woff2 (96.8 planned); preloaded <= 46 kB.
-- **Retired at W-V0 (D-048; replaced by the budgets-v2 section below):** 3D: camera LOD0 <= 30k tris and <= 250 kB gz; LOD1 <= 5k and <= 60 kB gz; Manor LOD <= 1.5k tris; cartridge <= 1.5k and 20 kB gz; loupe <= 3k and 40 kB gz; gear <= 4k and 40 kB gz; an owner work model <= 50k and 1 MB gz, on its own project only. 3D per page <= 1.5 MB gz.
-- **Retired at W-V0 (D-048; replaced by the budgets-v2 section below):** Canvas: <= 4.5 Mpx on full and <= 1.5 Mpx on lite (effective DPR lowered to fit); DPR caps 2 and 1.5.
-- **Retired at W-V0 (D-048; replaced by the budgets-v2 section below):** Print stills: sheet 512 px long edge, enlargements and hero 1024 px, AVIF with WebP fallback; home images <= 600 kB on the first scroll-through (estimate until real images).
-- **Retired at W-V0 (D-048; replaced by the budgets-v2 section below):** GPU worst moment (8 wet sheet prints): <= 4 ms per frame on the reference integrated GPU at the tier the rules give it. Until it is measured: a reference-host median x 30 <= 4 ms passes; passing only at x 10 is 'at risk' and goes to the owner. (D-028, owner, 2026-10-06: 'at risk' is owner-accepted for W-S2 only. On a clean set, W-S2's 'at risk' row is recorded as accepted 'at risk' (owner, D-028) and does not block its approval or merge; pass, fail, the 1.5x ratio and the 20% rule are unchanged, and the 4 ms budget stands. #82 tracks the optimization pass.) For W-S2's GPU worst moment (#14), GPU ms is GPU-only time from EXT_disjoint_timer_query_webgl2, by #14's measurement ruling (comment 5996745925): W-S2's real frame at its worst moment (the canvas window with the most wet-print slot area, worst of 5 develop times played forward at 1000/60 ms), captured and replayed back to back after a fixed stand-in ramp, median of 60 frames, median of 10 loads, with a three-plant control each round; its ratio against the stand-in subtracts the frame's shared work. 'The lite cap' in #14 L8 is the reference laptop (1366x768, DPR 1) at ?tier=lite; this names the configuration L8 judges and does not define 'the tier the rules give it'. There, and in W-S2's ratio and regression check, a readPixels-fenced or rAF-paced figure is continuity only. Another crew's GPU rows follow this only when its brief cites the comment. A real number comes from /bench/. Crews stay <= 1.5x the prototype median, with no regression over 20% against gpu-baseline.json.
-- **Retired at W-V0 (D-048; replaced by the budgets-v2 section below):** Idle: 0 rAF callbacks and 0 draws from 1 s to 4 s after the last input, from gate-owned counters; idle main thread <= 1 ms/s, reported with the display Hz. (amended 2026-10-05, orchestrator ruling on #11, comment 5992928262, W-F-m2 round 1) The idle window counts from the motion end, not from the last input. The motion end is the later of the last input event (scroll, wheel, pointer or key) and the last frame the stage presents; every presented frame counts, including present-tail frames and clear-only frames, and gate-owned counters count them toward the motion end. From motion end + 1 s + 2 frame intervals to motion end + 4 s there are 0 rAF callbacks and 0 draws. The motion end must fall within 4 s of the last input: a motion still presenting frames 4 s after the last input fails, so a loop that never goes idle cannot pass by never ending. A layout-only render with no input (a late font swap or a lazy image) is a motion: its frames, tail included, set a new motion end, and the window restarts from it. W-D002's 1 s detach is unchanged, and the machine-readable keys keep their values (see site.idle.note below). (amended 2026-10-07, orchestrator rulings on #11, comments 6030949628 and 6031879782, W-F-m2 rounds 3 and 4) An arrival anchors the window as an input does. An arrival is a full load, a history traversal (Back or Forward), a bfcache restore or a Swup visit's end, and the motion end is the later of the last input or arrival and the last presented frame. A wake after an arrival that presents nothing falls in the window and fails it. The window opens at motion end + 1 s + max(2 frame intervals, 34 ms) and closes at motion end + 4 s, so its tolerance does not depend on the refresh rate: 34 ms is 2 frames at 60 Hz, and 2 frames at 238 Hz (8.4 ms) are inside ordinary timer and frame jitter. A single callback inside the tolerance, with 0 draws, is the 1 s detach itself; any callback after it, or any draw in the window, fails. The 4 s bound counts from user input only: after an input (scroll, wheel, pointer or key) the motion end must fall within 4 s of it, as before. After an arrival there is no 4 s bound: the window counts from the last presented frame, so a designed motion such as W-S1's opening on a plain load of `/` (its last presented frame at about 5.4 s, D-024) is a motion, not idle cost. A motion that never ends still fails, at the harness's hard stop of 2 x windowEndS + 1 s after the anchor (9 s). The arrival rows may use `/` with no hash as well as `/#contact`. Gate-owned counters apply max(2 frame intervals, site.idle.windowToleranceMinMs), with negative controls: a callback planted at motion end + 1 s + 40 ms fails, and so does a wake after an arrival that presents nothing. windowStartS and windowEndS keep their values, and site.idle.windowToleranceMinMs (34) carries the tolerance's floor.
-- **Retired at W-V0 (D-048; replaced by the budgets-v2 section below):** Hero (D-024): on the full tier's first visit of the session, the X-T5 drawing develops into the camera before the eject, so hero:readable minus stage:gl-ready <= 3300 ms (median of 3 cold loads; the drawing holds the slot from FCP). The 3300 ms includes loading and decoding the camera's LOD0 and compiling its patched programs (8 on m1; one per `cam_*` material on m2), which may finish after stage:gl-ready: T0 waits for them (T0 is the later of the two, defined in the plan's W-D012), and W-C14 re-measures on the m2 GLB (D-021). With GL delayed 3 s, a developed print 1 is visible by FCP + 2.6 s: it appears when the FCP + 2.5 s guard fires, not at the end of the drawing's crossfade. No automatic motion over 5 s: the whole hero sequence, drawing included, is under 5000 ms with every phase in `__motionLog`.
-- **Retired at W-V0 (D-048; replaced by the budgets-v2 section below):** Input blocking: 0 ms, except the Swup out phase (<= 160 ms). (D-023: the 720 ms handoff is cut; Play is a plain link.)
+- LCP <= 2.5 s mobile and <= 2.0 s desktop. The LCP element follows budgets-v2's Timing table: the name on `/`; the h1 or the first print on `/work/<slug>/` (W-V0a, 2026-10-29; the Darkroom's print-still and dock rules retired). CLS <= 0.02. TBT <= 150 ms, mobile and desktop.
 - Layout: overflow 0 px as the maximum over the run, at every profile and mode. No clipped text under text spacing, at 200% zoom or at 320 px. Targets >= 44x44 px (shared floor with the Manor: 24 px). Text >= 12 px. Contact within 5.0 screens at 390x844.
-- **Retired at W-V0 (D-048; replaced by the budgets-v2 section below):** Drift: 0 px misplaced prints under wheel, touch and keys in Chromium and WebKit, including an 80 px toolbar collapse mid-fling.
 - Accessibility: axe 0 violations of any impact on WCAG tags (shared floor: 0 serious or critical). Focus ring >= 3:1 with >= 90% ring coverage at every Tab stop. WCAG 2.3.1 flash analysis passes. Every motion has a reduced path that is live.
-- **Retired at W-V0 (D-048; replaced by the budgets-v2 section below):** Sound: 0 bytes until opt-in, then <= 16 kB.
-- Process: every crew, gate and review agent runs on Opus 5.5 at effort xhigh (W-D001).
+- Process: crew, gate, judge and jury agents run on Opus 5.5 at effort xhigh; search, mechanical and verify stages run on Sonnet or Haiku at low or medium effort (PLAN.md operating model, owner 2026-10-27; W-D001 retired by D-049).
 
 ### Measurement validity (R1-R5)
 
-These rules cover every timed or frame-count number a verdict rests on: Lighthouse scores, LCP, TBT and CLS, the hero's readable time, GPU ms, frame pacing, frame tails, drift and eject frames. Byte sizes and triangle counts are not timed. Only the perf gate, or a crew in its final evidence step, takes these numbers, and never while another heavy job runs (PROTOCOL section 9). The thresholds live in the `host` key of the block below, with how they were calibrated.
+These rules cover every timed or frame-count number a verdict rests on: Lighthouse scores, LCP, FCP, TBT and CLS, the longest boot task, GPU ms, frame rates, pacing and tails (the 4x CPU floors and life at rest included). (W-V0a, 2026-10-29: the hero's readable time, drift and eject frames retired with the Darkroom.) Byte sizes and triangle counts are not timed. Only the perf gate, or a crew in its final evidence step, takes these numbers, and never while another heavy job runs (PROTOCOL section 9). The thresholds live in the `host` key of the block below, with how they were calibrated.
 
 - **R1, precheck.** No timed set starts without a passing precheck. Take the perf lane, then the blender lane (`scripts/fleet/lane.ps1 acquire perf -Agent <id>`, which waits at most 4 minutes under the 270 s wait rule and is called again on exit 75; the same for `blender`; renew both every 20 minutes), then run `scripts/fleet/hostload.ps1 -Out <evidence>\hostload-<step>.json`. Exit 0 lets the set start. Exit 75 (busy; `incomplete` or `no-data` when samples are missing; or `uncalibrated` while the host key's thresholds are null) means wait and check again for up to 30 minutes. After that, or when a lane times out, the row is blocked (host) with the JSON, never pass or fail. Each set also keeps the `hostload.ps1 -Watch <pid>` file of its run.
 - **R2, host-suspect runs.** Every Lighthouse run records `lhr.environment.benchmarkIndex`. A run is host-suspect when its benchmarkIndex is below the host key's `suspectBelowRatio` times the calibrated baseline, or when its `-Watch` file does not exit 0 (it flagged a process outside the allowlist, part of the run was not watched, or samples were missing). A timed fail counts only on a clean set, one with no host-suspect run left in it. A timed run is also host-suspect when the summed GPU 3D load of all other processes during the run (read per process, so the run's own process tree is excluded) has a median above `host.precheck.gpu3dPctMax` (6.8%); like any host-suspect run it is replaced, never averaged (R3). `hostload.ps1 -Watch` applies it (the tooling PR for #91, slot 2): its JSON's foreignGpu3d block records the per-sample sums and their median, and a median over the bar gives the verdict gpu-foreign (exit 75), so `crew.mjs lighthouse` and `perfq.mjs` treat that run as host-suspect. (amended 2026-10-10, orchestrator ruling on #11, comment 6097618109, item 4)
-- **R3, replace, never average.** A host-suspect run is replaced by a new run, at most 5 extra runs per set, and each replacement is listed with its reason. It is never averaged in or kept beside the clean runs. A set that cannot reach its run count with clean runs (5 for Lighthouse, 3 cold loads for the hero) is blocked (host).
+- **R3, replace, never average.** A host-suspect run is replaced by a new run, at most 5 extra runs per set, and each replacement is listed with its reason. It is never averaged in or kept beside the clean runs. A set that cannot reach its run count with clean runs (5 for Lighthouse; 10 for mobile TBT, R5) is blocked (host).
 - **R4, a rerun is a whole new set.** A fail on a clean set stands. A rerun is a whole new set after a fresh precheck, and both sets are reported. `host.clean` is judged on the sets behind verdicts: a superseded set stays listed with its reason, but does not set clean false. (amended 2026-10-13, orchestrator ruling on #11, comment 6144848501, item 6)
 - **R5, near a budget, 10 runs.** When a set's median is at or above 85% of a maximum budget, or any clean run is past its budget (above a maximum or below a minimum), the set grows to 10 runs after a fresh precheck. Report the median of all 10, the worst run and the count past budget.
 
@@ -44,8 +32,9 @@ Tests read this block instead of parsing the sentences above (requested in the W
 
 ```json budgets
 {
-  "schema": 1,
-  "note": "Mirrors the Site sentences and the Measurement validity rules above, plus W-D012's head-script size and the W-S1 brief's poster parity in docs/direction/front-door-plan.md; those prose sources stay the human source, and a change edits both in the same PR. Units are in the key names. Minimums (>=): site.lighthouse.*, site.focusRing.*, site.layout.targetMinPx, site.layout.sharedTargetFloorPx, site.layout.textMinPx, host.gpuTimer.control.standinMinMs, host.gpuTimer.control.heavyRatioMin and host.gpuTimer.method.areaMinFrac. *StrictMax is <. Every other number is a <= limit, except these parameters: site.protocol.*, site.stillsPx.*, site.idle.windowStartS, windowEndS and windowToleranceMinMs, site.gpu.hostMedianFactor and atRiskFactor, site.hero.delayGlMs and guardAfterFcpMs, and host.* except its *Max keys, the three host.gpuTimer minimums above and five host.gpuTimer <= limits (control.flatMaxMs, control.standinMaxMs, method.issueMaxFactor, method.anchorTolDevPx and method.badSamplesDroppedMax). Strings are labels, site.gpu.method among them. site.homeHtml.bytesWire is a <= limit at information level only (its own note): a script reports it and does not gate on it. Each budget has one key: zero overflow is site.layout.overflowPx.",
+  "schema": 2,
+  "note": "Schema 2 (W-V0a, D-048): the site block is the budgets-v2 caps. Readers: size-limit, media-caps, the harness, crew.mjs. protocol, zero.axeViolationsWcag and focusRing are kept from schema 1 for surviving readers. The host block is unchanged.",
+  "status": "proposed (owner to confirm, D-048)",
   "site": {
     "lighthouse": {
       "perfMobileMin": 90,
@@ -57,113 +46,84 @@ Tests read this block instead of parsing the sentences above (requested in the W
       "mobile": 2500,
       "desktop": 2000
     },
+    "fcpMs": {
+      "lhMobile": 1800,
+      "localDesktop": 600
+    },
     "clsMax": 0.02,
-    "tbtMs": 150,
-    "preGlJsKbGz": 35,
-    "glChunkKbGz": 187.6,
-    "effectsKbGz": 10,
-    "fontsKbWoff2": 100,
-    "fontsPreloadKb": 46,
-    "homeHtml": {
-      "bytesWire": 14600,
-      "note": "Home / HTML on the wire: gzip body plus headers, as serve-dist sends it (#11 comment 6055373919, item 2). Information-level until W-F-m3 adds its build or pre-GL check; Lighthouse mobile stays the judged row."
+    "tbtMsMax": 150,
+    "bootTaskMsMax": 250,
+    "throttle4x": {
+      "idleFpsMin": 45,
+      "travelP5FpsMin": 30,
+      "worstFrameMsMax": 200,
+      "longTasksMax": 12,
+      "longTaskTotalMsMax": 1500
     },
-    "camera": {
-      "lod0Tris": 100000,
-      "lod0KbGz": 800,
-      "lod1Tris": 15000,
-      "lod1KbGz": 150,
-      "manorLodTris": 1500
+    "bytesGz": {
+      "criticalJs": 80000,
+      "engine": 60000,
+      "totalJsHome": 140000,
+      "totalJsProject": 150000,
+      "css": 14000,
+      "htmlHome": 14000,
+      "htmlProject": 16000
     },
-    "models": {
-      "cartridge": {
-        "tris": 1500,
-        "kbGz": 20
+    "fonts": {
+      "bytesMax": 130000,
+      "filesMax": 3
+    },
+    "rest": {
+      "fpsMax": 30,
+      "mainMsPerSecMax": 3,
+      "stopAfterMs": 60000,
+      "rollDrawsAtRest": 0
+    },
+    "media": {
+      "ladder": [
+        480,
+        800,
+        1280,
+        1920
+      ],
+      "capBytes": {
+        "small": 40000,
+        "mid": 90000,
+        "large": 180000,
+        "firstPrint": 150000,
+        "extreme": 120000,
+        "poster": 40000,
+        "lqip": 300
       },
-      "loupe": {
-        "tris": 3000,
-        "kbGz": 40
+      "pathBytes": {
+        "homeCold": 250000,
+        "homeAllFrames": 600000,
+        "projectFirstScreen": 900000
       },
-      "gear": {
-        "tris": 4000,
-        "kbGz": 40
-      },
-      "ownerWork": {
-        "tris": 50000,
-        "kbGz": 1000,
-        "scope": "on its own project only"
+      "video": {
+        "loopMax": 1500000,
+        "featureMax": 4000000,
+        "perProjectMax": 6,
+        "playingMax": 2
       }
     },
-    "threeDPerPageKbGz": 1500,
-    "canvasMpx": {
-      "full": 4.5,
-      "lite": 1.5
-    },
-    "dprCap": {
-      "full": 2,
-      "lite": 1.5
-    },
-    "stillsPx": {
-      "sheetLongEdge": 512,
-      "enlargementAndHero": 1024
-    },
-    "homeImagesFirstScrollKb": 600,
-    "gpu": {
-      "worstMomentMs": 4,
-      "hostMedianFactor": 30,
-      "atRiskFactor": 10,
-      "crewRatioMax": 1.5,
-      "regressionMaxPct": 20,
-      "method": "timer replay, #14 ruling 5996745925"
-    },
-    "idle": {
-      "windowStartS": 1,
-      "windowEndS": 4,
-      "windowToleranceMinMs": 34,
-      "mainThreadMsPerS": 1,
-      "note": "Amended 2026-10-05 (#11 comment 5992928262) and 2026-10-07 (#11 comments 6030949628 and 6031879782); windowStartS and windowEndS are unchanged, and windowToleranceMinMs is new. windowStartS and windowEndS count from the motion end, not from the last input: the motion end is the later of the last input event or arrival (a full load, Back or Forward, a bfcache restore, a Swup visit's end) and the last presented frame, present-tail and clear-only frames included. The window opens at motion end + windowStartS + max(2 frame intervals, windowToleranceMinMs) and closes at motion end + windowEndS; windowToleranceMinMs is the tolerance's floor (2 frames at 60 Hz), a parameter, not a limit. After an input (scroll, wheel, pointer or key) the motion end must fall within 4 s of it. After an arrival there is no such bound, and a motion that never ends fails at the harness's hard stop, 2 x windowEndS + 1 s after the anchor. A layout-only render with no input is a motion and sets a new motion end. The Idle sentence above carries the amendments."
-    },
-    "hero": {
-      "readableAfterGlReadyMs": 3300,
-      "delayGlMs": 3000,
-      "print1VisibleAfterFcpMs": 2600,
-      "guardAfterFcpMs": 2500,
-      "motionCapMs": 5000,
-      "posterParityMax255": 4,
-      "headScriptKbStrictMax": 0.8
-    },
-    "inputBlocking": {
-      "swupOutMs": 160
-    },
     "layout": {
-      "overflowPx": 0,
-      "targetMinPx": 44,
-      "sharedTargetFloorPx": 24,
-      "textMinPx": 12,
-      "contactWithinScreensAt390x844": 5.0
+      "overflowPxMax": 0,
+      "targetPxMin": 44,
+      "textPxMin": 12,
+      "readPxMin": 13,
+      "focusRingPx": 2
+    },
+    "protocol": {
+      "lighthouseVersion": "13.5.0",
+      "lighthouseRuns": 5
+    },
+    "zero": {
+      "axeViolationsWcag": 0
     },
     "focusRing": {
       "contrastMin": 3,
       "coverageMinPct": 90
-    },
-    "soundKbAfterOptIn": 16,
-    "zero": {
-      "idleRafCallbacks": 0,
-      "idleDraws": 0,
-      "inputBlockingMsOutsideSwupOut": 0,
-      "driftPx": 0,
-      "axeViolationsWcag": 0,
-      "sharedFloorAxeSeriousOrCritical": 0,
-      "soundBytesBeforeOptIn": 0
-    },
-    "protocol": {
-      "lighthouseVersion": "13.5.0",
-      "lighthouseRuns": 5,
-      "heroColdLoadsMedianOf": 3,
-      "gpuWorstMomentWetSheetPrints": 8,
-      "driftToolbarCollapsePx": 80,
-      "noClippedTextZoomPct": 200,
-      "noClippedTextWidthPx": 320
     }
   },
   "host": {
@@ -187,7 +147,20 @@ Tests read this block instead of parsing the sentences above (requested in the W
     },
     "watch": {
       "foreignCpuPctMax": 10.1,
-      "allowlist": ["audiodg", "cam_helper", "claude", "discord", "dwm", "gwctlsrv", "musehub", "opera", "robloxplayerbeta", "svchost", "system", "taskmgr"]
+      "allowlist": [
+        "audiodg",
+        "cam_helper",
+        "claude",
+        "discord",
+        "dwm",
+        "gwctlsrv",
+        "musehub",
+        "opera",
+        "robloxplayerbeta",
+        "svchost",
+        "system",
+        "taskmgr"
+      ]
     },
     "benchmarkIndex": {
       "baseline": 2918.5,
@@ -264,7 +237,7 @@ HARD fails the gate. TARGET is reported, and a miss needs a one-line note.
 | Total JS, every chunk `/` can load | 140 kB gz | 115 | The same method over every chunk reachable from `/` |
 | Total JS, every chunk `/work/<slug>/` can load | 150 kB gz | 120 | The same, for the heaviest project page |
 | CSS (inline plus linked) | 14 kB gz | 10 | Inline `<style>` plus linked CSS, gzip -9 |
-| HTML `/` | 14 kB gz | 12 | gzip -9 of `dist/index.html`, inline CSS included. W-V0 adds the check with a negative control (an inflated fixture must fail) |
+| HTML `/` | 14 kB gz | 12 | gzip -9 of `dist/index.html`, inline CSS included. Checked by size-limit's `HTML (/)` group since W-V0a; the negative control (an inflated `index.html` fails exactly that row) is in `tests/w-f/size-groups.test.mjs` |
 | HTML `/work/<slug>/` | 16 kB gz | 12 | gzip -9 of the largest project page, inline CSS included |
 | Fonts, cold first load | 130 kB, 3 files at most | 117 | woff2 bytes fetched on a cold `/` load, from the network log. Latin subset only. Preload the two faces above the fold. `font-display: swap` with a metric-matched fallback |
 
@@ -330,33 +303,9 @@ HARD fails the gate. TARGET is reported, and a miss needs a one-line note.
 ### Measurement validity (unchanged)
 R1 (precheck), R2 (host-suspect runs), R3 (replace, never average), R4 (a rerun is a whole new set) and R5 (near a budget, 10 runs) stay exactly as written in budgets.md. Byte caps need no precheck.
 
-### Machine-readable block (proposed; not read by `scripts/check/budgets.cjs` until the owner confirms and W-V0a moves it into the `json budgets` block as schema 2)
+### Machine-readable block
 
-```json budgets-v2
-{
-  "schema": 2,
-  "status": "proposed (owner to confirm, D-048)",
-  "site": {
-    "lighthouse": { "perfMobileMin": 90, "perfDesktopMin": 95, "a11yMin": 100, "bestPracticesMin": 95 },
-    "lcpMs": { "mobile": 2500, "desktop": 2000 },
-    "fcpMs": { "lhMobile": 1800, "localDesktop": 600 },
-    "clsMax": 0.02,
-    "tbtMsMax": 150,
-    "bootTaskMsMax": 250,
-    "throttle4x": { "idleFpsMin": 45, "travelP5FpsMin": 30, "worstFrameMsMax": 200, "longTasksMax": 12, "longTaskTotalMsMax": 1500 },
-    "bytesGz": { "criticalJs": 80000, "engine": 60000, "totalJsHome": 140000, "totalJsProject": 150000, "css": 14000, "htmlHome": 14000, "htmlProject": 16000 },
-    "fonts": { "bytesMax": 130000, "filesMax": 3 },
-    "rest": { "fpsMax": 30, "mainMsPerSecMax": 3, "stopAfterMs": 60000, "rollDrawsAtRest": 0 },
-    "media": {
-      "ladder": [480, 800, 1280, 1920],
-      "capBytes": { "small": 40000, "mid": 90000, "large": 180000, "firstPrint": 150000, "extreme": 120000, "poster": 40000, "lqip": 300 },
-      "pathBytes": { "homeCold": 250000, "homeAllFrames": 600000, "projectFirstScreen": 900000 },
-      "video": { "loopMax": 1500000, "featureMax": 4000000, "perProjectMax": 6, "playingMax": 2 }
-    },
-    "layout": { "overflowPxMax": 0, "targetPxMin": 44, "textPxMin": 12, "readPxMin": 13, "focusRingPx": 2 }
-  }
-}
-```
+The v2 caps now live in the `json budgets` block above (schema 2, still proposed until the owner confirms, D-048).
 
 ## Game (the Manor, in the Manor repo)
 

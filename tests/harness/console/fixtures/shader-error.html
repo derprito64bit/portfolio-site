@@ -1,18 +1,21 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>Fixture: shader error</title>
-<script type="importmap">{ "imports": { "three": "/vendor/three.module.js" } }</script>
 </head>
-<body><h1>Fault: a shader that does not compile</h1>
+<body><h1>Fault: a shader that does not compile, then a draw with it</h1>
 <canvas id="c" width="64" height="64"></canvas>
 <script type="module">
-  import { WebGLRenderer, Scene, OrthographicCamera, Mesh, PlaneGeometry, ShaderMaterial } from 'three';
-  const renderer = new WebGLRenderer({ canvas: document.getElementById('c') });
-  const scene = new Scene();
-  const bad = new ShaderMaterial({
-    vertexShader: 'void main() { gl_Position = vec4(position, 1.0); }',
-    fragmentShader: 'void main() { gl_FragColor = vec4(undefinedThing, 1.0); }',
-  });
-  scene.add(new Mesh(new PlaneGeometry(2, 2), bad));
-  renderer.render(scene, new OrthographicCamera(-1, 1, 1, -1, 0, 1));
+  // Plain WebGL2 (the site's engine is OGL on WebGL2): a fragment shader that fails to compile, linked and drawn.
+  // The browser reports the broken draw as a GL_INVALID_OPERATION console message; the compile log is printed too.
+  const gl = document.getElementById('c').getContext('webgl2');
+  const sh = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); return s; };
+  const vs = sh(gl.VERTEX_SHADER, '#version 300 es\nvoid main() { gl_Position = vec4(0.0); }');
+  const fs = sh(gl.FRAGMENT_SHADER, '#version 300 es\nprecision mediump float;\nout vec4 o;\nvoid main() { o = vec4(undefinedThing, 1.0); }');
+  const p = gl.createProgram();
+  gl.attachShader(p, vs);
+  gl.attachShader(p, fs);
+  gl.linkProgram(p);
+  console.error('shader compile failed:', gl.getShaderInfoLog(fs));
+  gl.useProgram(p);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
 </script>
 </body></html>

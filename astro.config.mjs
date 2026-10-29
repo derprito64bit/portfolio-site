@@ -1,13 +1,11 @@
-// The portfolio's build (W-F; D-023: the site is the owner's whole portfolio, and the game is one project in it). Static
-// output, trailing slashes, one global stylesheet (Swup swaps #swup only and there is no head plugin, so every page must
-// already carry every style), and the token seam files written into dist/seams/. /manor/, /arcade/ and /play/ are
-// fork-owned paths that this build never emits or indexes.
+// The portfolio's build (D-040). Static output, trailing slashes, per-page CSS, sitemap with a noindex filter, the client
+// chunk manifest for size-limit, and the empty-sitemap fallback while every page is noindex. /manor/, /arcade/ and /play/
+// belong to the game's repo and are not emitted here.
 import { defineConfig } from 'astro/config';
 import sitemap from '@astrojs/sitemap';
 import { cpSync, existsSync, readFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { join, relative } from 'node:path';
-import { buildTokens, readSource } from './scripts/build/tokens.mjs';
 
 const ROOT = fileURLToPath(new URL('./', import.meta.url));
 /** Where the client chunk graph goes (outside dist, so it never ships). .size-limit.cjs reads it. */
@@ -46,8 +44,8 @@ function chunkManifest() {
 
 const SITE = 'https://derprito64bit.github.io';
 const DIST = fileURLToPath(new URL('./dist/', import.meta.url));
-// Paths the fork owns (publish.ps1 reserved) plus the unlinked bench (W-D003, W-D027). Never in the sitemap.
-const NEVER_INDEXED = /^\/(manor|arcade|play|bench)(\/|$)/;
+// Paths the game repo owns (never in the sitemap).
+const NEVER_INDEXED = /^\/(manor|arcade|play)(\/|$)/;
 
 /** True when the built page for this URL ships robots noindex (any page holding a token does, W-D027). */
 function builtNoindex(pathname) {
@@ -56,18 +54,13 @@ function builtNoindex(pathname) {
   return /<meta\s+name="robots"\s+content="[^"]*noindex/i.test(readFileSync(file, 'utf8'));
 }
 
-/** Writes manor-overlay.css, identity.json and can-enter-manor.js next to the site, same origin as the fonts. */
+/** The sitemap fallback and the derived image stills. */
 function seams() {
   return {
-    name: 'portfolio:seams',
+    name: 'portfolio:post-build',
     hooks: {
       'astro:build:done': ({ dir, logger }) => {
-        const out = fileURLToPath(new URL('./seams/', dir));
-        mkdirSync(out, { recursive: true });
-        const files = buildTokens(readSource());
-        for (const name of ['manor-overlay.css', 'identity.json', 'can-enter-manor.js']) writeFileSync(join(out, name), files[name]);
-        logger.info('wrote seams/manor-overlay.css, seams/identity.json, seams/can-enter-manor.js');
-        // While every page holds a placeholder the sitemap integration writes nothing; publish a valid empty one.
+        // While every page is noindex the sitemap integration writes nothing; publish a valid empty one.
         if (!existsSync(fileURLToPath(new URL('./sitemap-index.xml', dir)))) {
           const xml = '<?xml version="1.0" encoding="UTF-8"?>';
           writeFileSync(fileURLToPath(new URL('./sitemap-0.xml', dir)), `${xml}<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"></urlset>\n`);
@@ -96,8 +89,8 @@ export default defineConfig({
   vite: {
     plugins: [chunkManifest()],
     build: {
-      // One stylesheet for every page (see the header comment).
-      cssCodeSplit: false,
+      // Per-page CSS: each page carries only its own stylesheet.
+      cssCodeSplit: true,
     },
   },
 });

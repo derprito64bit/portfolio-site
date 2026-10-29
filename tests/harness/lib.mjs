@@ -15,6 +15,12 @@ export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 /** The json budgets block of docs/agents/budgets.md (readBudgets) and one number from it by path (budget). */
 export const { readBudgets, budget } = budgetsCjs;
 export const CI = Boolean(process.env.CI);
+/**
+ * H_NO3D=1 runs Chromium with --disable-3d-apis, so the Viewfinder takes its flat-frame path (html.nogl) and every state
+ * is reachable at speed. CI has no GPU and software GL renders the engine at 1 to 4 fps, so CI sets it for the
+ * interactive instruments; the reference host runs them with GL.
+ */
+export const NO3D = Boolean(process.env.H_NO3D);
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // ---------------------------------------------------------------- GES-1 device profiles (W-D030)
@@ -32,18 +38,17 @@ export const PROFILES = {
   'WK-T2': { ...touch(768, 1024, 2, false), browser: 'webkit' },
   S1: { ...mouse(1366, 640, 1), browser: 'chromium' },
   S2: { ...touch(390, 664, 3, true), browser: 'chromium' },
-  R1: { ...touch(320, 640, 2, true), browser: 'chromium', only: ['static', 'axe'] },
+  R1: { ...touch(320, 640, 2, true), browser: 'chromium', only: ['auto', 'axe'] },
   // 200% zoom: half the CSS viewport at twice the device pixels.
   'Z-D2': { ...mouse(720, 450, 4), browser: 'chromium', zoom: 2 },
   'Z-P2': { ...touch(195, 422, 6, true), browser: 'chromium', zoom: 2 },
 };
-export const MODES = ['auto', 'static', 'reduced'];
-/** The tier each profile must report in auto mode: mouse full (or a logged probe demotion), touch lite. */
-export const expectedTier = (p) => (PROFILES[p].input === 'mouse' ? 'full' : 'lite');
+export const MODES = ['auto', 'reduced'];
+/** The Viewfinder has one tier (W-V0a); the render tiers of the Darkroom are retired. */
+export const expectedTier = () => 'viewfinder';
 
 export function routeUrl(base, route, mode, extra = '') {
   const q = new URLSearchParams(extra);
-  if (mode === 'static') q.set('tier', 'static');
   const s = q.toString();
   return `${base}${route}${s ? `?${s}` : ''}`;
 }
@@ -87,7 +92,7 @@ export async function closeBrowsers() {
 
 export async function newContext(profileName, mode = 'auto', extra = {}) {
   const p = PROFILES[profileName];
-  const b = await browser(extra.browser ?? p.browser);
+  const b = await browser(extra.browser ?? (NO3D && p.browser === 'chromium' ? 'chromium-no3d' : p.browser));
   return b.newContext({
     viewport: p.viewport,
     deviceScaleFactor: p.deviceScaleFactor,
@@ -300,21 +305,26 @@ export function consoleGate(page, { expectStatus = [], allow = loadAllowlist() }
   };
 }
 
-// ---------------------------------------------------------------- stage helpers
+// ---------------------------------------------------------------- page helpers
+/**
+ * The Viewfinder is ready when the preloader is done: html loses .is-loading (src/evf/main.ts), the intro is up and
+ * the engine, if any, has booted or failed (.nogl). The old __stage hook is retired with the Darkroom.
+ */
 export async function waitSettled(page, timeout = 10000) {
   try {
-    await page.waitForFunction(() => window.__stage && window.__stage.settled === true, null, { timeout, polling: 100 });
+    await page.waitForFunction(() => !document.documentElement.classList.contains('is-loading'), null, { timeout, polling: 100 });
     return true;
   } catch {
     return false;
   }
 }
 export async function stageState(page) {
-  return page.evaluate(() => {
-    const s = window.__stage;
-    if (!s) return null;
-    return { tier: s.tier, tierReason: s.tierReason, tierLog: s.tierLog, motion: s.motion, glState: s.glState, settled: s.settled, stats: { ...s.stats }, marks: s.marks(), renderer: s.gl?.rendererName ?? null, probe: s.gl?.probe ?? null };
-  });
+  return page.evaluate(() => ({
+    tier: 'viewfinder',
+    settled: !document.documentElement.classList.contains('is-loading'),
+    nogl: document.documentElement.classList.contains('nogl'),
+    calm: document.documentElement.classList.contains('calm'),
+  }));
 }
 export const SOFTWARE_RENDERER = /SwiftShader|llvmpipe|softpipe|Basic Render|Software/i;
 
@@ -469,7 +479,7 @@ export function lighthouseBudget(site, ff) {
     performance: (ff === 'mobile' ? site.lighthouse.perfMobileMin : site.lighthouse.perfDesktopMin) / 100,
     accessibility: site.lighthouse.a11yMin / 100,
     bestPractices: site.lighthouse.bestPracticesMin / 100,
-    lcp: site.lcpMs[ff], tbt: site.tbtMs, cls: site.clsMax,
+    lcp: site.lcpMs[ff], tbt: site.tbtMsMax, cls: site.clsMax,
   };
 }
 const LH_MAX = ['lcp', 'tbt', 'cls'];

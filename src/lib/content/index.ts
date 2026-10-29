@@ -2,11 +2,10 @@
 // build with every error listed. Pages import from here, never from content/ directly.
 import projectsJson from '../../../content/projects.json';
 import honoursJson from '../../../content/honours.json';
-import worldsJson from '../../../content/worlds.json';
 import profileJson from '../../../content/profile.json';
 import tokensJson from '../../../content/tokens.json';
 import { validateContent, frameCode, hasToken } from './validate.js';
-import type { Content, Honour, Profile, Project, ProjectView, World } from './types.ts';
+import type { Content, Honour, Profile, Project, ProjectView } from './types.ts';
 
 export type * from './types.ts';
 
@@ -14,7 +13,6 @@ const lookIds: string[] = tokensJson.filmLooks.ids;
 const { errors } = validateContent({
   projects: projectsJson,
   honours: honoursJson,
-  worlds: worldsJson,
   profile: profileJson,
   lookIds,
 });
@@ -34,16 +32,14 @@ const projects: ProjectView[] = (projectsJson.projects as unknown as Project[]).
 });
 
 const honours = honoursJson as unknown as { awards: Honour[]; medals: Honour[] };
-const worlds = (worldsJson.worlds as unknown as World[]);
 const profile = profileJson as unknown as Profile;
 
 export const content: Content = Object.freeze({
   projects,
   featured: projects.filter((p) => p.featured),
   honours: { awards: honours.awards, medals: honours.medals },
-  worlds,
   profile,
-  hasPlaceholders: [projectsJson, honoursJson, worldsJson, profileJson].some((f) => hasToken(JSON.stringify(f))),
+  hasPlaceholders: [projectsJson, honoursJson, profileJson].some((f) => hasToken(JSON.stringify(f))),
 });
 
 export function projectBySlug(slug: string): ProjectView {

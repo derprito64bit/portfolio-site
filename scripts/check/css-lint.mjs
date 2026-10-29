@@ -28,6 +28,8 @@ function decls(body) {
   });
 }
 
+// The one allow-listed root overflow rule, by exact selector (W-V0a): the Viewfinder is a fixed stage and never scrolls the page.
+const ROOT_OVERFLOW_ALLOWED = new Set(['html.js body']);
 const problems = [];
 function lint(file, css) {
   const rel = relative(ROOT, file).replaceAll('\\', '/');
@@ -36,7 +38,7 @@ function lint(file, css) {
     for (const d of decls(r.body)) {
       if (/\b\d*\.?\d+dv(h|w|min|max)\b/.test(d.value)) problems.push(`${rel}: ${r.selector} { ${d.prop}: ${d.value} } uses dynamic viewport units (use svh or lvh)`);
       if (!isTokens && !d.prop.startsWith('--') && BOX_PROPS.test(d.prop) && /\b\d*\.?\d+vw\b/.test(d.value)) problems.push(`${rel}: ${r.selector} { ${d.prop}: ${d.value} } sizes or offsets a box in vw outside the tokens`);
-      if (/^overflow(-x)?$/.test(d.prop) && /\b(hidden|clip)\b/.test(d.value) && r.selector.split(',').some((s) => /^(html|body|:root)\b/.test(s.trim().replace(/^:where\(|\)$/g, '')))) problems.push(`${rel}: ${r.selector} { ${d.prop}: ${d.value} } hides overflow on the root`);
+      if (/^overflow(-x)?$/.test(d.prop) && /\b(hidden|clip)\b/.test(d.value) && !ROOT_OVERFLOW_ALLOWED.has(r.selector.replace(/\s+/g, ' ')) && r.selector.split(',').some((s) => /^(html|body|:root)\b/.test(s.trim().replace(/^:where\(|\)$/g, '')))) problems.push(`${rel}: ${r.selector} { ${d.prop}: ${d.value} } hides overflow on the root`);
     }
   }
 }

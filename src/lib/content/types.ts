@@ -59,20 +59,6 @@ export interface Honour {
   source: string;
 }
 
-export interface World {
-  slug: string;
-  key: string;
-  title: string;
-  status: '' | 'live' | 'building' | 'planned';
-  publishAfter: string;
-  credit: { mode: '' | 'public-domain' | 'original'; artist: string; work: string; year: string; museum: string; museumUrl: string };
-  still: string;
-  stillAlt: string;
-  teaser: boolean;
-  placeholder: boolean;
-  source: string;
-}
-
 export interface Profile {
   schema: 2;
   owner: string;
@@ -102,7 +88,6 @@ export interface Content {
   /** Featured projects in file order; the first 3 are the enlargements, the first is the hero print. */
   featured: ProjectView[];
   honours: { awards: Honour[]; medals: Honour[] };
-  worlds: World[];
   profile: Profile;
   /** True while any token remains anywhere in content (the footer proof line, W-D023). */
   hasPlaceholders: boolean;

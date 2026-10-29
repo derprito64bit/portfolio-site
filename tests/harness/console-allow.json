@@ -2,6 +2,14 @@
   "$comment": "Dated console-warning allowlist (W-D030), read by tests/harness/lib.mjs loadAllowlist. Every entry needs a regex, a reason, who added it, an expiry (a zero-padded YYYY-MM-DD that is a real date), a literal and an example; a malformed entry throws, and expired entries stop matching. Each regex is matched against one whole line of a warning (anchored), and a line passes an entry only when it matches the regex AND contains the literal (fixed text of at least 10 characters with a digit, such as a diagnostic code, found in no generic probe line); a warning passes only when every line of it passes an entry. A regex that matches a generic line (ALLOW_BREADTH_PROBES) throws. The example is one real message the entry must pass line by line. Errors, and any message with a W-D030 failure word, are never allowlisted. Every new entry is reviewed (tests/harness/README.md).",
   "allow": [
     {
+      "regex": "\\[\\.WebGL-0x[0-9a-f]+\\]GL Driver Message \\(OpenGL, Performance, GL_CLOSE_PATH_NV, High\\): GPU stall due to ReadPixels(?: \\(this message will no longer repeat\\))?",
+      "literal": "[.WebGL-0x",
+      "reason": "Chrome's performance advisory for the Viewfinder engine's 64x40 histogram readback (src/evf/gl/engine.ts readPixels, read one frame late). It is a driver hint at warning level, not a fault: the frame renders and the meter reads. W-V3 moves the readback off the render path (D-053); drop this entry then. The gate still fails on any other driver message (W-V0a, #11).",
+      "addedBy": "W-V0a (land/w-v0a)",
+      "expiry": "2026-12-31",
+      "example": "[.WebGL-0x157c0040d600]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+    },
+    {
       "regex": "(?:THREE\\.WebGLProgram: Program Info Log: )?\\(\\d+,\\d+(?:-\\d+)?\\): warning X4122: sum of [-+.\\de]+ and [-+.\\de]+ cannot be represented accurately in double precision",
       "literal": "warning X4122",
       "reason": "ANGLE's D3D11 HLSL compiler note on three r186's PMREMGGXConvolution program. The program links and runs; three echoes the trimmed program info log as one console warning: 'THREE.WebGLProgram: Program Info Log: ' and then one line per HLSL note (#54 item 3, from W-S1).",

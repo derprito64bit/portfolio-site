@@ -1,14 +1,10 @@
-// Keyboard instrument (W-D015, W-D032).
-//  walk       Tab through a route; at every stop, at least site.focusRing.coverageMinPct of the focus-ring band
+// Keyboard instrument (W-D015, W-D032, W-V0a on the Viewfinder).
+//  walk       Tab through a page; at every stop, at least site.focusRing.coverageMinPct of the focus-ring band
 //             (outline-offset to offset + width outside the border box) differs from the unfocused frame by at least
 //             site.focusRing.contrastMin:1 (WCAG contrast of the two colours); both from the json budgets block.
-//             On /bench/?debug=ring the fixture quads draw GL 12 px past their slots, so the band sits over GL.
-//  roundtrip  sheet -> project -> Back leaves focus on the same print link, and the next Tab reaches the next print.
-//  hash       a cross-page hash visit (/work/project-01/ -> /#contact, the footer's contact heading) focuses the target.
-//             The nav's Contact is a same-page link on every page (the footer is in the layout), so the check clicks a
-//             link to /#contact placed in the project page's main: a Swup visit with a hash, as any cross-page link is.
-//  anchor     an anchor scroll (the nav's Contact on /) moves one way only (no double scroll) and focuses #contact.
-// Usage: npm run h:keyboard -- [--profiles D2,P2] [--routes /,/bench/?debug=ring] [--dist <dir>] [--out keyboard.json]
+//  flow       / : walk the intro, raise with Enter, walk the EVF, open a project with Enter, Tab stays inside the dialog,
+//             Escape closes it and focus returns to the EVF. The 404 page is walked too.
+// Usage: npm run h:keyboard -- [--profiles D2,P2] [--dist <dir>] [--out keyboard.json]
 import sharp from 'sharp';
 import { budget, cliMain, newContext, serve, sleep, waitSettled } from '../lib.mjs';
 
@@ -16,6 +12,8 @@ import { budget, cliMain, newContext, serve, sleep, waitSettled } from '../lib.m
 const RING_CONTRAST = budget('site.focusRing.contrastMin');
 const RING_COVERAGE = budget('site.focusRing.coverageMinPct') / 100;
 
+/** Changed device pixels at the ring contrast that count as a custom focus indicator. */
+const CUSTOM_MIN_PX = 12;
 const lin = (c) => { const s = c / 255; return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4; };
 const lum = (r, g, b) => 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
 const contrast = (a, b) => { const [x, y] = [a, b].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
@@ -47,6 +45,15 @@ export async function ringCoverage(page) {
   const plain = await raw(await page.screenshot({ clip }));
   await page.evaluate(() => window.__kbEl.focus({ preventScroll: true }));
   await sleep(30);
+  // An element that draws its own indicator instead of an outline (the Raise button turns its corner brackets amber):
+  // it passes when changed pixels reach the ring contrast; the ring-band coverage does not apply to it.
+  if (info.style === 'none' || info.width === 0) {
+    let changed = 0;
+    for (let i = 0; i < focused.data.length; i += 3) {
+      if (contrast(lum(focused.data[i], focused.data[i + 1], focused.data[i + 2]), lum(plain.data[i], plain.data[i + 1], plain.data[i + 2])) >= RING_CONTRAST) changed++;
+    }
+    return { ...info, band: 0, coverage: null, custom: changed, note: changed >= CUSTOM_MIN_PX ? 'custom indicator' : 'no focus indicator' };
+  }
   // Device pixels: the border box snapped the way the browser paints it, and the band measured at pixel centres, so
   // anti-aliased edge pixels never count against the ring.
   const dpr = focused.w / clip.width;
@@ -92,7 +99,7 @@ export async function walk(page, maxStops = 40) {
     await sleep(80);
     const r = await ringCoverage(page);
     if (!r) break;
-    stops.push({ ...r, pass: r.coverage === null ? r.note === 'off screen' : r.coverage >= RING_COVERAGE });
+    stops.push({ ...r, pass: r.coverage === null ? r.note === 'off screen' || r.note === 'custom indicator' : r.coverage >= RING_COVERAGE });
     const before = await page.evaluate(() => document.activeElement);
     await page.keyboard.press('Tab');
     const same = await page.evaluate((b) => document.activeElement === b, before);
@@ -101,114 +108,69 @@ export async function walk(page, maxStops = 40) {
   return stops;
 }
 
-const visitEnd = (page, path) => page.waitForFunction((p) => location.pathname === p && !document.documentElement.hasAttribute('aria-busy'), path, { polling: 50, timeout: 10000 });
+const focusInfo = (page) => page.evaluate(() => {
+  const el = document.activeElement;
+  return { tag: el?.tagName ?? null, inProj: Boolean(el?.closest('#proj')), inEvf: Boolean(el?.closest('#evf')), inIntro: Boolean(el?.closest('#intro')) };
+});
 
-async function roundtrip(page, base) {
+const summarise = (w) => ({ stops: w.length, failing: w.filter((x) => !x.pass), minCoverage: Math.min(...w.filter((x) => x.coverage !== null).map((x) => x.coverage)), detail: w });
+
+/** Walk the intro, raise with the keyboard, walk the EVF, open a project, check the trap, close, check focus returns. */
+async function viewfinder(page, base) {
   await page.goto(`${base}/`, { waitUntil: 'load' });
-  await waitSettled(page, 12000);
-  // Tab to the third print on the sheet with the keyboard only.
-  let id = null;
-  for (let i = 0; i < 80; i++) {
-    await page.keyboard.press('Tab');
-    id = await page.evaluate(() => (document.activeElement?.closest('#sheet ~ ol') ? document.activeElement.dataset.glId : null));
-    if (id === 'project-03') break;
-  }
+  await waitSettled(page, 15000);
+  const intro = await walk(page);
+  await page.evaluate(() => document.activeElement?.blur?.());
   await page.keyboard.press('Enter');
-  await visitEnd(page, '/work/project-03/');
-  await waitSettled(page, 8000);
-  await page.goBack();
-  await visitEnd(page, '/');
-  await sleep(250);
-  const back = await page.evaluate(() => ({ id: document.activeElement?.dataset?.glId ?? null, tag: document.activeElement?.tagName }));
-  await page.keyboard.press('Tab');
-  const next = await page.evaluate(() => document.activeElement?.dataset?.glId ?? null);
-  return { started: id, afterBack: back, nextTab: next, pass: id === 'project-03' && back.id === 'project-03' && next === 'project-04' };
-}
-
-/**
- * A cross-page hash visit focuses the target and brings it into view (round-5 should-fix S3, Breaker 4.2 #2: on the
- * full tier the page stayed at y 0 with focus on an off-screen target): /#contact by a link, and the nav's Work link
- * (/#work) by the keyboard, both from a project page. In view: the target's top is inside the viewport once the page
- * settles (the anchor scroll may glide).
- */
-async function hashVisit(page, base) {
-  const rows = [];
-  for (const [hash, how] of [['#contact', 'click'], ['#work', 'nav key']]) {
-    await page.goto(`${base}/work/project-01/`, { waitUntil: 'load' });
-    await waitSettled(page, 12000);
-    if (how === 'click') {
-      await page.evaluate(() => {
-        const a = document.createElement('a');
-        a.href = '/#contact';
-        a.id = 'kb-hash-visit';
-        a.textContent = 'Contact (cross-page)';
-        document.getElementById('main')?.prepend(a);
-      });
-      await page.click('#kb-hash-visit');
-    } else {
-      await page.focus('a[data-nav="work"]');
-      await page.keyboard.press('Enter');
-    }
-    await visitEnd(page, '/');
-    await sleep(300);
-    await waitSettled(page, 8000);
-    const r = await page.evaluate((id) => {
-      const el = document.getElementById(id);
-      const top = el ? el.getBoundingClientRect().top : null;
-      return { id: document.activeElement?.id ?? null, tag: document.activeElement?.tagName, hash: location.hash, y: Math.round(scrollY), targetTop: top === null ? null : Math.round(top), inView: top !== null && top >= -1 && top < innerHeight };
-    }, hash.slice(1));
-    rows.push({ hash, how, ...r, pass: r.id === hash.slice(1) && r.hash === hash && r.inView });
+  await page.waitForFunction(() => document.getElementById('intro')?.hidden === true, null, { timeout: 30000 });
+  await sleep(300);
+  const raised = await page.evaluate(() => document.getElementById('evf')?.classList.contains('is-on') && !document.getElementById('evf').inert);
+  await page.evaluate(() => document.getElementById('evf').focus());
+  const evf = await walk(page);
+  // Open the current frame with Enter on the Open control, then Tab around: focus must stay inside the dialog.
+  await page.focus('[data-open]');
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(() => !document.getElementById('proj')?.hidden && Boolean(document.activeElement?.closest('#proj')), null, { timeout: 30000 });
+  const open = await focusInfo(page);
+  const trapped = [];
+  for (let i = 0; i < 12; i++) {
+    await page.keyboard.press('Tab');
+    trapped.push((await focusInfo(page)).inProj);
   }
-  return { rows, focus: rows[0], pass: rows.every((r) => r.pass) };
-}
-
-async function anchorMonotonic(page, base) {
-  await page.goto(`${base}/`, { waitUntil: 'load' });
-  await waitSettled(page, 12000);
-  await page.evaluate(() => {
-    window.__ys = [];
-    window.__yt = setInterval(() => window.__ys.push(window.scrollY), 8);
-  });
-  await page.click('nav[aria-label="Site"] a[href="#contact"]');
-  await sleep(1600);
-  const ys = await page.evaluate(() => { clearInterval(window.__yt); return window.__ys; });
-  let monotonic = true;
-  for (let i = 1; i < ys.length; i++) if (ys[i] < ys[i - 1]) monotonic = false;
-  const focus = await page.evaluate(() => document.activeElement?.id ?? null);
-  return { samples: ys.length, first: ys[0], last: ys[ys.length - 1], monotonic, focus, pass: monotonic && ys[ys.length - 1] > ys[0] && focus === 'contact' };
+  await page.keyboard.press('Escape');
+  await page.waitForFunction(() => document.getElementById('proj')?.hidden === true, null, { timeout: 30000 });
+  await sleep(300);
+  const back = await focusInfo(page);
+  const closed = await page.evaluate(() => document.getElementById('proj')?.hidden === true);
+  const result = {
+    intro: summarise(intro), evf: summarise(evf), raised: Boolean(raised),
+    openFocusInDialog: open.inProj, trapped: trapped.every(Boolean), closed, focusAfterClose: back,
+  };
+  result.pass = result.raised && result.intro.stops > 0 && result.intro.failing.length === 0 && result.evf.stops > 0 && result.evf.failing.length === 0
+    && result.openFocusInDialog && result.trapped && result.closed && back.inEvf;
+  return result;
 }
 
 export async function run(opts = {}) {
   const profiles = String(opts.profiles || 'D2,P2').split(',');
-  const routes = String(opts.routes || '/,/bench/?debug=ring').split(',');
   const srv = await serve(opts.dist ? String(opts.dist) : undefined);
   const rows = [];
   try {
     for (const profile of profiles) {
-      const walks = [];
-      for (const route of routes) {
-        const ctx = await newContext(profile);
-        const page = await ctx.newPage();
-        await page.goto(srv.base + route, { waitUntil: 'load' });
-        await waitSettled(page, 15000);
-        const stops = await walk(page);
-        walks.push({ route, stops: stops.length, failing: stops.filter((s) => !s.pass), minCoverage: Math.min(...stops.filter((s) => s.coverage !== null).map((s) => s.coverage)), detail: stops });
-        await ctx.close();
-      }
       const ctx = await newContext(profile);
       const page = await ctx.newPage();
-      const rt = await roundtrip(page, srv.base);
-      const hv = await hashVisit(page, srv.base);
-      const an = await anchorMonotonic(page, srv.base);
+      const vf = await viewfinder(page, srv.base);
+      await page.goto(`${srv.base}/404.html`, { waitUntil: 'load' });
+      const nf = await walk(page);
       await ctx.close();
-      rows.push({ profile, walks, roundtrip: rt, hash: hv, anchor: an, pass: walks.every((w) => w.failing.length === 0 && w.stops > 0) && rt.pass && hv.pass && an.pass });
+      rows.push({ profile, viewfinder: vf, notFound: { stops: nf.length, failing: nf.filter((x) => !x.pass) }, pass: vf.pass && nf.length > 0 && nf.every((x) => x.pass) });
     }
   } finally {
     await srv.close();
   }
   return {
-    schema: 1, instrument: 'keyboard', pass: rows.every((r) => r.pass), rows,
-    summary: rows.map((r) => `${r.profile}: ${r.walks.map((w) => `${w.route} ${w.stops} stops, min ring ${(w.minCoverage * 100).toFixed(1)}%`).join(', ')}; round trip ${r.roundtrip.pass}; hash ${r.hash.pass}; anchor ${r.anchor.pass}`).join(' | '),
+    schema: 2, instrument: 'keyboard', pass: rows.every((r) => r.pass), rows,
+    summary: rows.map((r) => `${r.profile}: intro ${r.viewfinder.intro.stops} stops, EVF ${r.viewfinder.evf.stops} stops, min ring ${(Math.min(r.viewfinder.intro.minCoverage, r.viewfinder.evf.minCoverage) * 100).toFixed(1)}%; dialog focus ${r.viewfinder.openFocusInDialog && r.viewfinder.trapped}; returns ${r.viewfinder.focusAfterClose.inEvf}; 404 ${r.notFound.stops} stops`).join(' | '),
   };
 }
 

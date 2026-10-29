@@ -22,7 +22,6 @@ export const DASHES = new RegExp('[\\u2013\\u2014]', 'g');
 export const KINDS = ['software', 'game', '3d-art', 'robotics-cad'];
 export const AWARD_KINDS = ['glass', 'trophy', 'plaque', 'certificate'];
 export const METALS = ['', 'gold', 'silver', 'bronze'];
-export const WORLD_STATUS = ['live', 'building', 'planned'];
 export const CREDIT_MODES = ['public-domain', 'original'];
 export const MEDIA_TYPES = { image: /\.(png|jpe?g)$/i, model: /\.glb$/i, video: /\.(mp4|webm)$/i };
 
@@ -50,12 +49,6 @@ export const CLASSES = {
     slug: 'x', title: 'd', event: 'd', placement: 'd', year: 'd', kind: 'e', metal: 'e', photo: 'a',
     photoAlt: 'o', project: 'l', hero: 'b', placeholder: 'b', source: 'x',
   },
-  WorldsFile: { schema: 'n', worlds: '[c:World]' },
-  World: {
-    slug: 'x', key: 'x', title: 'd', status: 'e', publishAfter: 'x', credit: 'c:Credit', still: 'a',
-    stillAlt: 'o', teaser: 'b', placeholder: 'b', source: 'x',
-  },
-  Credit: { mode: 'e', artist: 'd', work: 'd', year: 'd', museum: 'd', museumUrl: 'l' },
   ProfileFile: {
     schema: 'n', owner: 'x', name: 'x', line: 'd', about: '[d]', email: 'l', links: '[c:Link]',
     placeholder: 'b', source: 'x',
@@ -64,10 +57,10 @@ export const CLASSES = {
 
 /**
  * Validate the four content files plus the film-look ids from tokens.
- * @param {{ projects: any, honours: any, worlds: any, profile: any, lookIds: string[] }} input
+ * @param {{ projects: any, honours: any, profile: any, lookIds: string[] }} input
  * @returns {{ errors: string[], warnings: string[] }}
  */
-export function validateContent({ projects, honours, worlds, profile, lookIds }) {
+export function validateContent({ projects, honours, profile, lookIds }) {
   const errors = [];
   const warnings = [];
   const err = (file, path, msg) => errors.push(`content/${file} ${path}: ${msg}`);
@@ -234,28 +227,6 @@ export function validateContent({ projects, honours, worlds, profile, lookIds })
   }
   if (heroAwards > 1) err('honours.json', '$', 'at most one hero award (the Hall apse)');
 
-  // ---------- worlds.json ----------
-  shape('worlds.json', worlds, 'WorldsFile', '$');
-  if (worlds?.schema !== 2) err('worlds.json', '$.schema', 'must be 2');
-  hygiene('worlds.json', worlds);
-  let teasers = 0;
-  (worlds?.worlds || []).forEach((w, i) => {
-    const at = `$.worlds[${i}]`;
-    slug('worlds.json', `${at}.slug`, w.slug);
-    entry('worlds.json', w, 'World', at);
-    if (w.key !== `pf.world.${w.slug}`) err('worlds.json', `${at}.key`, 'must be pf.world.<slug>');
-    if (!(w.status === '' && w.placeholder) && !WORLD_STATUS.includes(w.status)) err('worlds.json', `${at}.status`, `one of ${WORLD_STATUS.join(', ')}`);
-    if (w.publishAfter && !ISO.test(w.publishAfter)) err('worlds.json', `${at}.publishAfter`, 'YYYY-MM-DD or ""');
-    const c = w.credit || {};
-    if (!(c.mode === '' && w.placeholder) && !CREDIT_MODES.includes(c.mode)) err('worlds.json', `${at}.credit.mode`, `one of ${CREDIT_MODES.join(', ')}`);
-    if (c.mode === 'original' && (c.artist || c.work || c.museum)) err('worlds.json', `${at}.credit`, 'an original world names no artist (D-007)');
-    altRule('worlds.json', `${at}.stillAlt`, w.still, w.stillAlt);
-    if (w.teaser) {
-      teasers++;
-      if (w.publishAfter) err('worlds.json', at, 'a teaser cannot wait on publishAfter');
-    }
-  });
-  if (teasers > 1) err('worlds.json', '$.worlds', 'at most one teaser on the home page');
 
   // ---------- profile.json ----------
   shape('profile.json', profile, 'ProfileFile', '$');

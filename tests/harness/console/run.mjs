@@ -1,13 +1,14 @@
 // Console instrument (W-D030, rt-verify B2). Two parts:
-//   fixtures  five injected faults (throw, rejection, 404, failed request, shader error); the gate must catch 5 of 5,
+//   fixtures  eight injected faults (throw, rejection, 404, failed request, shader error, console.assert, CONTEXT_LOST warning, GL_INVALID warning); the gate must catch 5 of 5,
 //             and report the channel that caught each (GPU-free: CI runs this with --fixtures-only);
-//   routes    the gate over the built routes at D2 and P2, which must be clean.
+//   routes    the gate over the built routes at D2 and P2 (the home page is driven through raise, frames, open and close), which must be clean.
 // Usage: npm run h:console -- [--fixtures-only] [--out console.json]
 import { createServer } from 'node:http';
 import { existsSync, readFileSync } from 'node:fs';
 import { extname, join } from 'node:path';
-import { CONSOLE_RE, ROOT, cliMain, consoleGate, newContext, serve, sleep, waitSettled } from '../lib.mjs';
+import { CI, CONSOLE_RE, NO3D, ROOT, cliMain, consoleGate, newContext, serve, sleep, waitSettled } from '../lib.mjs';
 
+// '/' is also driven through the Viewfinder's own inputs: raise, step through frames, open a project, close, lower.
 const FIXTURES = join(ROOT, 'tests/harness/console/fixtures');
 const FAULTS = [
   { file: 'throw.html', expect: 'pageerror' },
@@ -15,13 +16,14 @@ const FAULTS = [
   { file: '404.html', expect: 'response' },
   { file: 'failed-request.html', expect: 'requestfailed' },
   { file: 'shader-error.html', expect: 'console' },
+  { file: 'assert.html', expect: 'console' },
+  { file: 'context-lost.html', expect: 'console' },
+  { file: 'gl-invalid.html', expect: 'console' },
 ];
 const ROUTES = [
   { route: '/', expectStatus: [] },
-  { route: '/work/project-01/', expectStatus: [] },
   { route: '/404.html', expectStatus: [] },
   { route: '/nope/', expectStatus: [{ status: 404, url: /\/nope\/$/ }] },
-  { route: '/bench/', expectStatus: [] },
 ];
 
 function fixtureServer() {
@@ -42,8 +44,8 @@ export async function run(opts = {}) {
   const fixtures = [];
   const fx = await fixtureServer();
   try {
-    for (const f of FAULTS) {
-      const ctx = await newContext('D2');
+    for (const f of opts['routes-only'] ? [] : FAULTS) {
+      const ctx = await newContext('D2', 'auto', { browser: 'chromium' }); // the fixtures need WebGL even when NO3D is set
       const page = await ctx.newPage();
       const gate = consoleGate(page);
       await page.goto(`${fx.base}/${f.file}`, { waitUntil: 'load' });
@@ -69,9 +71,20 @@ export async function run(opts = {}) {
           const gate = consoleGate(page, { expectStatus: r.expectStatus });
           await page.goto(srv.base + r.route, { waitUntil: 'load' });
           await waitSettled(page);
-          await page.mouse.wheel(0, 1600);
-          await sleep(800);
+          // Software GL in CI renders the engine at 1 to 4 fps, so there the home page is only loaded; with H_NO3D (flat
+          // frames, fast) or a real GPU it is driven through raise, frames, open and close.
+          if (r.route === '/' && (!CI || NO3D)) {
+            for (const [key, wait] of [['Enter', 2500], ['ArrowRight', 900], ['ArrowRight', 900], ['Enter', 2500], ['Escape', 1500], ['Escape', 2500]]) {
+              await page.keyboard.press(key);
+              await sleep(wait);
+            }
+          } else await sleep(500);
           const v = gate.verdict();
+          // With H_NO3D the page's own flat-frame notice is expected; any other warning or error still fails.
+          if (NO3D) {
+            v.failures = v.failures.filter((x) => !/^(\[viewfinder\] WebGL unavailable, using flat frames|unable to create webgl context)/.test(x.text));
+            v.pass = v.failures.length === 0;
+          }
           routes.push({ profile, route: r.route, pass: v.pass, events: v.events, failures: v.failures.map((x) => `${x.channel}/${x.level}: ${x.text.slice(0, 200)}`) });
           await ctx.close();
         }
@@ -82,7 +95,7 @@ export async function run(opts = {}) {
   }
   const routesClean = routes.every((r) => r.pass);
   return {
-    schema: 1, instrument: 'console', pass: caught === FAULTS.length && routesClean, regex: CONSOLE_RE.source,
+    schema: 1, instrument: 'console', pass: (opts['routes-only'] || caught === FAULTS.length) && routesClean, regex: CONSOLE_RE.source,
     fixtures, caught: `${caught}/${FAULTS.length}`, routes,
     summary: `faults caught ${caught}/${FAULTS.length}${routes.length ? `; routes clean ${routes.filter((r) => r.pass).length}/${routes.length}` : ''}`,
   };

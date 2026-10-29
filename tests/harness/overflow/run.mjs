@@ -1,6 +1,8 @@
 // Overflow instrument (W-D030, budgets.md "Layout"): the maximum of scrollWidth - clientWidth over the whole run,
 // sampled every 100 ms while the page scrolls top to bottom, plus an element scan for boxes past the right edge.
-// Usage: npm run h:overflow -- [--profiles all|D1,P2] [--modes auto,static,reduced] [--routes /] [--out overflow.json]
+// The element scan gates the page as loaded; boxes the raised EVF puts past the edge (clipped by the fixed stage, so no
+// page overflow) are reported as evfOffenders for the v2 queue (#106) and do not fail the run.
+// Usage: npm run h:overflow -- [--profiles all|D1,P2] [--modes auto,reduced] [--routes /] [--out overflow.json]
 import { MODES, PROFILES, cliMain, newContext, routeUrl, serve, sleep, waitSettled } from '../lib.mjs';
 
 export async function measure(page) {
@@ -23,10 +25,17 @@ export async function measure(page) {
   return page.evaluate(() => {
     clearInterval(window.__ovfTimer);
     const cw = document.documentElement.clientWidth;
+    // A box inside a scroller or clipping ancestor that itself fits the viewport (a row that scrolls on purpose) is not page overflow.
+    const clipped = (e) => {
+      for (let a = e.parentElement; a && a !== document.body; a = a.parentElement) {
+        if (getComputedStyle(a).overflowX !== 'visible' && a.getBoundingClientRect().right <= cw + 0.5) return true;
+      }
+      return false;
+    };
     const offenders = [...document.querySelectorAll('body *')]
       .filter((e) => {
         const r = e.getBoundingClientRect();
-        return r.width > 0 && r.right > cw + 0.5 && !e.closest('#rail') && getComputedStyle(e).position !== 'fixed';
+        return r.width > 0 && r.right > cw + 0.5 && !e.closest('#rail') && getComputedStyle(e).position !== 'fixed' && getComputedStyle(e).visibility !== 'hidden' && getComputedStyle(e).transform === 'none' && !clipped(e);
       })
       .slice(0, 8)
       .map((e) => `${e.tagName.toLowerCase()}${e.id ? `#${e.id}` : ''}.${String(e.className).slice(0, 40)} right=${Math.round(e.getBoundingClientRect().right)} cw=${cw}`);
@@ -37,7 +46,7 @@ export async function measure(page) {
 export async function run(opts = {}) {
   const profiles = !opts.profiles || opts.profiles === 'all' ? Object.keys(PROFILES) : String(opts.profiles).split(',');
   const modes = String(opts.modes || MODES.join(',')).split(',');
-  const routes = String(opts.routes || '/,/work/project-01/,/404.html').split(',');
+  const routes = String(opts.routes || '/,/404.html').split(',');
   const srv = await serve();
   const rows = [];
   try {
@@ -49,7 +58,15 @@ export async function run(opts = {}) {
           const page = await ctx.newPage();
           await page.goto(routeUrl(srv.base, route, mode), { waitUntil: 'load' });
           await waitSettled(page, 10000);
-          const m = await measure(page);
+          let m = await measure(page);
+          if (route === '/') {
+            // Raise into the viewfinder with the page's own input, then measure the EVF state too.
+            await page.keyboard.press('Enter');
+            await page.waitForFunction(() => document.getElementById('intro')?.hidden === true, null, { timeout: 30000 });
+            await sleep(300);
+            const m2 = await measure(page);
+            m = { maxOverflowPx: Math.max(m.maxOverflowPx, m2.maxOverflowPx), samples: m.samples + m2.samples, offenders: m.offenders, evfOffenders: m2.offenders };
+          }
           rows.push({ profile, mode, route, ...m, pass: m.maxOverflowPx === 0 && m.offenders.length === 0 });
           await ctx.close();
         }

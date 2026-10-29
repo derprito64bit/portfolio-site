@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// npm run check (W-F acceptance): build, astro check (0 errors), lint, ownership, deps, size-limit, ph-gate, CSS lint,
-// stacking-context scan, tokens determinism. Every step runs even after a failure, so one run shows everything that
+// npm run check (W-F acceptance): build, astro check (0 errors), lint, ownership, deps, size-limit, media-caps, ph-gate,
+// CSS lint, tokens determinism. Every step runs even after a failure, so one run shows everything that
 // is wrong; the exit code is 1 if any step failed. GPU-free: this is what CI runs.
 // Usage: node scripts/check/run.mjs [--skip build] [--log check.log] [--json check.json]
 import { spawn } from 'node:child_process';
@@ -27,9 +27,9 @@ const STEPS = [
   ['ownership', ...node('scripts/check/ownership.mjs', ...ownershipArgs)],
   ['deps', ...node('scripts/check/deps.mjs')],
   ['size-limit', ...node('node_modules/size-limit/bin.js')],
+  ['media-caps', ...node('scripts/check/media-caps.mjs')],
   ['ph-gate', ...node('scripts/check/ph-gate.mjs')],
   ['css lint', ...node('scripts/check/css-lint.mjs')],
-  ['stacking-context scan', ...node('scripts/check/stacking.mjs')],
   ['tokens determinism', ...node('scripts/check/tokens-determinism.mjs')],
 ];
 
