@@ -41,7 +41,7 @@ export const crossCheck = (frames, tr) => (tr && !tr.error && frames > tr.rafCal
 
 /**
  * The trace's numbers inside the window marked idle:start .. idle:end on the page's renderer main thread: rAF callbacks,
- * Paint events and the summed duration of its top-level tasks (ms per second).
+ * Paint events and the time its tasks kept the thread busy (ms per second; a task that straddles an edge is clipped).
  */
 export function traceWindow(traceEvents) {
   const start = traceEvents.find((e) => e.name === 'idle:start');
@@ -53,7 +53,17 @@ export function traceWindow(traceEvents) {
   const sec = (end.ts - start.ts) / 1e6;
   const raf = traceEvents.filter((e) => inWin(e) && e.name === 'FireAnimationFrame' && (e.ph === 'X' || e.ph === 'B')).length;
   const paint = traceEvents.filter((e) => inWin(e) && e.name === 'Paint' && (e.ph === 'X' || e.ph === 'B')).length;
-  const busyUs = traceEvents.filter((e) => inWin(e) && mains.includes(e.tid) && e.ph === 'X' && (e.name === 'RunTask' || e.name === 'ThreadControllerImpl::RunTask')).reduce((n, e) => n + (e.dur ?? 0), 0);
+  // busy time = the union of the main thread's task intervals inside the window (task events nest and repeat under two
+  // names, so a plain sum can pass 1000 ms per second)
+  const spans = traceEvents.filter((e) => e.pid === pid && mains.includes(e.tid) && e.ph === 'X' && (e.name === 'RunTask' || e.name === 'ThreadControllerImpl::RunTask'))
+    .map((e) => [Math.max(e.ts, start.ts), Math.min(e.ts + (e.dur ?? 0), end.ts)]).filter(([a, b]) => b > a).sort((x, y) => x[0] - y[0]);
+  let busyUs = 0;
+  let to = -Infinity;
+  for (const [a, b] of spans) {
+    if (b <= to) continue;
+    busyUs += b - Math.max(a, to);
+    to = b;
+  }
   const r1 = (x) => Math.round(x * 10) / 10;
   return { seconds: r1(sec), rafCallbacks: raf, rafPerSec: r1(raf / sec), paints: paint, paintsPerSec: r1(paint / sec), mainThreadMsPerSec: r1(busyUs / 1000 / sec) };
 }

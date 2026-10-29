@@ -32,7 +32,7 @@ test('rates: counts over the window in frames per second, one decimal', () => {
 test('overLimits: a channel past its maximum fails, a missing key is not judged', () => {
   const r = { frames: 30.1, scene: 30.1, composite: 30.1, eyepiece: 0, readback: 0 };
   assert.deepEqual(overLimits(r, THRESHOLDS.assert.evf, 0), []);
-  assert.deepEqual(overLimits({ ...r, frames: 31 }, THRESHOLDS.assert.evf, 0), ['frames 31 fps > 30.5']);
+  assert.deepEqual(overLimits({ ...r, frames: 32.1 }, THRESHOLDS.assert.evf, 0), ['frames 32.1 fps > 32']);
   assert.deepEqual(overLimits({ ...r, readback: 0.1 }, THRESHOLDS.assert.evf, 0), ['readback 0.1 fps > 0']);
   assert.deepEqual(overLimits(r, THRESHOLDS.assert.evf, 1), ['1 infinite animations > 0']);
   assert.deepEqual(overLimits({ ...r, frames: 240 }, {}, 9), []);
@@ -48,12 +48,14 @@ const TRACE = [
   ev('FireAnimationFrame', 1_100_000), ev('FireAnimationFrame', 1_200_000), ev('FireAnimationFrame', 1_300_000, { pid: 9 }),
   ev('Paint', 1_150_000),
   ev('RunTask', 1_100_000, { dur: 2000 }), ev('RunTask', 1_200_000, { dur: 3000 }), ev('RunTask', 1_250_000, { dur: 9000, tid: 2 }),
+  ev('ThreadControllerImpl::RunTask', 1_100_500, { dur: 500 }), // nested in the first task: not counted twice
+  ev('RunTask', 1_999_000, { dur: 2000 }), // straddles the end: clipped to 1 ms
   ev('idle:end', 2_000_000, { ph: 'R' }),
   ev('FireAnimationFrame', 2_100_000), // after it
 ];
 
-test('traceWindow: only the marked window, only the page renderer, main-thread tasks only', () => {
-  assert.deepEqual(traceWindow(TRACE), { seconds: 1, rafCallbacks: 2, rafPerSec: 2, paints: 1, paintsPerSec: 1, mainThreadMsPerSec: 5 });
+test('traceWindow: only the marked window, only the page renderer, main-thread busy time as a union of its tasks', () => {
+  assert.deepEqual(traceWindow(TRACE), { seconds: 1, rafCallbacks: 2, rafPerSec: 2, paints: 1, paintsPerSec: 1, mainThreadMsPerSec: 6 });
   assert.ok(traceWindow(TRACE.filter((e) => e.name !== 'idle:end')).error);
 });
 
