@@ -42,6 +42,9 @@ export const PROFILES = {
   // 200% zoom: half the CSS viewport at twice the device pixels.
   'Z-D2': { ...mouse(720, 450, 4), browser: 'chromium', zoom: 2 },
   'Z-P2': { ...touch(195, 422, 6, true), browser: 'chromium', zoom: 2 },
+  // W-V0b: a small GL viewport at DPR 1 (a tenth of D2's pixels), for runs with GL on software rendering (CI).
+  G1: { ...mouse(640, 400, 1), browser: 'chromium' },
+  'WK-G1': { ...mouse(640, 400, 1), browser: 'webkit' },
 };
 export const MODES = ['auto', 'reduced'];
 /** The Viewfinder has one tier (W-V0a); the render tiers of the Darkroom are retired. */
@@ -305,6 +308,40 @@ export function consoleGate(page, { expectStatus = [], allow = loadAllowlist() }
   };
 }
 
+/**
+ * The flat-frame path's own notices (no WebGL: OGL's 'unable to create webgl context' error and the Viewfinder's
+ * warning). They are expected only on that path (H_NO3D, or the WebKit init script below); every other message is
+ * judged as consoleGate judges it.
+ */
+export const FLAT_NOTICE_RE = /^(\[viewfinder\] WebGL unavailable, using flat frames|unable to create webgl context)/;
+/** consoleGate's verdict with the flat-frame notices dropped (call it only on the flat-frame path). */
+export function flatPathVerdict(v) {
+  const failures = v.failures.filter((x) => !FLAT_NOTICE_RE.test(x.text));
+  return { ...v, failures, pass: failures.length === 0 };
+}
+/**
+ * WebKit has no --disable-3d-apis: this init script gives it the same flat-frame path (every WebGL context request
+ * returns null, as Chromium's flag does). Other context types (2d) are untouched.
+ */
+export const NO_WEBGL_INIT = `(() => {
+  const get = HTMLCanvasElement.prototype.getContext;
+  HTMLCanvasElement.prototype.getContext = function (type, ...rest) {
+    return /^(webgl2?|experimental-webgl)$/.test(String(type)) ? null : get.call(this, type, ...rest);
+  };
+})();`;
+/** D-055: the window's own properties named __vf* (the test hooks). Empty on a page loaded without ?vf-test. */
+export const vfGlobals = (page) => page.evaluate(() => Object.getOwnPropertyNames(window).filter((k) => /^__vf/i.test(k)));
+/**
+ * A hidden tab, emulated: headless Chromium reports every page visible (it only throttles a background page's frames),
+ * so document.hidden and visibilityState are overridden and visibilitychange fires, in both engines. The engine reads
+ * document.hidden itself, so this tests its own stop; a real hidden tab also stops requestAnimationFrame.
+ */
+export const setHidden = (page, hidden) => page.evaluate((h) => {
+  Object.defineProperty(document, 'hidden', { configurable: true, get: () => h });
+  Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => (h ? 'hidden' : 'visible') });
+  document.dispatchEvent(new Event('visibilitychange'));
+}, hidden);
+
 // ---------------------------------------------------------------- page helpers
 /**
  * The Viewfinder is ready when the preloader is done: html loses .is-loading (src/evf/main.ts), the intro is up and
@@ -338,19 +375,45 @@ export function lcpElementOf(lhr) {
   const legacy = lhr?.audits?.['largest-contentful-paint-element']?.details?.items?.[0]?.items?.[0]?.node;
   const node = insight ?? (legacy?.type === 'node' || legacy?.snippet ? legacy : null);
   if (!node) return null;
-  return { source: insight ? 'lcp-breakdown-insight' : 'largest-contentful-paint-element', selector: node.selector ?? null, snippet: node.snippet ?? null, nodeLabel: node.nodeLabel ?? null };
+  return { source: insight ? 'lcp-breakdown-insight' : 'largest-contentful-paint-element', selector: node.selector ?? null, snippet: node.snippet ?? null, nodeLabel: node.nodeLabel ?? null, path: node.path ?? null };
 }
-const isH1 = (e) => /^<h1[\s>]/i.test(e.snippet ?? '') || /(^|[\s>])h1(?=[#.[:]|$)/i.test(String(e.selector ?? '').split('>').pop().trim());
-/** Print 1's DOM still carries data-lcp="print-1" (the marker W-S1's hero puts on it); Lighthouse's snippet shows it. */
-const isPrint1Still = (e) => /\bdata-lcp="print-1"/.test(e.snippet ?? '');
 /**
- * budgets.md: the LCP element is the h1 on mouse profiles (Lighthouse desktop), or the h1 or print 1's still on touch
- * profiles (Lighthouse mobile). Returns { ok, why }.
+ * The node is an element of `tag` or inside one. Lighthouse's DOM path ('1,HTML,1,BODY,3,HEADER,5,H1,1,SPAN': index
+ * and tag pairs from the root) holds every ancestor; without it, the selector's parts and the snippet's own tag.
  */
-export function lcpElementVerdict(el, formFactor) {
+export function inTag(e, tag) {
+  if (e?.path) return String(e.path).split(',').some((p, i) => i % 2 === 1 && p.toUpperCase() === tag.toUpperCase());
+  const part = new RegExp(`^${tag}(?=[#.[:]|$)`, 'i');
+  return String(e?.selector ?? '').split('>').some((s) => part.test(s.trim())) || new RegExp(`^<${tag}[\\s>]`, 'i').test(e?.snippet ?? '');
+}
+/** The first print carries data-lcp="print-1" (W-V1 keeps the marker name); Lighthouse's snippet shows it. */
+const isPrint1 = (e) => /\bdata-lcp="print-1"/.test(e.snippet ?? '');
+/** The name on /: the h1 that carries data-name. */
+const isNameH1 = (e) => /^<h1\b[^>]*\sdata-name(?=[\s=>/]|$)/i.test(e.snippet ?? '');
+/**
+ * What the built page says about its h1s (budgets-v2 Timing needs it on /, where a descendant's snippet cannot show its
+ * h1's attributes): how many there are, and whether the one h1 is the name (carries data-name).
+ */
+export function lcpPageFacts(html) {
+  const h1s = [...String(html ?? '').matchAll(/<h1\b[^>]*>/gi)].map((m) => m[0]);
+  return { h1s: h1s.length, nameH1: h1s.length === 1 && /\sdata-name(?=[\s=>/]|$)/i.test(h1s[0]) };
+}
+/**
+ * budgets-v2 Timing, the same on mobile and desktop (W-V0b fix pass): on / the LCP element is the name, h1[data-name]
+ * or any descendant of it (`page` is lcpPageFacts of the built route: a descendant counts only when the page's one h1 is
+ * the name); on /work/<slug>/ the h1 (or inside it) or the first print, carrying data-lcp="print-1"; on any other route
+ * the h1 (or inside it). Returns { ok, why }.
+ */
+export function lcpElementVerdict(el, route = '/', page = null) {
   if (!el) return { ok: false, why: 'no LCP element in the report' };
-  const ok = formFactor === 'desktop' ? isH1(el) : isH1(el) || isPrint1Still(el);
-  return ok ? { ok: true, why: null } : { ok: false, why: `LCP element ${el.selector ?? el.snippet} is not ${formFactor === 'desktop' ? 'the h1' : "the h1 or print 1's still"}` };
+  const where = el.selector ?? el.snippet;
+  if (route === '/' || route === '/index.html') {
+    const ok = isNameH1(el) || (inTag(el, 'h1') && page?.nameH1 === true);
+    return ok ? { ok: true, why: null } : { ok: false, why: `LCP element ${where} is not the name (h1[data-name] or inside it)${page ? '' : ' (no page facts for /)'}` };
+  }
+  const work = route.startsWith('/work/');
+  const ok = inTag(el, 'h1') || (work && isPrint1(el));
+  return ok ? { ok: true, why: null } : { ok: false, why: `LCP element ${where} is not ${work ? 'the h1 or the first print (data-lcp="print-1")' : 'the h1'}` };
 }
 
 // ---------------------------------------------------------------- evidence

@@ -32,6 +32,22 @@ test('lint: a planted requestAnimationFrame in a file outside the allowlist fail
   }
 });
 
+test('lint: a test global (__vf*) named outside evf/testhooks.ts fails, in testhooks.ts it passes (D-055)', () => {
+  const dir = tmp();
+  try {
+    mkdirSync(join(dir, 'evf'), { recursive: true });
+    writeFileSync(join(dir, 'evf', 'testhooks.ts'), 'export const on = (w: any) => { w.__vf = {}; w.__vfEngine = {}; };\n');
+    assert.equal(node('scripts/check/lint.mjs', '--src', dir).status, 0, 'the gate file itself may name them');
+    writeFileSync(join(dir, 'evf', 'main.ts'), '(window as any).__vfEngine = {};\n');
+    const r = node('scripts/check/lint.mjs', '--src', dir);
+    assert.notEqual(r.status, 0);
+    assert.match(r.stderr, /test globals \(__vf\*\) are named outside/);
+    assert.match(r.stderr, /main\.ts:1/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('lint: a clean source tree passes the rAF rule', () => {
   const dir = tmp();
   try {

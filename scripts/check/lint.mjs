@@ -4,6 +4,8 @@
 //   the engine), in any form or letter case;
 // - no reads of navigator.hardwareConcurrency or maxTouchPoints in src/ (W-D017), direct or computed, through navigator,
 //   clientInformation or a computed member of the global object;
+// - the test globals (__vf, __vfEngine: any name that starts with __vf) are named only in src/evf/testhooks.ts, which
+//   attaches them under ?vf-test alone (D-055);
 // - src/styles/tokens.css and src/lib/tokens.js match content/tokens.json (tokens.mjs --check);
 // - no banned phrase and no em or en dash in src/ or content/ copy;
 // - every JSON file in content/ parses.
@@ -85,6 +87,10 @@ const computedGlobal = [];
 const RAF_RE = /requestanimation|animationframe/gi;
 const FORBIDDEN_RE = /\b(hardwareConcurrency|maxTouchPoints)\b|\b(navigator|clientInformation)\b(?!\s*\??\.\s*[A-Za-z_$])/g;
 const GLOBAL_COMPUTED_RE = /\b(globalThis|window|self)\b(?:\s+as\s+[^)]*\))?\)?\s*(?:\?\.)?\s*\[/g;
+// D-055: the one file that may name the test globals, relative to the source root (so a --src scratch tree works too).
+const HOOKS_ALLOWED = 'evf/testhooks.ts';
+const HOOKS_RE = /__vf/gi;
+const hooks = [];
 for (const f of src) {
   const code = stripComments(readFileSync(f, 'utf8'), f);
   const line = (i) => code.slice(0, i).split('\n').length;
@@ -92,13 +98,16 @@ for (const f of src) {
   for (const m of code.matchAll(RAF_RE)) raf.push(`${where}:${line(m.index)}`);
   for (const m of code.matchAll(FORBIDDEN_RE)) forbidden.push(`${where}:${line(m.index)} ${m[0].trim()}`);
   for (const m of code.matchAll(GLOBAL_COMPUTED_RE)) computedGlobal.push(`${where}:${line(m.index)} ${m[0].replace(/\s+/g, ' ')}`);
+  if (relative(SRC, f).replaceAll('\\', '/') !== HOOKS_ALLOWED) for (const m of code.matchAll(HOOKS_RE)) hooks.push(`${where}:${line(m.index)}`);
 }
 report.rafCallSites = raf;
 report.forbiddenReads = forbidden;
 report.computedGlobals = computedGlobal;
+report.testHookNames = hooks;
 const rafOutside = raf.filter((r) => !RAF_ALLOWED.has(r.slice(0, r.lastIndexOf(':'))));
 if (rafOutside.length) problems.push(`requestAnimationFrame outside the allowlist (${[...RAF_ALLOWED].join(', ')}): ${rafOutside.join(', ')}`);
 if (forbidden.length) problems.push(`tier code must not read core or touch-point counts: ${forbidden.join(', ')}`);
+if (hooks.length) problems.push(`the test globals (__vf*) are named outside src/${HOOKS_ALLOWED}, which alone attaches them under ?vf-test (D-055): ${hooks.join(', ')}`);
 if (computedGlobal.length) problems.push(`a computed member of the global object can reach requestAnimationFrame or core or touch-point counts: ${computedGlobal.join(', ')}`);
 
 // Tokens outputs are current.
@@ -133,4 +142,4 @@ if (problems.length) {
   console.error(`lint: ${problems.length} problem(s):\n  ${problems.join('\n  ')}`);
   process.exit(1);
 }
-console.log(`lint: ${raf.length} rAF mentions, all in the allowlist; 0 core or touch-point reads; tokens current; ${copyFiles.length} files clean`);
+console.log(`lint: ${raf.length} rAF mentions, all in the allowlist; test globals named only in src/${HOOKS_ALLOWED}; 0 core or touch-point reads; tokens current; ${copyFiles.length} files clean`);

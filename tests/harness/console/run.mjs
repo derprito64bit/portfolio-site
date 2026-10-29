@@ -6,7 +6,7 @@
 import { createServer } from 'node:http';
 import { existsSync, readFileSync } from 'node:fs';
 import { extname, join } from 'node:path';
-import { CI, CONSOLE_RE, NO3D, ROOT, cliMain, consoleGate, newContext, serve, sleep, waitSettled } from '../lib.mjs';
+import { CI, CONSOLE_RE, NO3D, ROOT, cliMain, consoleGate, flatPathVerdict, newContext, serve, sleep, waitSettled } from '../lib.mjs';
 
 // '/' is also driven through the Viewfinder's own inputs: raise, step through frames, open a project, close, lower.
 const FIXTURES = join(ROOT, 'tests/harness/console/fixtures');
@@ -79,12 +79,8 @@ export async function run(opts = {}) {
               await sleep(wait);
             }
           } else await sleep(500);
-          const v = gate.verdict();
           // With H_NO3D the page's own flat-frame notice is expected; any other warning or error still fails.
-          if (NO3D) {
-            v.failures = v.failures.filter((x) => !/^(\[viewfinder\] WebGL unavailable, using flat frames|unable to create webgl context)/.test(x.text));
-            v.pass = v.failures.length === 0;
-          }
+          const v = NO3D ? flatPathVerdict(gate.verdict()) : gate.verdict();
           routes.push({ profile, route: r.route, pass: v.pass, events: v.events, failures: v.failures.map((x) => `${x.channel}/${x.level}: ${x.text.slice(0, 200)}`) });
           await ctx.close();
         }

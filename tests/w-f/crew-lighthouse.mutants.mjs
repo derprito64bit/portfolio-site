@@ -25,8 +25,13 @@ export const MUTANTS = {
   'pass ignores the TBT median': ['medians.tbt <= budget.tbt &&', 'true &&'],
   'pass ignores the LCP median': ['medians.lcp <= budget.lcp &&', 'true &&'],
   'pass ignores CLS 0': ['medians.cls === 0 &&', 'true &&'],
-  'pass ignores GL after first paint': ['const glOrderPass = clean.every((r) => r.glAfterFcp);', 'const glOrderPass = true;'],
   'pass ignores invalid runs': ['clean.every((r) => r.valid) &&', 'true &&'],
+  // W-V0b fix pass: the Viewfinder's validity rules.
+  'a software-GL probe is not invalid': ["!probe.error && probe.gl === 'sw' ? `software GL (${probe.renderer})` : null,", 'null,'],
+  'a no-WebGL probe is not invalid': ["!probe.error && probe.gl === 'none' ? 'no WebGL (the GL probe got no WebGL2 context, so the page draws its flat frame)' : null,", 'null,'],
+  'a failed GL probe is not invalid': ['probe.error ? `GL probe failed (${probe.error}): hardware GL not confirmed` : null,', 'null,'],
+  'the LCP element is not judged': ['    lcpCheck.why,\n    ...suspect,', '    ...suspect,'],
+  'D-005 judged again (GL after first paint fails the set)': ['medians.cls === 0 && budgetPass;', 'medians.cls === 0 && budgetPass && clean.every((r) => r.glAfterFcp);'],
 };
 
 export async function run() {

@@ -1,9 +1,11 @@
 // The one canvas (OGL, WebGL2). The scene pass renders the current frame's procedural scene into a render target; the
 // composite pass places it in the EVF frame rect with exposure grade, film simulation, sensor noise and peaking; the
 // eyepiece pass carries the intro snapshot through the raise. A 64 x 40 readback feeds the histogram and the meter.
+// Under ?vf-test (D-055) `stats` counts the draws of each pass and the frames that reached the screen (./stats.ts).
 import { Renderer, Program, Mesh, Triangle, Texture, RenderTarget } from 'ogl';
 import { fullscreenVert, sceneFrag, compositeFrag, eyepieceFrag } from './shaders';
 import type { Scene } from '../scenes';
+import { newCounts, type FrameCounts } from './stats';
 
 export interface Rect { x: number; y: number; w: number; h: number }
 
@@ -52,9 +54,12 @@ export class Engine {
   private pendingRead = false;
   private used = { w: 1, h: 1 };
   ok = false;
+  /** The frame counters: an object only under ?vf-test, else null (no counting work). */
+  readonly stats: FrameCounts | null;
 
-  constructor(canvas: HTMLCanvasElement) {
+  constructor(canvas: HTMLCanvasElement, opts: { stats?: boolean } = {}) {
     this.canvas = canvas;
+    this.stats = opts.stats ? newCounts() : null;
     this.st = {
       rect: { x: 0, y: 0, w: 1, h: 1 }, focus: 0.4, aperture: 0.7, exposure: 1, zoom: 1, zcx: 0, zcy: 0, dolly: 0,
       parx: 0, pary: 0, roll: 0, tilt: 0, peak: 0, ca: 0, smear: 0, vig: 0.28, alpha: 0, radius: 2, zebra: 0, nd: 0,
@@ -250,6 +255,7 @@ export class Engine {
     const t = (now - this.t0) / 1000;
     const W = this.canvas.width, H = this.canvas.height;
     const cd = this.cdpr;
+    if (this.stats) this.stats.frames++;
     this.renderer.bindFramebuffer();
     gl.viewport(0, 0, W, H);
     gl.clearColor(0, 0, 0, 0);
@@ -266,6 +272,7 @@ export class Engine {
       u.uP.value = st.eyeP; u.uAspect.value = W / H; u.uPhase.value = 0; u.uC.value = [st.eyeCx, st.eyeCy];
       u.tScene.value = this.rtCur.texture; u.uFrac.value = [this.used.w / this.rtCur.width, this.used.h / this.rtCur.height]; u.uDim.value = this.scene ? st.dim : 0;
       this.mEye.draw();
+      if (this.stats) this.stats.eyepiece++;
       return;
     }
     if (st.alpha <= 0 || !this.scene) return;
@@ -288,6 +295,7 @@ export class Engine {
     this.renderer.bindFramebuffer();
     gl.viewport(0, 0, W, H);
     this.mComp.draw();
+    if (this.stats) this.stats.composite++;
     if (now < this.meterWanted && now - this.lastMeter > 110 && !this.pendingRead) { this.lastMeter = now; this.measure(t); }
   }
 
@@ -318,6 +326,7 @@ export class Engine {
     this.renderer.bindFramebuffer(this.rtCur);
     this.gl.viewport(0, 0, w, h);
     this.mScene.draw();
+    if (this.stats) this.stats.scene++;
   }
 
   /** Mean displayed luminance (0..1) around a point of the last readback (fractions of the frame, y down). */
@@ -345,6 +354,7 @@ export class Engine {
     this.renderer.bindFramebuffer(this.rtSmall);
     gl.viewport(0, 0, 64, 40);
     this.mComp.draw();
+    if (this.stats) this.stats.readback++;
     // the read happens at the start of the next frame, when the GPU has finished this one: no stall, no buffer games
     this.pendingRead = true;
     this.renderer.bindFramebuffer();
