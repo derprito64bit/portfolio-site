@@ -127,7 +127,6 @@ ol, ul { list-style: none; }
 }
 .intro__kind { color: var(--ink); }
 .intro__count { color: var(--ink-2); }
-.intro__ph { margin-left: -14px; }
 .name {
   position: absolute; left: var(--g); right: var(--g); bottom: calc(var(--g) - var(--name-size) * 0.03);
   font-family: var(--f-display);
@@ -384,7 +383,6 @@ ol, ul { list-style: none; }
   .lm { left: var(--g); right: var(--g); width: auto; top: 26%; }
   .meter, .meter-slot { width: 100%; }
   .intro__meta { flex-wrap: wrap; gap: 6px 14px; bottom: calc(var(--g) + 64px + var(--name-size) * 1.72 + 16px); }
-  .intro__ph { margin-left: 0; }
   .intro__count { width: 100%; order: 3; }
   .name { bottom: calc(var(--g) + 64px); line-height: 0.86; white-space: normal; }
   .name__w { display: block; width: max-content; }
