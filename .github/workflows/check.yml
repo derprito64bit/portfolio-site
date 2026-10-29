@@ -1,6 +1,7 @@
 # CI has no GPU: the harness runs on / with Playwright Chromium (software GL), and GL, performance and Lighthouse
 # evidence comes from the reference host (RX 6700 XT) through scripts/crew.mjs. This job proves the build, the checks and
-# the harness core on / (console, overflow at 320 px, contrast, keyboard, flash, axe).
+# the harness core on / (console, overflow at 320 px, contrast, keyboard, flash, axe), and (W-V0b) the D-055 gating
+# both ways, the state-machine smoke in Chromium and WebKit and the idle check on the engine's frame counters.
 name: check
 
 on:
@@ -18,7 +19,7 @@ concurrency:
 jobs:
   check:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 35
     env:
       CI: 'true'
     steps:
@@ -33,14 +34,17 @@ jobs:
 
       - run: npm ci
 
-      - name: Playwright Chromium (harness on /)
-        run: npx playwright install --with-deps chromium
+      - name: Playwright Chromium and WebKit (harness and smoke on /)
+        run: npx playwright install --with-deps chromium webkit
 
       - name: npm run check (build, astro check, lint, ownership, deps, size-limit, media-caps, ph-gate, CSS lint, tokens)
         run: npm run check -- --log check.log --json check.json
 
       - name: Unit tests (size-limit groups and the HTML / negative control, media-caps and its negative controls, console allowlist, tokens, host-load rules)
         run: npm run test:w-f-unit
+
+      - name: Unit tests (D-055 test hooks both ways, with four mutants that must fail; the idle check's rules)
+        run: npm run test:unit
 
       - name: Harness on / (content, contrast, flash self-test)
         run: |
@@ -69,6 +73,24 @@ jobs:
           H_NO3D: '1'
         run: npm run h:flash -- --url /
 
+      # W-V0b. With GL at G1 (640 x 400, DPR 1: a tenth of D2's pixels, so software GL keeps up): the state-machine
+      # smoke and the gating check in Chromium and WebKit, with the frame counters asserted per step, then the idle check.
+      - name: Smoke with GL at G1 (state machine and D-055 gating, Chromium and WebKit; counters per step)
+        env:
+          SMOKE_PROFILE: G1
+          SMOKE_JSON: smoke-gl.json
+        run: npm run test:smoke
+
+      - name: Smoke on the flat-frame path (no WebGL in either engine)
+        env:
+          H_NO3D: '1'
+          SMOKE_PROFILE: G1
+          SMOKE_JSON: smoke-flat.json
+        run: npm run test:smoke
+
+      - name: Idle check with GL at G1 (frame counters at rest, hidden and reduced; Chromium trace cross-check)
+        run: npm run h:idle -- --profile G1 --window 5 --browsers chromium,webkit --out idle.json
+
       - name: Crew-loop self-test (the lean loop's rules on a stubbed loop, each with a negative control; no agents)
         run: node scripts/fleet/loop/crew-loop.check.cjs --self-test --offline
 
@@ -80,4 +102,7 @@ jobs:
           path: |
             check.log
             check.json
+            smoke-gl.json
+            smoke-flat.json
+            idle.json
           if-no-files-found: ignore
