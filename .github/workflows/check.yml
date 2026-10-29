@@ -52,7 +52,7 @@ jobs:
       # GL_INVALID or CONTEXT_LOST, only the one allow-listed driver advisory). Every instrument that drives the page through
       # raise, frames, open and close runs with H_NO3D=1 (--disable-3d-apis: the page's flat-frame path), which is fast and
       # reaches every state. The reference host runs them all with GL.
-      - name: Harness on / (console: fault injection, then / with WebGL)
+      - name: Harness on / (console fault injection, then / with WebGL)
         run: npm run h:console
 
       - name: Harness on / (console driven through every state, overflow at 320 px, keyboard, axe)
