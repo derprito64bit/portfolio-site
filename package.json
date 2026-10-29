@@ -32,7 +32,8 @@
     "h:flash": "node tests/harness/flash/run.mjs",
     "h:axe": "node tests/harness/axe/run.mjs",
     "h:keyboard": "node tests/harness/keyboard/run.mjs",
-    "h:idle": "node tests/harness/idle/run.mjs"
+    "h:idle": "node tests/harness/idle/run.mjs",
+    "h:idle:negative": "node tests/harness/idle/negative.mjs"
   },
   "dependencies": {
     "@fontsource-variable/archivo": "5.3.0",

@@ -91,6 +91,11 @@ jobs:
       - name: Idle check with GL at G1 (frame counters at rest, hidden and reduced; Chromium trace cross-check)
         run: npm run h:idle -- --profile G1 --window 5 --browsers chromium,webkit --out idle.json
 
+      # The negative control: --plant hot keeps the engine drawing; the idle check must FAIL on the plant (the reduced EVF
+      # draws > 0 frames). This step fails when the planted run passes, crashes or fails on anything else.
+      - name: Idle negative control (the planted hot run must fail)
+        run: npm run h:idle:negative -- --profile G1 --window 3 --browsers chromium --out idle-negative.json
+
       - name: Crew-loop self-test (the lean loop's rules on a stubbed loop, each with a negative control; no agents)
         run: node scripts/fleet/loop/crew-loop.check.cjs --self-test --offline
 
@@ -105,4 +110,5 @@ jobs:
             smoke-gl.json
             smoke-flat.json
             idle.json
+            idle-negative.json
           if-no-files-found: ignore
