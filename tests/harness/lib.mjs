@@ -42,6 +42,9 @@ export const PROFILES = {
   // 200% zoom: half the CSS viewport at twice the device pixels.
   'Z-D2': { ...mouse(720, 450, 4), browser: 'chromium', zoom: 2 },
   'Z-P2': { ...touch(195, 422, 6, true), browser: 'chromium', zoom: 2 },
+  // W-V0b: a small GL viewport at DPR 1 (a tenth of D2's pixels), for runs with GL on software rendering (CI).
+  G1: { ...mouse(640, 400, 1), browser: 'chromium' },
+  'WK-G1': { ...mouse(640, 400, 1), browser: 'webkit' },
 };
 export const MODES = ['auto', 'reduced'];
 /** The Viewfinder has one tier (W-V0a); the render tiers of the Darkroom are retired. */
@@ -304,6 +307,40 @@ export function consoleGate(page, { expectStatus = [], allow = loadAllowlist() }
     },
   };
 }
+
+/**
+ * The flat-frame path's own notices (no WebGL: OGL's 'unable to create webgl context' error and the Viewfinder's
+ * warning). They are expected only on that path (H_NO3D, or the WebKit init script below); every other message is
+ * judged as consoleGate judges it.
+ */
+export const FLAT_NOTICE_RE = /^(\[viewfinder\] WebGL unavailable, using flat frames|unable to create webgl context)/;
+/** consoleGate's verdict with the flat-frame notices dropped (call it only on the flat-frame path). */
+export function flatPathVerdict(v) {
+  const failures = v.failures.filter((x) => !FLAT_NOTICE_RE.test(x.text));
+  return { ...v, failures, pass: failures.length === 0 };
+}
+/**
+ * WebKit has no --disable-3d-apis: this init script gives it the same flat-frame path (every WebGL context request
+ * returns null, as Chromium's flag does). Other context types (2d) are untouched.
+ */
+export const NO_WEBGL_INIT = `(() => {
+  const get = HTMLCanvasElement.prototype.getContext;
+  HTMLCanvasElement.prototype.getContext = function (type, ...rest) {
+    return /^(webgl2?|experimental-webgl)$/.test(String(type)) ? null : get.call(this, type, ...rest);
+  };
+})();`;
+/** D-055: the window's own properties named __vf* (the test hooks). Empty on a page loaded without ?vf-test. */
+export const vfGlobals = (page) => page.evaluate(() => Object.getOwnPropertyNames(window).filter((k) => /^__vf/i.test(k)));
+/**
+ * A hidden tab, emulated: headless Chromium reports every page visible (it only throttles a background page's frames),
+ * so document.hidden and visibilityState are overridden and visibilitychange fires, in both engines. The engine reads
+ * document.hidden itself, so this tests its own stop; a real hidden tab also stops requestAnimationFrame.
+ */
+export const setHidden = (page, hidden) => page.evaluate((h) => {
+  Object.defineProperty(document, 'hidden', { configurable: true, get: () => h });
+  Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => (h ? 'hidden' : 'visible') });
+  document.dispatchEvent(new Event('visibilitychange'));
+}, hidden);
 
 // ---------------------------------------------------------------- page helpers
 /**
