@@ -375,19 +375,45 @@ export function lcpElementOf(lhr) {
   const legacy = lhr?.audits?.['largest-contentful-paint-element']?.details?.items?.[0]?.items?.[0]?.node;
   const node = insight ?? (legacy?.type === 'node' || legacy?.snippet ? legacy : null);
   if (!node) return null;
-  return { source: insight ? 'lcp-breakdown-insight' : 'largest-contentful-paint-element', selector: node.selector ?? null, snippet: node.snippet ?? null, nodeLabel: node.nodeLabel ?? null };
+  return { source: insight ? 'lcp-breakdown-insight' : 'largest-contentful-paint-element', selector: node.selector ?? null, snippet: node.snippet ?? null, nodeLabel: node.nodeLabel ?? null, path: node.path ?? null };
 }
-const isH1 = (e) => /^<h1[\s>]/i.test(e.snippet ?? '') || /(^|[\s>])h1(?=[#.[:]|$)/i.test(String(e.selector ?? '').split('>').pop().trim());
-/** Print 1's DOM still carries data-lcp="print-1" (the marker W-S1's hero puts on it); Lighthouse's snippet shows it. */
-const isPrint1Still = (e) => /\bdata-lcp="print-1"/.test(e.snippet ?? '');
 /**
- * budgets.md: the LCP element is the h1 on mouse profiles (Lighthouse desktop), or the h1 or print 1's still on touch
- * profiles (Lighthouse mobile). Returns { ok, why }.
+ * The node is an element of `tag` or inside one. Lighthouse's DOM path ('1,HTML,1,BODY,3,HEADER,5,H1,1,SPAN': index
+ * and tag pairs from the root) holds every ancestor; without it, the selector's parts and the snippet's own tag.
  */
-export function lcpElementVerdict(el, formFactor) {
+export function inTag(e, tag) {
+  if (e?.path) return String(e.path).split(',').some((p, i) => i % 2 === 1 && p.toUpperCase() === tag.toUpperCase());
+  const part = new RegExp(`^${tag}(?=[#.[:]|$)`, 'i');
+  return String(e?.selector ?? '').split('>').some((s) => part.test(s.trim())) || new RegExp(`^<${tag}[\\s>]`, 'i').test(e?.snippet ?? '');
+}
+/** The first print carries data-lcp="print-1" (W-V1 keeps the marker name); Lighthouse's snippet shows it. */
+const isPrint1 = (e) => /\bdata-lcp="print-1"/.test(e.snippet ?? '');
+/** The name on /: the h1 that carries data-name. */
+const isNameH1 = (e) => /^<h1\b[^>]*\sdata-name(?=[\s=>/]|$)/i.test(e.snippet ?? '');
+/**
+ * What the built page says about its h1s (budgets-v2 Timing needs it on /, where a descendant's snippet cannot show its
+ * h1's attributes): how many there are, and whether the one h1 is the name (carries data-name).
+ */
+export function lcpPageFacts(html) {
+  const h1s = [...String(html ?? '').matchAll(/<h1\b[^>]*>/gi)].map((m) => m[0]);
+  return { h1s: h1s.length, nameH1: h1s.length === 1 && /\sdata-name(?=[\s=>/]|$)/i.test(h1s[0]) };
+}
+/**
+ * budgets-v2 Timing, the same on mobile and desktop (W-V0b fix pass): on / the LCP element is the name, h1[data-name]
+ * or any descendant of it (`page` is lcpPageFacts of the built route: a descendant counts only when the page's one h1 is
+ * the name); on /work/<slug>/ the h1 (or inside it) or the first print, carrying data-lcp="print-1"; on any other route
+ * the h1 (or inside it). Returns { ok, why }.
+ */
+export function lcpElementVerdict(el, route = '/', page = null) {
   if (!el) return { ok: false, why: 'no LCP element in the report' };
-  const ok = formFactor === 'desktop' ? isH1(el) : isH1(el) || isPrint1Still(el);
-  return ok ? { ok: true, why: null } : { ok: false, why: `LCP element ${el.selector ?? el.snippet} is not ${formFactor === 'desktop' ? 'the h1' : "the h1 or print 1's still"}` };
+  const where = el.selector ?? el.snippet;
+  if (route === '/' || route === '/index.html') {
+    const ok = isNameH1(el) || (inTag(el, 'h1') && page?.nameH1 === true);
+    return ok ? { ok: true, why: null } : { ok: false, why: `LCP element ${where} is not the name (h1[data-name] or inside it)${page ? '' : ' (no page facts for /)'}` };
+  }
+  const work = route.startsWith('/work/');
+  const ok = inTag(el, 'h1') || (work && isPrint1(el));
+  return ok ? { ok: true, why: null } : { ok: false, why: `LCP element ${where} is not ${work ? 'the h1 or the first print (data-lcp="print-1")' : 'the h1'}` };
 }
 
 // ---------------------------------------------------------------- evidence

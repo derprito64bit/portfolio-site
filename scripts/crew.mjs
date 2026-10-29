@@ -9,15 +9,17 @@
 //                                               ring coverage, text spacing, forced colours, dark scheme, an
 //                                               accessibility-tree snapshot per route and the text-over-GL check
 //   node scripts/crew.mjs lighthouse [opts]     Lighthouse (the budgets block's version and run count) per form
-//                                               factor, medians over the clean runs, valid only on a real
-//                                               renderer at the expected tier and with the LCP element budgets.md names
-//                                               (the h1 on desktop; the h1 or print 1's still on mobile); every run
-//                                               must request GL after the observed FCP (D-005), and the medians must
-//                                               meet the Lighthouse, LCP, TBT and CLS budgets; host load per
-//                                               Measurement validity R1-R5 (hostload.ps1 precheck and -Watch, #67)
+//                                               factor, medians over the clean runs, valid only on hardware GL (a GL
+//                                               probe per set, with the same Lighthouse and Chrome flags) and with the
+//                                               LCP element budgets-v2 names (on / the name, h1[data-name] or inside
+//                                               it; on /work/<slug>/ the h1 or the first print, data-lcp="print-1");
+//                                               the medians must meet the Lighthouse, LCP, TBT and CLS budgets; host
+//                                               load per Measurement validity R1-R5 (hostload.ps1 precheck and -Watch,
+//                                               #67). D-005's engine chunk after FCP is reported, not judged (W-V0b)
 // Options: --routes /,/404.html  --profiles D1,D2,...  --modes auto,static,reduced
 //          --crew W-F  --wave wave3a  --role crew|gate  --out <dir>
-//          lighthouse: --runs n  --budgets <budgets.md>  --precheck-wait <min>  --plant bench-low:<n|all>,watch-flagged:<n|all>,a11y-low:<n|all>
+//          lighthouse: --runs n  --form-factors mobile,desktop  --no-r5  --budgets <budgets.md>  --precheck-wait <min>
+//                      --plant bench-low:<n|all>,watch-flagged:<n|all>,a11y-low:<n|all>
 //                      --stub <file> (tests only: planted hostload and Lighthouse results, see STUB below)
 // Evidence goes to ../portfolio-evidence/<wave>/<crew>/<sha7>/<role>/<command>/ with manifest.json. Any failed item
 // makes the command exit 1; otherwise a blocked (host) item makes it exit 75.
@@ -304,17 +306,65 @@ async function lhRun() {
     process.stdin.on('data', (d) => { buf += d; if (buf.includes('go')) res(); });
     process.stdin.on('end', res);
   });
-  const args = ['-y', `lighthouse@${b.site.protocol.lighthouseVersion}`, `http://127.0.0.1:${port}${o.route}`, '--output=json', `--output-path=${o.file}`, '--chrome-flags=--headless=new --mute-audio', '--quiet', '--only-categories=performance,accessibility,best-practices,seo', ...(o.ff === 'desktop' ? ['--preset=desktop'] : [])];
-  // npm's own npx script under this Node, so no shell splits the --chrome-flags value. Async, because the server
-  // Lighthouse loads runs in this process: a blocking spawn would starve it.
-  const npx = join(dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npx-cli.js');
-  const r = await runAsync(existsSync(npx) ? process.execPath : 'npx', existsSync(npx) ? [npx, ...args] : args);
+  const r = await lighthouseCli(b, `http://127.0.0.1:${port}${o.route}`, o.file, o.ff);
   await new Promise((res) => server.close(res));
   if (r.status !== 0) process.stderr.write(r.stderr.slice(-400));
   return r.status ?? 1;
 }
 
-const GL_CHUNK = /\/_astro\/(gl|three\.[a-z]+)\.[\w-]+\.js$/;
+/**
+ * One Lighthouse run as every measured run takes it: the budgets block's version, the same Chrome flags and the form
+ * factor's preset. npm's own npx script under this Node, so no shell splits the --chrome-flags value. Async, because
+ * the server Lighthouse loads runs in this process: a blocking spawn would starve it.
+ */
+function lighthouseCli(b, url, file, ff) {
+  const args = ['-y', `lighthouse@${b.site.protocol.lighthouseVersion}`, url, '--output=json', `--output-path=${file}`, '--chrome-flags=--headless=new --mute-audio', '--quiet', '--only-categories=performance,accessibility,best-practices,seo', ...(ff === 'desktop' ? ['--preset=desktop'] : [])];
+  const npx = join(dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npx-cli.js');
+  return runAsync(existsSync(npx) ? process.execPath : 'npx', existsSync(npx) ? [npx, ...args] : args);
+}
+
+/**
+ * The GL probe (W-V0b fix pass), once per set: Lighthouse with the same version, Chrome flags and preset as the set's
+ * runs, on a page that only asks for a WebGL2 context and marks its renderer as a user timing. No site code is involved
+ * (D-055). A set whose Chrome has no WebGL2 (the Viewfinder then draws its flat frame) or renders it in software is not
+ * a measurement of the site: its runs are invalid. Resolves { renderer, gl: 'hw' | 'sw' | 'none' | null, file, error }.
+ */
+const PROBE_HTML = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>GL probe</title></head><body><h1>GL probe</h1><script>
+let r = 'none';
+try { const gl = document.createElement('canvas').getContext('webgl2'); if (gl) { const e = gl.getExtension('WEBGL_debug_renderer_info'); r = String(e ? gl.getParameter(e.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER)); } } catch (e) { r = 'none'; }
+performance.mark('probe:renderer=' + r);
+</script></body></html>`;
+const glKind = (renderer, SOFTWARE) => (renderer === null || renderer === undefined ? null : renderer === 'none' ? 'none' : SOFTWARE.test(renderer) ? 'sw' : 'hw');
+async function glProbe(lib, dir, b, ff) {
+  const file = join(dir, `gl-probe-${ff}.json`);
+  if (STUB) {
+    if (!STUB.probes?.[ff]) throw new Error(`--stub: no probes.${ff} (the planted GL probe renderer of the set)`);
+    const s = stubNext(STUB.probes[ff]);
+    return { renderer: s.renderer ?? null, gl: glKind(s.renderer, lib.SOFTWARE_RENDERER), file: null, error: s.error ?? null };
+  }
+  const site = join(dir, 'gl-probe-site');
+  mkdirSync(site, { recursive: true });
+  writeFileSync(join(site, 'index.html'), PROBE_HTML);
+  const { startServer } = await import('./serve-dist.mjs');
+  const server = await startServer({ root: site, port: 0, quiet: true });
+  const r = await lighthouseCli(b, `http://127.0.0.1:${server.address().port}/`, file, ff);
+  await new Promise((res) => server.close(res));
+  if (r.status !== 0 || !existsSync(file)) return { renderer: null, gl: null, file: null, error: `lighthouse exited ${r.status}: ${r.stderr.trim().slice(-200)}` };
+  const lhr = JSON.parse(readFileSync(file, 'utf8'));
+  const mark = (lhr.audits['user-timings']?.details?.items ?? []).map((x) => x.name).find((x) => x.startsWith('probe:renderer='));
+  const renderer = mark ? mark.slice('probe:renderer='.length) : null;
+  return { renderer, gl: glKind(renderer, lib.SOFTWARE_RENDERER), file: `gl-probe-${ff}.json`, error: mark ? null : 'the probe page left no probe:renderer mark' };
+}
+
+/** budgets-v2's LCP rule needs the built route's h1s (lib.lcpPageFacts); --stub plants them as pages[route]. */
+function pageFacts(lib, route) {
+  if (STUB) return STUB.pages?.[route] !== undefined ? lib.lcpPageFacts(STUB.pages[route]) : null;
+  const file = join(ROOT, 'dist', route.endsWith('/') ? join(route, 'index.html') : route);
+  return existsSync(file) ? lib.lcpPageFacts(readFileSync(file, 'utf8')) : null;
+}
+
+// D-005, reported only (W-V0b): the engine's lazy chunk (src/evf/gl/engine.ts) requested after the observed FCP.
+const GL_CHUNK = /\/_astro\/engine\.[\w-]+\.js$/;
 const plantSpec = (kind) => {
   const p = String(o.plant || '').split(',').find((x) => x.startsWith(`${kind}:`));
   return p ? p.slice(kind.length + 1) : null;
@@ -327,8 +377,8 @@ const planted = (kind, n) => {
 /**
  * --stub <file> (tests only, never a measurement): the hostload precheck and -Watch results and the Lighthouse reports
  * come from a JSON file instead of PowerShell and Lighthouse ({ prechecks: [{exitCode, json}], runs: { mobile: [{lhr,
- * watch}], desktop: [...] } }, each list taken in order, its last entry repeated), and R1's wait runs on a virtual
- * clock. Everything else is this command as it runs for real, so tests/w-f/hostload.test.mjs drives the whole set
+ * watch}], desktop: [...] }, probes: { mobile: [{renderer}], desktop: [...] }, pages: { '/': '<html of the route>' } },
+ * each list taken in order, its last entry repeated), and R1's wait runs on a virtual clock. Everything else is this command as it runs for real, so tests/w-f/hostload.test.mjs drives the whole set
  * loop (R1, R3, R5, the summary, the manifest items and the exit code) with planted runs (round-2 should-fix S2).
  */
 const STUB = o.stub ? JSON.parse(readFileSync(resolve(String(o.stub)), 'utf8')) : null;
@@ -337,7 +387,7 @@ let virtualMs = 0;
 const clock = STUB ? { now: () => virtualMs, sleep: async (ms) => { virtualMs += ms; } } : { now: () => Date.now(), sleep: (ms) => new Promise((r) => setTimeout(r, ms)) };
 
 /** One Lighthouse run in a watched worker. Resolves with its report fields, host load and R2 verdict. */
-async function lighthouseRun(lib, dir, b, route, ff, n) {
+async function lighthouseRun(lib, dir, b, route, ff, n, probe, page) {
   const base = `${slug(route)}-${ff}-${n}`;
   const file = join(dir, `${base}.json`);
   const watchFile = join(dir, `hostload-${base}-watch.json`);
@@ -378,29 +428,27 @@ async function lighthouseRun(lib, dir, b, route, ff, n) {
     plantedFields.push('accessibility');
   }
   const suspect = lib.hostSuspectReasons({ benchmarkIndex, watch: watchResult }, b.host);
-  const timings = lhr.audits['user-timings']?.details?.items?.map((x) => x.name) ?? [];
-  const renderer = timings.find((x) => x.startsWith('stage:renderer='))?.slice(15) ?? null;
-  const tier = timings.find((x) => x.startsWith('stage:tier='))?.slice(11).split(':')[0] ?? null;
-  // A run is valid on a real renderer at the expected tier, with the LCP element budgets.md names (W-D030), on a host
-  // that was quiet for it (R2).
+  // A run is valid on hardware GL (the set's GL probe: software GL or no WebGL means the page is not drawn as a visitor
+  // with a GPU sees it), with the LCP element budgets-v2 names for its route, on a host that was quiet for it (R2). The
+  // Viewfinder has one tier, so there is no tier check.
   const lcpElement = lib.lcpElementOf(lhr);
-  const lcpCheck = lib.lcpElementVerdict(lcpElement, ff);
+  const lcpCheck = lib.lcpElementVerdict(lcpElement, route, page);
   const invalid = [
-    !renderer || lib.SOFTWARE_RENDERER.test(renderer) ? `renderer ${renderer ?? 'missing'}` : null,
-    tier !== (ff === 'mobile' ? 'lite' : 'full') ? `tier ${tier ?? 'missing'}` : null,
+    probe.error ? `GL probe failed (${probe.error}): hardware GL not confirmed` : null,
+    !probe.error && probe.gl === 'none' ? 'no WebGL (the GL probe got no WebGL2 context, so the page draws its flat frame)' : null,
+    !probe.error && probe.gl === 'sw' ? `software GL (${probe.renderer})` : null,
     lcpCheck.why,
     ...suspect,
   ].filter(Boolean);
-  // D-005: the GL chunk loads after first paint. Observed FCP and the user-timing mark share the navigation clock;
-  // network-requests times start at the document request, which is at or after navigation start.
+  // D-005, reported only: the engine's lazy chunk is requested after first paint. network-requests times start at the
+  // document request, which is at or after navigation start, as observed FCP does.
   const observedFcp = lhr.audits.metrics?.details?.items?.[0]?.observedFirstContentfulPaint ?? null;
-  const glMarkMs = lhr.audits['user-timings']?.details?.items?.find((x) => x.name === 'stage:gl-start')?.startTime ?? null;
   const glReqs = (lhr.audits['network-requests']?.details?.items ?? []).filter((x) => GL_CHUNK.test(new URL(x.url).pathname));
   const glRequestMs = glReqs.length ? Math.min(...glReqs.map((x) => x.networkRequestTime ?? x.rendererStartTime)) : null;
-  const glAfterFcp = observedFcp !== null && glMarkMs !== null && glRequestMs !== null && glMarkMs > observedFcp && glRequestMs > observedFcp;
+  const glAfterFcp = observedFcp !== null && glRequestMs !== null ? glRequestMs > observedFcp : null;
   return {
     run: n, file: `${base}.json`, watchFile: existsSync(watchFile) ? `hostload-${base}-watch.json` : null, watchVerdict: watchResult?.json?.verdict ?? null, watchExit: watchResult?.exitCode ?? null,
-    benchmarkIndex, suspect, planted: plantedFields, valid: invalid.length === 0, invalid, renderer, tier, observedFcp, glMarkMs, glRequestMs, glAfterFcp,
+    benchmarkIndex, suspect, planted: plantedFields, valid: invalid.length === 0, invalid, renderer: probe.renderer, gl: probe.gl, tier: lib.expectedTier(), observedFcp, glRequestMs, glAfterFcp,
     performance: lhr.categories.performance.score, accessibility, bestPractices: lhr.categories['best-practices'].score, seo: lhr.categories.seo?.score ?? null,
     lcp: lhr.audits['largest-contentful-paint'].numericValue, cls: lhr.audits['cumulative-layout-shift'].numericValue, tbt: lhr.audits['total-blocking-time'].numericValue, fcp: lhr.audits['first-contentful-paint'].numericValue,
     lcpElement, lcpElementOk: lcpCheck.ok,
@@ -444,10 +492,12 @@ async function lighthouse() {
   const rules = b.host?.rules ?? {};
   const routes = list(o.routes, '/');
   const runs = Number(o.runs) || site.protocol.lighthouseRuns;
+  const formFactors = list(o['form-factors'], 'mobile,desktop').filter((f) => f === 'mobile' || f === 'desktop');
   const items = [];
   const loads = [];
   for (const route of routes) {
-    for (const ff of ['mobile', 'desktop']) {
+    const page = pageFacts(lib, route);
+    for (const ff of formFactors) {
       const name = `${slug(route)}-${ff}`;
       const budget = lib.lighthouseBudget(site, ff);
       const pre = [await precheck(lib, dir, `${name}-pre`)];
@@ -455,6 +505,8 @@ async function lighthouse() {
       let need = runs;
       let blocked = pre[0].ok ? null : `precheck ${pre[0].last.verdict ?? `exit ${pre[0].last.exitCode}`}: ${pre[0].last.reasons.slice(0, 3).join('; ')}`;
       let grew = null;
+      // The GL probe, once the host is clear (it is not timed): every run of the set is judged on it.
+      const probe = blocked ? { renderer: null, gl: null, file: null, error: 'not taken (the set is blocked)' } : await glProbe(lib, dir, b, ff);
       while (!blocked) {
         const step = lib.setStep(reports.map((r) => ({ suspect: r.suspect })), need, rules.extraRunsPerSetMax ?? 0);
         if (step.next === 'blocked') {
@@ -475,7 +527,7 @@ async function lighthouse() {
           }
           break;
         }
-        reports.push(await lighthouseRun(lib, dir, b, route, ff, reports.length + 1));
+        reports.push(await lighthouseRun(lib, dir, b, route, ff, reports.length + 1, probe, page));
       }
       const clean = reports.filter((r) => !r.suspect.length);
       const replaced = reports.filter((r) => r.suspect.length).map((r) => ({ run: r.run, reasons: r.suspect }));
@@ -485,22 +537,23 @@ async function lighthouse() {
       const { medians } = sum;
       const median = sum.medianRun;
       const budgetPass = Boolean(medians) && medians.lcp <= budget.lcp && medians.tbt <= budget.tbt && medians.cls <= budget.cls;
-      const glOrderPass = clean.every((r) => r.glAfterFcp);
+      // D-005 is reported, not judged (W-V0b): the runs whose engine chunk was requested after the observed FCP.
+      const glAfterFcpRuns = clean.filter((r) => r.glAfterFcp === true).length;
       // The clear precheck the set ran after (a wait's busy tries describe the host before the set, not during it).
       const ran = pre[0].tries.find((t) => t.exitCode === 0) ?? pre[0].last;
       const load = { benchmarkIndex: lib.median(clean.map((r) => r.benchmarkIndex)), cpuBusyPct: ran.cpuBusyPct, gpu3dPct: ran.gpu3dPct };
       loads.push(load); // a blocked set still records the precheck that blocked it
       const summaryFile = `${name}-summary.json`;
       // #11's stub-home line asks for CLS 0 (the median), inside budgets.md's CLS limit.
-      const pass = blocked ? null : clean.every((r) => r.valid) && medians.performance >= budget.performance && medians.accessibility >= budget.accessibility && medians.bestPractices >= budget.bestPractices && medians.cls === 0 && budgetPass && glOrderPass;
-      lib.writeJson(join(dir, summaryFile), { route, formFactor: ff, budgetsFrom: o.budgets ?? 'docs/agents/budgets.md', budget, need, grew, prechecks: pre, blocked, runs: reports, clean: clean.map((r) => r.run), replaced, medians, medianRun: median?.run ?? null, worstRun: sum.worstRun, worst: sum.worst, pastBudget: sum.pastBudget, budgetPass, glOrderPass, hostLoad: load, pass });
+      const pass = blocked ? null : clean.every((r) => r.valid) && medians.performance >= budget.performance && medians.accessibility >= budget.accessibility && medians.bestPractices >= budget.bestPractices && medians.cls === 0 && budgetPass;
+      lib.writeJson(join(dir, summaryFile), { route, formFactor: ff, budgetsFrom: o.budgets ?? 'docs/agents/budgets.md', budget, need, grew, prechecks: pre, probe, page, blocked, runs: reports, clean: clean.map((r) => r.run), replaced, medians, medianRun: median?.run ?? null, worstRun: sum.worstRun, worst: sum.worst, pastBudget: sum.pastBudget, budgetPass, glAfterFcpRuns, hostLoad: load, pass });
       for (const r of reports) {
         const suspect = r.suspect.length > 0;
         items.push(lib.item(dir, r.file, {
           kind: 'lighthouse-run', route, profile: ff, mode: 'auto', tier: r.tier,
           // A replaced run is neither pass nor fail (R3): it is listed with its reason and left out of the medians.
-          pass: suspect ? null : r.valid && r.glAfterFcp, ...(suspect ? { replaced: true } : {}),
-          metrics: { performance: r.performance, accessibility: r.accessibility, cls: r.cls, lcp: Math.round(r.lcp), tbt: Math.round(r.tbt), benchmarkIndex: r.benchmarkIndex, watch: r.watchFile, watchVerdict: r.watchVerdict, hostSuspect: r.suspect, planted: r.planted, lcpElement: r.lcpElement?.selector ?? null, lcpElementOk: r.lcpElementOk, invalid: r.invalid, renderer: r.renderer, observedFcp: r.observedFcp, glMarkMs: r.glMarkMs === null ? null : Math.round(r.glMarkMs), glRequestMs: r.glRequestMs === null ? null : Math.round(r.glRequestMs), glAfterFcp: r.glAfterFcp },
+          pass: suspect ? null : r.valid, ...(suspect ? { replaced: true } : {}),
+          metrics: { performance: r.performance, accessibility: r.accessibility, cls: r.cls, lcp: Math.round(r.lcp), tbt: Math.round(r.tbt), benchmarkIndex: r.benchmarkIndex, watch: r.watchFile, watchVerdict: r.watchVerdict, hostSuspect: r.suspect, planted: r.planted, lcpElement: r.lcpElement?.selector ?? null, lcpElementOk: r.lcpElementOk, invalid: r.invalid, renderer: r.renderer, gl: r.gl, observedFcp: r.observedFcp, glRequestMs: r.glRequestMs === null ? null : Math.round(r.glRequestMs), glAfterFcp: r.glAfterFcp },
         }));
       }
       // R1: a busy try that a retry cleared is a wait (pass null, no blocked); only a precheck that never cleared blocks.
@@ -515,7 +568,7 @@ async function lighthouse() {
           medianPerformance: medians?.performance ?? null, accessibility: medians?.accessibility ?? null, bestPractices: medians?.bestPractices ?? null, cls: medians?.cls ?? null,
           medianLcp: medians ? Math.round(medians.lcp) : null, medianTbt: medians ? Math.round(medians.tbt) : null, medianFcp: medians ? Math.round(medians.fcp) : null,
           worstRun: sum.worstRun, worst: sum.worst, pastBudgetCount: sum.pastBudget.count, pastBudget: sum.pastBudget.runs,
-          budget, budgetPass, glAfterFcpRuns: clean.filter((r) => r.glAfterFcp).length, medianRun: median?.run ?? null, renderer: median?.renderer ?? null, lcpElement: median?.lcpElement?.selector ?? null, lcpElementOkRuns: clean.filter((r) => r.lcpElementOk).length, ...load,
+          budget, budgetPass, glAfterFcpRuns, medianRun: median?.run ?? null, renderer: probe.renderer, gl: probe.gl, probe: probe.file, lcpElement: median?.lcpElement?.selector ?? null, lcpElementOkRuns: clean.filter((r) => r.lcpElementOk).length, ...load,
         },
       }));
     }
