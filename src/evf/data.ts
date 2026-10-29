@@ -2,10 +2,10 @@
 // content/owner-facts.md; anything unknown stays a visibly typed placeholder.
 import projectsJson from '../../content/projects.json';
 import honoursJson from '../../content/honours.json';
+import profileJson from '../../content/profile.json';
 
-/** The owner's real name is not known yet (owner-facts.md). One constant, rendered with a visible placeholder tag. */
-export const OWNER_NAME = 'Your Name';
-export const OWNER_NAME_PLACEHOLDER = '[PLACEHOLDER: real name]';
+/** The owner's name, from content/profile.json (owner-facts.md: CONFIRMED 2026-10-29). */
+export const OWNER_NAME: string = profileJson.name;
 /** Known (TO CONFIRM): the GitHub account. */
 export const HANDLE = 'derprito64bit';
 export const GITHUB_URL = 'https://github.com/derprito64bit';

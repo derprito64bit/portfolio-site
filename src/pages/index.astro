@@ -3,7 +3,7 @@
 import '@fontsource-variable/archivo/wdth.css';
 import '@fontsource-variable/chivo-mono/wght.css';
 import '../evf/style.css';
-import { OWNER_NAME, OWNER_NAME_PLACEHOLDER, HANDLE, GITHUB_URL, projects, honours } from '../evf/data';
+import { OWNER_NAME, HANDLE, GITHUB_URL, projects, honours } from '../evf/data';
 
 const pad = (n: number) => String(n).padStart(2, '0');
 const ticks = Array.from({ length: 19 }, (_, i) => i - 9); // -3 EV .. +3 EV in thirds
@@ -65,7 +65,6 @@ const dist = [{ l: '∞', z: 0.95 }, ...[3, 1.5, 1, 0.7, 0.5, 0.3].map((m) => ({
 
       <div class="intro__meta">
         <p class="intro__kind mono" data-snap="text">Personal portfolio</p>
-        <span class="ph intro__ph" data-snap="text">{OWNER_NAME_PLACEHOLDER}</span>
         <p class="intro__count mono" data-snap="text">{pad(projects.length)} projects · {pad(honours.length)} honours · Contact</p>
       </div>
       <h1 class="name" data-name>
@@ -175,7 +174,7 @@ const dist = [{ l: '∞', z: 0.95 }, ...[3, 1.5, 1, 0.7, 0.5, 0.3].map((m) => ({
         <p class="info__k mono">Set-up · Owner information</p>
         <h2 id="info-h" class="info__h">Contact</h2>
         <ul class="menu">
-          <li><div class="menu__row"><span class="menu__k mono">Author</span><span class="menu__v"><span class="ph">{OWNER_NAME_PLACEHOLDER}</span></span></div></li>
+          <li><div class="menu__row"><span class="menu__k mono">Author</span><span class="menu__v">{OWNER_NAME}</span></div></li>
           <li><div class="menu__row"><span class="menu__k mono">Handle</span><span class="menu__v">{HANDLE}</span></div></li>
           <li><a class="menu__a" href={GITHUB_URL} rel="me noopener" target="_blank"><span class="menu__k mono">GitHub</span><span class="menu__v">github.com/{HANDLE} <span class="menu__tc mono">to confirm</span></span><span class="menu__go" aria-hidden="true">↗</span></a></li>
           <li><div class="menu__row"><span class="menu__k mono">Email</span><span class="menu__v"><span class="ph">[PLACEHOLDER: email]</span></span></div></li>
