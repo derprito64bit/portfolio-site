@@ -328,12 +328,13 @@ test.describe('A9 focus', () => {
     } finally {
       await ctx.close();
     }
-    const tctx = await context(browser, browserName, PHONE);
+    // a coarse pointer in both engines: WebKit reports a fine one under touch emulation, so the query is forced
+    const COARSE = `(() => { const mm = window.matchMedia.bind(window); window.matchMedia = (q) => mm(/pointer: ?fine|hover: ?hover/.test(q) ? '(max-width: 0px)' : q); })();`;
+    const tctx = await context(browser, browserName, PHONE, { init: [COARSE] });
     const tp = await tctx.newPage();
     try {
       await cold(tp, 'project-06');
-      const coarse = await tp.evaluate(() => !matchMedia('(hover: hover) and (pointer: fine)').matches);
-      test.skip(!coarse, 'this engine reports a fine pointer under touch emulation');
+      expect(await tp.evaluate(() => matchMedia('(hover: hover) and (pointer: fine)').matches), 'a coarse pointer').toBe(false);
       await centrePrint(tp, 3);
       await tp.waitForFunction(() => document.querySelector('.roll')?.dataset.focus === '3', null, { timeout: 3000 });
       expect(await tp.evaluate(() => [document.querySelector('.roll').hasAttribute('data-dim'), document.querySelector('.roll__af').classList.contains('on')]), 'touch: no dim, no brackets').toEqual([false, false]);

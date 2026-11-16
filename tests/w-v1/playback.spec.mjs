@@ -177,16 +177,18 @@ test('J4 paging never blanks the stage: one print is always up', async ({ browse
     await expect.poll(async () => (await pb(page))?.open).toBe(true);
     await page.waitForTimeout(700);
     for (const key of ['ArrowRight', 'ArrowRight', 'ArrowLeft']) {
-      // every animation frame for 500 ms from the key: the most opaque frame or leaving copy on the stage
+      // every animation frame, and every 8 ms between them (a slow CI engine draws few frames), for 500 ms from the
+      // key: the most opaque frame or leaving copy on the stage
       const watch = page.evaluate(() => new Promise((resolve) => {
         const out = [];
         const t0 = performance.now();
-        const tick = () => {
+        const read = () => {
           const els = [...document.querySelectorAll('dialog.pb .pb__stage > *')];
           out.push(Math.max(0, ...els.map((e) => (getComputedStyle(e).visibility === 'hidden' ? 0 : Number(getComputedStyle(e).opacity)))));
-          if (performance.now() - t0 < 500) requestAnimationFrame(tick); else resolve(out);
         };
-        requestAnimationFrame(tick);
+        const frame = () => { read(); if (performance.now() - t0 < 500) requestAnimationFrame(frame); };
+        const timer = setInterval(() => { read(); if (performance.now() - t0 >= 500) { clearInterval(timer); read(); resolve(out); } }, 8);
+        requestAnimationFrame(frame);
       }));
       await page.keyboard.press(key);
       const frames = await watch;
