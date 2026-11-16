@@ -388,7 +388,8 @@ export function initProject(h: Host) {
 
   function onPop() {
     const r = parse();
-    if (ownBack) { ownBack = false; if (r.kind === 'home') { homeHere(); return; } }
+    // our own Back lands home; playback's own Back, still on its way (Esc, Esc), lands on the page first: let it pass
+    if (ownBack) { if (r.kind === 'project' && r.slug === slugAt(h.pos())) return; ownBack = false; if (r.kind === 'home') { homeHere(); return; } }
     let S = h.state();
     if (r.kind === 'project') {
       const i = projects.findIndex((p) => p.slug === r.slug);

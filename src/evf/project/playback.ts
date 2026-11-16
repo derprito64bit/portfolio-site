@@ -66,7 +66,9 @@ export function initPlayback(o: PlaybackOptions): PlaybackControl {
     prev.addEventListener('click', () => page(-1));
     next.addEventListener('click', () => page(1));
     d.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); api.close(); }
+      // Esc is playback's only while a print is shown: one during the 0.33 s exit goes on to the page (the project
+      // closes, or the cold page leaves), so Esc, Esc is never swallowed
+      if (e.key === 'Escape') { if (cur < 0) return; e.preventDefault(); e.stopPropagation(); api.close(); }
       else if (e.key === 'ArrowRight') { e.preventDefault(); e.stopPropagation(); page(1); }
       else if (e.key === 'ArrowLeft') { e.preventDefault(); e.stopPropagation(); page(-1); }
     });
@@ -201,7 +203,9 @@ export function initPlayback(o: PlaybackOptions): PlaybackControl {
       cur = n;
       fill(n);
       o.onHold?.(true);
-      if (push) { hist.push(printHash(n + 1)); pushed = true; }
+      // manual scroll restoration (the pushed entry copies it): stepping back over playback's entry keeps the roll where
+      // paging left it, on the print just shown, not the scroll the page had when playback opened
+      if (push) { history.scrollRestoration = 'manual'; hist.push(printHash(n + 1)); pushed = true; }
       dlg.showModal();
       parts.close.focus({ preventScroll: true });
       const { frame, bg, bar, foot } = parts;

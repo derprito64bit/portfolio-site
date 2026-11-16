@@ -123,6 +123,34 @@ test('A10 / A8 a failed image opens in playback as the same "image unavailable" 
   }
 });
 
+// wv1-pb-esc-roll-follow (a gate note): paging in playback, then Esc, leaves the roll on the print just shown. 9f25a82's
+// step back over playback's entry restored the scroll the page had at the open (print 06 centred, focus on 07 below).
+test('A10 paging 06 to 07 in playback, then Esc: the roll is centred on print 07, with focus there', async ({ browser, browserName }) => {
+  const ctx = await context(browser, browserName, DESK);
+  const page = await ctx.newPage();
+  const at7 = () => page.evaluate(() => { const r = document.querySelector('#print-07').getBoundingClientRect(); return Math.round(r.top + r.height / 2 - innerHeight / 2); });
+  try {
+    await cold(page, 'project-06');
+    await centrePrint(page, 6);
+    await page.waitForTimeout(300);
+    await page.locator('#print-06 [data-print-open]').click();
+    await expect.poll(async () => (await pb(page))?.hash).toBe('#print-06');
+    await page.waitForTimeout(700);
+    await page.keyboard.press('ArrowRight');
+    await expect.poll(async () => (await pb(page))?.hash).toBe('#print-07');
+    await page.waitForTimeout(500);
+    await page.keyboard.press('Escape');
+    await expect.poll(async () => (await pb(page))?.open).toBe(false);
+    await expect.poll(() => page.evaluate(() => location.hash)).toBe('');
+    await page.waitForTimeout(400);
+    expect(Math.abs(await at7()), 'print 07 sits at the centre of the view').toBeLessThanOrEqual(24);
+    expect(await page.evaluate(() => document.activeElement?.closest('.print')?.id), 'focus on print 07').toBe('print-07');
+    expect(await page.evaluate(() => document.querySelector('.roll').dataset.focus), 'the roll\'s focus is 07').toBe('7');
+  } finally {
+    await ctx.close();
+  }
+});
+
 test('A10 in the Viewfinder: Esc in playback closes playback, not the project', async ({ browser, browserName }) => {
   const ctx = await context(browser, browserName, DESK);
   const page = await ctx.newPage();
@@ -197,6 +225,44 @@ test.describe('A2 / A10 history over playback: one Esc per layer', () => {
       await ctx.close();
     }
   });
+
+  // wv1-pb-esc-swallow (queued from judge r2): a second Esc during playback's 0.33 s exit is never swallowed
+  for (const gap of [40, 200]) {
+    test(`Esc, Esc ${gap} ms apart: in the Viewfinder the frame (/#work-06), and a cold page leaves for it`, async ({ browser, browserName }) => {
+      const ctx = await context(browser, browserName, DESK);
+      const page = await ctx.newPage();
+      try {
+        await home(page);
+        await toFrame(page, 5);
+        await page.keyboard.press('Enter');
+        await untilState(page, 'open', 5);
+        await page.locator('#print-02 [data-print-open]').click();
+        await expect.poll(async () => (await pb(page))?.hash).toBe('#print-02');
+        await page.waitForTimeout(700);
+        await page.keyboard.press('Escape');
+        await page.waitForTimeout(gap);
+        await page.keyboard.press('Escape');
+        await untilState(page, 'evf', 5);
+        await expect.poll(() => page.evaluate(() => `${location.pathname}${location.hash}`), { message: 'in-app: the frame' }).toBe('/#work-06');
+        await page.waitForTimeout(600);
+        expect(await page.evaluate(() => window.__vf.state()), 'and it stays there: no stale entry reopens the project').toBe('evf');
+        expect(await page.evaluate(() => document.querySelector('dialog.pb')?.open ?? false), 'playback is shut').toBe(false);
+
+        await cold(page, 'project-06');
+        await centrePrint(page, 2);
+        await page.locator('#print-02 [data-print-open]').click();
+        await expect.poll(async () => (await pb(page))?.hash).toBe('#print-02');
+        await page.waitForTimeout(700);
+        await page.keyboard.press('Escape');
+        await page.waitForTimeout(gap);
+        await page.keyboard.press('Escape');
+        await page.waitForURL(/\/\?vf-test#work-06$|\/#work-06$/, { timeout: 10000 });
+        await page.waitForFunction(() => window.__vf && window.__vf.state() === 'evf', null, { timeout: 20000 });
+      } finally {
+        await ctx.close();
+      }
+    });
+  }
 });
 
 test('J4 paging never blanks the stage: one print is always up', async ({ browser, browserName }) => {

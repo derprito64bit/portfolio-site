@@ -26,7 +26,7 @@ export const PLANTS = [
   ['measure-on-scroll', 'A9', 'src/evf/project/roll.ts', 'const onScroll = () => setFocus(nearest());', 'const onScroll = () => { cache(); setFocus(nearest()); };', 'roll.spec.mjs', 'the print nearest the centre'],
   ['dim-0.7', 'A9', 'src/evf/style/print.css', '.roll[data-dim] .print:not([data-focus]) { opacity: 0.55; }', '.roll[data-dim] .print:not([data-focus]) { opacity: 0.7; }', 'roll.spec.mjs', 'the print nearest the centre'],
   ['no-focus-return', 'A10', 'src/evf/project/playback.ts', 'linkOf(n)?.focus({ preventScroll: true });', 'void linkOf;', 'playback.spec.mjs', 'A10 at 1440'],
-  ['no-push', 'A10', 'src/evf/project/playback.ts', 'if (push) { hist.push(printHash(n + 1)); pushed = true; }', 'if (false) { pushed = true; }', 'playback.spec.mjs', 'A10 at 1440'],
+  ['no-push', 'A10', 'src/evf/project/playback.ts', "if (push) { history.scrollRestoration = 'manual'; hist.push(printHash(n + 1)); pushed = true; }", 'if (false) { pushed = true; }', 'playback.spec.mjs', 'A10 at 1440'],
   ['three-loops', 'A11', 'src/evf/project/roll.ts', 'export const MAX_PLAYING = 2;', 'export const MAX_PLAYING = 3;', 'roll.spec.mjs', 'two at most'],
   ['loops-when-calm', 'A11', 'src/evf/project/roll.ts', 'const allowed = !held && !reduced() &&', 'const allowed = !held &&', 'roll.spec.mjs', 'reduced motion: no inline play'],
   ['back-36px', 'A12', 'src/evf/style/project.css', 'display: inline-flex; gap: 10px; align-items: center; min-height: 44px;', 'display: inline-flex; gap: 10px; align-items: center; min-height: 36px; max-height: 36px;', 'open.spec.mjs', 'A12 phone'],
@@ -51,6 +51,8 @@ export const PLANTS = [
   ['trap-off', 'A2', 'src/evf/project/view.ts', "if (e.key !== 'Tab' || !isOpen()) return;", "if (e.key !== 'Tab' || isOpen()) return;", 'keys.spec.mjs', 'keys scroll the column'],
   ['resize-cover', 'A13', 'src/evf/project/inapp.ts', 'if (!e) { coverFill(true); return; }', 'if (!e) return;', 'keys.spec.mjs', 'resize or rotate while open'],
   ['marks-show', 'A2', 'src/evf/project/inapp.ts', "const marksOff = () => { for (const m of marks()) m.style.visibility = 'hidden'; };", 'const marksOff = () => {};', 'keys.spec.mjs', 'resize or rotate while open'],
+  ['pb-esc-swallow', 'A10', 'src/evf/project/playback.ts', "if (e.key === 'Escape') { if (cur < 0) return; e.preventDefault();", "if (e.key === 'Escape') { e.preventDefault();", 'playback.spec.mjs', 'Esc, Esc'],
+  ['pb-scroll-restore', 'A10', 'src/evf/project/playback.ts', "history.scrollRestoration = 'manual'; hist.push(", 'hist.push(', 'playback.spec.mjs', 'paging 06 to 07'],
   ['pb-failed-glyph', 'A10', 'src/evf/project/playback.ts', "const failed = p.classList.contains('is-failed');", 'const failed = false;', 'playback.spec.mjs', 'failed image opens'],
   ['no-hover', 'A9', 'src/evf/project/roll.ts', "if (grid) on(grid, 'pointermove'", "if (!grid) on(grid, 'pointermove'", 'roll.spec.mjs', 'hover to focus'],
 ];
