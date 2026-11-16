@@ -185,3 +185,33 @@ test('media-fixtures: one chart per placeholder image or video, D-045 counts, th
   assert.match(svg, /1920 × 1200/);
   assert.equal(chartSvg({ W: 480, H: 300, w: 1920, h: 1200, n: 1, tint: '#7A1F2B', poster: false, loop: false }), svg, 'deterministic');
 });
+
+// Negative controls: each D-042 rule removed from a copy of validate.js; the input that rule guards must then pass, so
+// the tests above (which demand the error) would fail on that mutant.
+test('negative controls: every D-042 rule, removed, lets its bad input through', async () => {
+  const { pathToFileURL } = await import('node:url');
+  const src = readFileSync(join(ROOT, 'src/lib/content/validate.js'), 'utf8');
+  const noFile = () => { const a = confirmed(); a.media.media = {}; return a; };
+  const noPoster = () => { const a = confirmed(); const p = a.projects.projects[0]; p.media[0] = { ...p.media[0], type: 'video', src: `media/${p.slug}/clip.mp4`, poster: '' }; a.media.media[`media/${p.slug}/clip.mp4`] = { type: 'video' }; return a; };
+  const noCaptions = () => { const b = base(); const m = b.projects.projects.find((x) => x.media.some((y) => y.type === 'video')).media.find((y) => y.type === 'video'); m.audio = true; m.loop = false; return b; };
+  const badHonour = () => { const a = base(); a.honours.awards[0].project = 'project-99'; return a; };
+  const MUTANTS = [
+    ['no file', 'if (m.placeholder === false && !hasFile(m.src)) err(', 'if (false) err(', noFile, /without a file/],
+    ['no poster', "if (m.type === 'video' && m.placeholder === false && !m.poster) err(", 'if (false) err(', noPoster, /without a poster/],
+    ['no captions', "if (m.type === 'video' && m.audio && !/\\.vtt$/i.test(m.captions || '')) err(", 'if (false) err(', noCaptions, /captions/],
+    ['no honour check', 'if (h.project && !projectSlugs.has(h.project)) err(', 'if (false) err(', badHonour, /unknown project slug/],
+  ];
+  const dir = mkdtempSync(join(tmpdir(), 'wv1-validate-'));
+  try {
+    for (const [name, from, to, input, re] of MUTANTS) {
+      assert.ok(src.includes(from), `${name}: the rule is in validate.js`);
+      const file = join(dir, `validate-${name.replace(/\W+/g, '-')}.js`);
+      writeFileSync(file, src.replace(from, to));
+      const M = await import(pathToFileURL(file).href);
+      assert.ok(validateContent(input()).errors.some((e) => re.test(e)), `${name}: the real rule catches it`);
+      assert.ok(!M.validateContent(input()).errors.some((e) => re.test(e)), `${name}: the mutant lets it through`);
+    }
+  } finally {
+    try { rmSync(dir, { recursive: true, force: true }); } catch { /* temp */ }
+  }
+});

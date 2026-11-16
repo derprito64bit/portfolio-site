@@ -103,7 +103,8 @@ export function initRoll(o: RollOptions): RollControl | null {
     gridTop = g.top - base.top + base.st;
     gridLeft = g.left - base.left;
     rects = prints.map((p) => {
-      const r = (p.querySelector('.print__frame') ?? p).getBoundingClientRect();
+      // the whole print, strip included: the brackets frame it as Flux's framed its sheet
+      const r = p.getBoundingClientRect();
       return { x: r.left - g.left, y: r.top - g.top, w: r.width, h: r.height };
     });
   }

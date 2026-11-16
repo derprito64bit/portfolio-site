@@ -1,0 +1,78 @@
+#!/usr/bin/env node
+// Negative controls for the W-V1 browser rows: each plant is one defect in the source, built into a scratch copy next to
+// the worktree (../portfolio-site.wt/_wv1-neg/<id>, node_modules linked), and the spec that guards it runs against that
+// build (W_V1_DIST). A plant passes when that spec FAILS on it; the report says which test failed and why.
+// Usage: node tests/w-v1/negative.mjs [--only id,id] [--project chromium] [--out <file.json>]
+// Afterwards rebuild the worktree (npm run build): the planted builds share the chunk-manifest cache.
+import { spawnSync } from 'node:child_process';
+import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
+
+const ROOT = resolve(import.meta.dirname, '../..');
+const SCRATCH = resolve(ROOT, '../_wv1-neg');
+const args = process.argv.slice(2);
+const opt = (k, d) => (args.includes(k) ? args[args.indexOf(k) + 1] : d);
+
+/** [id, row, file, from, to, spec, grep] */
+export const PLANTS = [
+  ['prefetch-0', 'A2', 'src/evf/project/inapp.ts', 'export const PREFETCH_MS = 300;', 'export const PREFETCH_MS = 0;', 'open.spec.mjs', 'open from frame 3'],
+  ['innerhtml', 'A2', 'src/evf/project/article.ts', 'col.append(...holder.childNodes);', 'col.innerHTML = holder.innerHTML;', 'open.spec.mjs', 'open from frame 3'],
+  ['no-back', 'A2', 'src/evf/project/inapp.ts', 'if (pushed) { ownBack = true; history.go(extra ? -2 : -1); }', 'if (false) { ownBack = true; }', 'open.spec.mjs', 'open from frame 3'],
+  ['cold-home', 'A2', 'src/evf/project/cold.ts', 'location.replace(homeUrl(workHash(n)));', 'location.replace(homeUrl());', 'open.spec.mjs', 'cold /work/project-06/'],
+  ['strip-11px', 'A5', 'src/evf/style/print.css', '.print__n { flex: none; font-family: var(--f-mono); font-size: 12px;', '.print__n { flex: none; font-family: var(--f-mono); font-size: 11px;', 'roll.spec.mjs', 'own aspect'],
+  ['width-96', 'A7', 'src/evf/style/print.css', 'width: min(calc(var(--f) * 100%), calc(80svh * var(--ar)));', 'width: min(calc(var(--f) * 96%), calc(80svh * var(--ar)));', 'roll.spec.mjs', '1440 x 900: width'],
+  ['no-right-side', 'A7', 'src/evf/style/print.css', ".print[data-side='right'] { align-self: flex-end; }", '', 'roll.spec.mjs', '390 x 844: one column'],
+  ['late-expose', 'A8', 'src/evf/project/roll.ts', 'entering.forEach((p, k) => expose(p, (k % 4) * 0.1));', 'entering.forEach((p, k) => expose(p, 1.5 + k));', 'roll.spec.mjs', 'none blank 1.0 s after 50% visible$'],
+  ['measure-on-scroll', 'A9', 'src/evf/project/roll.ts', 'const onScroll = () => setFocus(nearest());', 'const onScroll = () => { cache(); setFocus(nearest()); };', 'roll.spec.mjs', 'the print nearest the centre'],
+  ['dim-0.7', 'A9', 'src/evf/style/print.css', '.roll[data-dim] .print:not([data-focus]) { opacity: 0.55; }', '.roll[data-dim] .print:not([data-focus]) { opacity: 0.7; }', 'roll.spec.mjs', 'the print nearest the centre'],
+  ['no-focus-return', 'A10', 'src/evf/project/playback.ts', 'linkOf(n)?.focus({ preventScroll: true });', 'void linkOf;', 'playback.spec.mjs', 'A10 at 1440'],
+  ['no-push', 'A10', 'src/evf/project/playback.ts', 'if (push) { hist.push(printHash(n + 1)); pushed = true; }', 'if (false) { pushed = true; }', 'playback.spec.mjs', 'A10 at 1440'],
+  ['three-loops', 'A11', 'src/evf/project/roll.ts', 'export const MAX_PLAYING = 2;', 'export const MAX_PLAYING = 3;', 'roll.spec.mjs', 'two at most'],
+  ['loops-when-calm', 'A11', 'src/evf/project/roll.ts', 'const allowed = !held && !reduced() &&', 'const allowed = !held &&', 'roll.spec.mjs', 'reduced motion: no inline play'],
+  ['back-36px', 'A12', 'src/evf/style/project.css', 'display: inline-flex; gap: 10px; align-items: center; min-height: 44px;', 'display: inline-flex; gap: 10px; align-items: center; min-height: 36px; max-height: 36px;', 'open.spec.mjs', 'A12 phone'],
+  ['calm-brackets-glide', 'A13', 'src/evf/project/roll.ts', 'duration: jump || reduced() ? 0 : D.step', 'duration: jump ? 0 : D.step', 'playback.spec.mjs', 'reduced motion: a crossfade open'],
+  ['sway-stays', 'A14', 'src/evf/main.ts', 'setSway: (on) => { if (engine) engine.sway = on && !calm; },', 'setSway: () => { if (engine) engine.sway = !calm; },', 'idle.spec.mjs', 'A14 in the Viewfinder'],
+];
+
+const SKIP = new Set(['node_modules', 'dist', '.git', 'test-results', '.astro', 'playwright-report']);
+function scratch(id) {
+  const dir = join(SCRATCH, id);
+  rmSync(dir, { recursive: true, force: true });
+  mkdirSync(dir, { recursive: true });
+  cpSync(ROOT, dir, { recursive: true, filter: (src) => !SKIP.has(src.slice(ROOT.length + 1).split(/[\\/]/)[0]) || src === ROOT });
+  symlinkSync(join(ROOT, 'node_modules'), join(dir, 'node_modules'), 'junction');
+  return dir;
+}
+
+const only = opt('--only', '') ? new Set(opt('--only').split(',')) : null;
+const project = opt('--project', 'chromium');
+const report = [];
+for (const [id, row, file, from, to, spec, grep] of PLANTS) {
+  if (only && !only.has(id)) continue;
+  const dir = scratch(id);
+  const f = join(dir, file);
+  const src = readFileSync(f, 'utf8');
+  if (!src.includes(from)) { report.push({ id, row, ok: false, why: `the planted line is not in ${file}` }); continue; }
+  writeFileSync(f, src.replace(from, to));
+  const b = spawnSync(process.execPath, [join(dir, 'node_modules/astro/bin/astro.mjs'), 'build'], { cwd: dir, encoding: 'utf8' });
+  if (b.status !== 0) { report.push({ id, row, ok: false, why: `planted build failed: ${(b.stderr || b.stdout).slice(-300)}` }); continue; }
+  const json = join(dir, 'neg.json');
+  const t = spawnSync(process.execPath, [join(ROOT, 'node_modules/@playwright/test/cli.js'), 'test', '-c', 'tests/w-v1/playwright.config.mjs', spec, '-g', grep, `--project=${project}`], {
+    cwd: ROOT, encoding: 'utf8', env: { ...process.env, W_V1_DIST: join(dir, 'dist'), W_V1_JSON: json },
+  });
+  let failed = [];
+  try {
+    const r = JSON.parse(readFileSync(json, 'utf8'));
+    const walk = (s) => [...(s.specs || []).flatMap((sp) => sp.tests.flatMap((x) => x.results.filter((y) => y.status === 'failed' || y.status === 'timedOut').map((y) => ({ title: sp.title, err: (y.errors?.[0]?.message || '').replace(/\x1b\[[0-9;]*m/g, '').split('\n').slice(0, 3).join(' ') })))), ...(s.suites || []).flatMap(walk)];
+    failed = r.suites.flatMap(walk);
+  } catch { /* no report */ }
+  report.push({ id, row, plant: `${file}: ${from} -> ${to || '(removed)'}`, spec, grep, exit: t.status, ok: t.status !== 0 && failed.length > 0, failed });
+  console.log(`${t.status !== 0 && failed.length ? 'CAUGHT' : 'MISSED'}  ${row.padEnd(4)} ${id}: ${failed.map((x) => `${x.title} :: ${x.err.slice(0, 140)}`).join(' | ') || `exit ${t.status}`}`);
+  rmSync(dir, { recursive: true, force: true });
+}
+const out = opt('--out', join(SCRATCH, 'negative.json'));
+mkdirSync(dirname(out), { recursive: true });
+writeFileSync(out, `${JSON.stringify({ schema: 1, project, report }, null, 2)}\n`);
+const missed = report.filter((r) => !r.ok);
+console.log(missed.length ? `negative: ${missed.length} of ${report.length} plants not caught` : `negative: all ${report.length} plants caught`);
+process.exit(missed.length ? 1 : 0);

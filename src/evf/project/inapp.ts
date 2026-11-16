@@ -150,26 +150,29 @@ export function initProject(h: Host) {
     proj.hidden = false;
     evf.inert = true;
     evf.classList.add('is-open');
-    let landed = false;
     let ready = false;
+    let arrived = false;
+    const bar = $('.proj__bar', proj);
     const fail = () => { if (my === token) location.assign(projectUrl(slug, print ?? undefined)); };
+    const engine = h.engine();
+    if (engine) engine.idleTarget = 0;
+    gsap.set(bar, { opacity: 0 });
     bring(i, my).then((ok) => {
       if (!ok) return;
       ready = true;
-      for (const e of items()) e.style.opacity = '0';
-      if (landed) arrive();
+      for (const e of col.children) (e as HTMLElement).style.opacity = '0';
     }, fail);
-    const engine = h.engine();
-    if (engine) engine.idleTarget = 0;
+    /** The bar is up by the landing; the detail follows it, 100 ms apart (a crossfade on the calm and flat paths). */
     const arrive = () => {
-      // the detail arrives after the landing, 100 ms apart
-      const it = items();
-      if (h.calm || !engine) gsap.fromTo(it, { opacity: 0 }, { opacity: 1, duration: 0.4, clearProps: 'opacity' });
-      else gsap.fromTo(it, { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: D.land, ease: E.out, stagger: 0.1, clearProps: 'opacity,transform' });
+      if (arrived || !ready || my !== token) return;
+      arrived = true;
+      const kids = [...col.children] as HTMLElement[];
+      gsap.fromTo(bar, { opacity: 0 }, { opacity: 1, duration: 0.2, ease: 'none', clearProps: 'opacity' });
+      if (h.calm || !engine) gsap.fromTo(kids, { opacity: 0 }, { opacity: 1, duration: 0.2, ease: 'none', clearProps: 'opacity' });
+      else gsap.fromTo(kids, { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: D.land, ease: E.out, stagger: 0.1, clearProps: 'opacity,transform' });
     };
     const settle = () => {
       if (my !== token) return;
-      landed = true;
       if (!ready) { fail(); return; } // not parsed by the landing: the page itself
       h.setState('open');
       enhance();
@@ -189,6 +192,7 @@ export function initProject(h: Host) {
         Object.assign(st, { rect: full, nd: 1, ndv: isPhone() ? 1 : 0, radius: 0, rim: 0, mix: 0 });
         t.to(st, { mix: 1, duration: 0.4, onUpdate: h.reveal });
       } else t.to({}, { duration: 0.4 });
+      t.call(arrive, [], 0.15);
       return;
     }
     const st = engine.st;
@@ -204,6 +208,7 @@ export function initProject(h: Host) {
     const t = gsap.timeline({ onComplete: () => h.setTl(null) });
     h.setTl(t);
     t.call(settle, [], D.travel);
+    t.call(arrive, [], D.travel - 0.25);
     t.call(() => { $$('.evf .pw.on').forEach((e) => { if (!e.matches('.ro--fl')) e.classList.remove('on'); }); }, [], 0.08);
     t.to(st.rect, { x: full.x, y: full.y, w: full.w, h: full.h, duration: D.travel, ease: E.lens, onUpdate: () => { writeRect(st.rect); h.reveal(); } }, 0);
     t.to(st, { zoom, dolly: 0.08, focus: sub.z, aperture: apertureOf(s.fnum) * 1.6, radius: 0, rim: 0, vig: 0.38, duration: D.travel, ease: E.lens }, 0);

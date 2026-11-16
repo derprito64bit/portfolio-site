@@ -18,7 +18,7 @@
 .proj__bar, .pj-bar {
   position: absolute; z-index: 3; left: 0; right: 0; top: 0; height: var(--top); padding: 0 var(--g);
   display: flex; align-items: center; gap: 22px; pointer-events: auto;
-  background: linear-gradient(rgba(5, 5, 5, 0.72), rgba(5, 5, 5, 0));
+  background: linear-gradient(var(--black) 0%, rgba(5, 5, 5, 0.86) 58%, rgba(5, 5, 5, 0));
 }
 .pj-page .pj-bar { position: fixed; z-index: 4; }
 .proj__back, .pj-back {
@@ -74,6 +74,7 @@
   .pj__t { font-size: 44px; }
   .pj__meta { grid-template-columns: 1fr; }
   .pj .ph { white-space: normal; }
+  .pj__cue { display: none; }
   .pj__nav a { flex: 1 1 0; }
   .pj__nav a[rel='next'] { justify-content: flex-end; text-align: right; }
 }

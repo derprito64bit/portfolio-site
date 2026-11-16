@@ -9,7 +9,7 @@ const CI = Boolean(process.env.CI);
 export default defineConfig({
   testDir: '.',
   testMatch: '**/*.spec.mjs',
-  globalSetup: '../smoke/global-setup.mjs',
+  globalSetup: './global-setup.mjs',
   workers: 1,
   fullyParallel: false,
   retries: 0,

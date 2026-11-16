@@ -238,7 +238,7 @@ test.describe('A9 focus', () => {
         counter: document.querySelector('[data-print-count]').textContent,
         others: [...document.querySelectorAll('.print:not([data-focus])')].map((p) => [getComputedStyle(p).opacity, getComputedStyle(p.querySelector('.print__img')).filter]),
         self: [getComputedStyle(document.querySelector('.print[data-focus]')).opacity, getComputedStyle(document.querySelector('.print[data-focus] .print__img')).filter],
-        af: (() => { const a = document.querySelector('.roll__af'), f = document.querySelector('#print-03 .print__frame'); const r = a.getBoundingClientRect(), q = f.getBoundingClientRect(); return { on: a.classList.contains('on'), dx: Math.abs(r.left - q.left), dy: Math.abs(r.top - q.top), dw: Math.abs(r.width - q.width), colour: getComputedStyle(a.querySelector('i')).borderTopColor, n: document.querySelectorAll('.roll__af').length }; })(),
+        af: (() => { const a = document.querySelector('.roll__af'), f = document.querySelector('#print-03'); const r = a.getBoundingClientRect(), q = f.getBoundingClientRect(); return { on: a.classList.contains('on'), dx: Math.abs(r.left - q.left), dy: Math.abs(r.top - q.top), dw: Math.abs(r.width - q.width), colour: getComputedStyle(a.querySelector('i')).borderTopColor, n: document.querySelectorAll('.roll__af').length }; })(),
       }));
       expect(st.focus).toBe('print-03');
       expect(st.dim).toBe(true);

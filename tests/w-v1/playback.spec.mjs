@@ -128,7 +128,7 @@ test.describe('A13 calm, no WebGL, no JS', () => {
       await centrePrint(page, 3);
       await page.waitForFunction(() => document.querySelector('#proj .roll')?.dataset.focus === '3', null, { timeout: 3000 });
       const jump = await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => {
-        const a = document.querySelector('#proj .roll__af').getBoundingClientRect(), f = document.querySelector('#print-03 .print__frame').getBoundingClientRect();
+        const a = document.querySelector('#proj .roll__af').getBoundingClientRect(), f = document.querySelector('#print-03').getBoundingClientRect();
         r(Math.abs(a.top - f.top) + Math.abs(a.width - f.width));
       })));
       expect(jump, 'the brackets jump').toBeLessThanOrEqual(2);
