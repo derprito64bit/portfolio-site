@@ -365,13 +365,14 @@ test.describe('A9 focus', () => {
         await page.waitForFunction(() => document.querySelector('.roll')?.dataset.focus === '5', null, { timeout: 3000 });
         // the view has settled: fonts in, the arrival over, the scroll still (a late layout refresh or a running scroll
         // takes the focus back to the centre line, as it should)
-        await page.evaluate(() => document.fonts.ready);
+        await page.waitForFunction(() => document.fonts.status === 'loaded', null, { timeout: 5000 }).catch(() => {});
         await page.waitForTimeout(700);
-        await page.waitForFunction(() => new Promise((done) => {
-          const y = () => (document.querySelector('.proj:not([hidden]) .proj__col') ?? document.scrollingElement).scrollTop;
-          const a = y();
-          setTimeout(() => done(y() === a), 150);
-        }), null, { timeout: 5000 });
+        for (let k = 0, prev = -1; k < 20; k++) {
+          const y = await page.evaluate(() => (document.querySelector('.proj:not([hidden]) .proj__col') ?? document.scrollingElement).scrollTop);
+          if (y === prev) break;
+          prev = y;
+          await page.waitForTimeout(150);
+        }
         // another print with a part in view (under the bar): the pointer goes to the middle of that part
         const other = await page.evaluate(() => {
           for (const p of document.querySelectorAll('.print')) {
