@@ -5,7 +5,7 @@
 // falls back to location.assign; a cold /work/<slug>/ boots in 'open' with no intro and closes to /#work-NN; /#work-NN and
 // /#contact land with no intro. The gate times the 1.2 s, 0.8 s and 1.5 s.
 import { test, expect } from '@playwright/test';
-import { DESK, PHONE, base, consoleGate, context, flatPathVerdict, home, scrollTo, toFrame, untilState, vf } from './lib.mjs';
+import { DESK, PHONE, base, centrePrint, consoleGate, context, flatPathVerdict, home, scrollTo, toFrame, untilState, vf } from './lib.mjs';
 
 /** Records innerHTML, outerHTML and insertAdjacentHTML writes into #proj or a dialog (D-055: content never enters that way). */
 const NO_INNERHTML = `(() => {
@@ -205,6 +205,73 @@ for (const [label, profile] of [['1440', DESK], ['390', PHONE]]) {
     });
   });
 }
+
+/** The flat frame's tint cover (no WebGL): the gradient's first colour stop, as computed. */
+const cover = (page) => page.evaluate(() => /rgb\([^)]*\)/.exec(getComputedStyle(document.querySelector('.frame__cover')).backgroundImage)?.[0] ?? 'none');
+/** The HUD print counter: its text when shown, null when hidden. */
+const counter = (page) => page.evaluate(() => { const c = document.querySelector('#proj [data-print-count]'); return c && !c.hidden && getComputedStyle(c).display !== 'none' ? c.textContent : null; });
+const titled = (page, t) => page.waitForFunction((x) => document.querySelector('#proj-title')?.textContent.trim() === x, t, { timeout: 10000 });
+
+test('A2 / A13 no WebGL: the tint cover follows previous and next; Esc and Back land on that frame with its own cover', async ({ browser, browserName }) => {
+  const ctx = await context(browser, browserName, DESK);
+  const page = await ctx.newPage();
+  try {
+    await home(page);
+    await toFrame(page, 3);
+    const four = await cover(page);
+    await page.keyboard.press('ArrowLeft');
+    await untilState(page, 'evf', 2);
+    const three = await cover(page);
+    expect(four, 'frames 3 and 4 have their own covers').not.toBe(three);
+    for (const how of ['Escape', 'Back']) {
+      await page.keyboard.press('Enter');
+      await untilState(page, 'open', 2);
+      await page.locator('#proj .pj__nav a[rel="next"]').click();
+      await titled(page, 'Project 04');
+      expect(await cover(page), `the cover behind the open view follows Next (${how})`).toBe(four);
+      if (how === 'Escape') await page.keyboard.press('Escape'); else await page.goBack();
+      await untilState(page, 'evf', 3);
+      expect(await cover(page), `${how} lands on frame 4 with frame 4's cover`).toBe(four);
+      await page.keyboard.press('ArrowLeft');
+      await untilState(page, 'evf', 2);
+      expect(await cover(page)).toBe(three);
+    }
+  } finally {
+    await ctx.close();
+  }
+});
+
+test('A9 the HUD counter never shows another project\'s count: after next, and after Close then Open', async ({ browser, browserName }) => {
+  const ctx = await context(browser, browserName, DESK);
+  const page = await ctx.newPage();
+  try {
+    await home(page);
+    await toFrame(page, 5);
+    await page.keyboard.press('Enter');
+    await untilState(page, 'open', 5);
+    expect([null, ''], 'nothing (or empty) until a print takes focus').toContain(await counter(page));
+    await centrePrint(page, 8);
+    await expect.poll(() => counter(page)).toBe('08 / 12');
+    // next, in place: project 07 has 3 prints
+    await page.locator('#proj .pj__nav a[rel="next"]').click();
+    await titled(page, 'Project 07');
+    const after = await counter(page);
+    expect(after === null || / \/ 03$/.test(after), `after Next the counter is hidden or reads 07's roll (${after})`).toBe(true);
+    await centrePrint(page, 2);
+    await expect.poll(() => counter(page)).toBe('02 / 03');
+    // Close, then Open another project: never the last roll's count
+    await page.keyboard.press('Escape');
+    await untilState(page, 'evf', 6);
+    await page.keyboard.press('ArrowLeft');
+    await untilState(page, 'evf', 5);
+    await page.keyboard.press('Enter');
+    await untilState(page, 'open', 5);
+    const reopened = await counter(page);
+    expect(reopened === null || / \/ 12$/.test(reopened), `after a reopen the counter is hidden or reads 06's roll (${reopened})`).toBe(true);
+  } finally {
+    await ctx.close();
+  }
+});
 
 test('A12 phone: Back closes on the first tap after scrolling; targets 44 px; swipes inside never move the frame', async ({ browser, browserName }) => {
   const ctx = await context(browser, browserName, PHONE);

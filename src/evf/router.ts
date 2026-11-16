@@ -30,9 +30,12 @@ export interface HashHistory {
   push(hash: string): void;
   replace(hash: string): void;
   back(): void;
+  /** Is the current entry one playback pushed (tagged), so that closing it is a step back, not a rewrite? */
+  own(): boolean;
 }
 export const hashHistory: HashHistory = {
   push: (h) => history.pushState({ vf: 'print' }, '', `${location.pathname}${location.search}${h}`),
   replace: (h) => history.replaceState(history.state, '', `${location.pathname}${location.search}${h}`),
   back: () => history.back(),
+  own: () => (history.state as { vf?: string } | null)?.vf === 'print',
 };

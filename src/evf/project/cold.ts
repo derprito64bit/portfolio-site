@@ -72,8 +72,13 @@ async function boot() {
     e.st.exposure = calm ? 1 : 0;
     e.start();
     hooks.engine(e);
-    if (!calm) gsap.to(e.st, { exposure: 1, duration: D.land, ease: E.out, onUpdate: () => e.invalidate(120) });
-    else e.invalidate(300);
+    if (calm) e.invalidate(300);
+    else {
+      // the exposure starts once the first frame (black) is up: the first draw can stall, and a tween started before
+      // it jumps to mid-exposure in one frame
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      if (engine === e) gsap.to(e.st, { exposure: 1, duration: D.land, ease: E.out, onUpdate: () => e.invalidate(120) });
+    }
   } catch (err) {
     console.warn('[viewfinder] WebGL unavailable, using flat frames', err);
     canvas.remove();

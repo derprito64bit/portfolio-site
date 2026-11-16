@@ -43,6 +43,8 @@ export interface Host {
   target(s: Scene): Pt3;
   /** Moves to frame i with no animation (from the intro too: the deep-link landing). */
   jump(i: number): void;
+  /** With no WebGL, the frame's CSS tint cover shows frame i (previous and next move it behind the open view). */
+  cover(i: number): void;
   /** Hand-held sway (D-053): off while a project is open. */
   setSway(on: boolean): void;
 }
@@ -86,7 +88,8 @@ export function initProject(h: Host) {
     if (!enh) return;
     roll = enh.initRoll({ root: col, scroller: col, calm: h.calm, counter });
     pb = enh.initPlayback({ prints: roll?.prints ?? [], calm: h.calm, onHold: (on) => roll?.hold(on) });
-    if (counter) counter.hidden = !(roll?.prints.length);
+    // the roll shows the counter once a print takes focus; with no roll it stays hidden
+    if (counter && !roll) { counter.textContent = ''; counter.hidden = true; }
   }
   function unenhance() {
     roll?.destroy();
@@ -162,14 +165,22 @@ export function initProject(h: Host) {
       ready = true;
       for (const e of col.children) (e as HTMLElement).style.opacity = '0';
     }, fail);
-    /** The bar is up by the landing; the detail follows it, 100 ms apart (a crossfade on the calm and flat paths). */
-    const arrive = () => {
+    /** The bar is up by the landing; then the header's details expose one by one from the landing, 100 ms apart, with
+     *  no rise (the exposure grammar), and the blocks below the fold follow the last of them. A crossfade on the calm
+     *  and flat paths. `lead` is how long before the landing it runs (0 when the page was parsed late). */
+    const arrive = (lead = 0) => {
       if (arrived || !ready || my !== token) return;
       arrived = true;
       const kids = [...col.children] as HTMLElement[];
       gsap.fromTo(bar, { opacity: 0 }, { opacity: 1, duration: 0.2, ease: 'none', clearProps: 'opacity' });
-      if (h.calm || !engine) gsap.fromTo(kids, { opacity: 0 }, { opacity: 1, duration: 0.2, ease: 'none', clearProps: 'opacity' });
-      else gsap.fromTo(kids, { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: D.land, ease: E.out, stagger: 0.1, clearProps: 'opacity,transform' });
+      if (h.calm || !engine) { gsap.fromTo(kids, { opacity: 0 }, { opacity: 1, duration: 0.2, ease: 'none', clearProps: 'opacity' }); return; }
+      const head = kids.find((k) => k.matches('.pj__head'));
+      const details = head ? ([...head.children] as HTMLElement[]) : [];
+      const rest = kids.filter((k) => k !== head);
+      const at = Math.max(0, lead - 0.1); // the first detail 0.1 s before the landing, so it is there as the zoom settles
+      if (head) { gsap.set(details, { opacity: 0 }); head.style.opacity = ''; }
+      gsap.to(details, { opacity: 1, duration: 0.36, ease: E.out, stagger: 0.1, delay: at, clearProps: 'opacity' });
+      gsap.fromTo(rest, { opacity: 0 }, { opacity: 1, duration: 0.4, ease: E.out, delay: at + details.length * 0.1, clearProps: 'opacity' });
     };
     const settle = () => {
       if (my !== token) return;
@@ -178,7 +189,9 @@ export function initProject(h: Host) {
       enhance();
       arrive();
       ($('[data-close]', proj) as HTMLElement).focus({ preventScroll: true });
-      if (print && pb) pb.open(print - 1, { flip: false, push: false });
+      // a traversal straight onto .../#print-NN: playback follows the entry (and knows whether it pushed it)
+      const here = parse();
+      if (print && pb && here.kind === 'project' && here.print === print) pb.sync(location.hash);
     };
     const full = frameRect('open');
     if (!engine || h.calm) {
@@ -208,7 +221,7 @@ export function initProject(h: Host) {
     const t = gsap.timeline({ onComplete: () => h.setTl(null) });
     h.setTl(t);
     t.call(settle, [], D.travel);
-    t.call(arrive, [], D.travel - 0.25);
+    t.call(arrive, [0.25], D.travel - 0.25);
     t.call(() => { $$('.evf .pw.on').forEach((e) => { if (!e.matches('.ro--fl')) e.classList.remove('on'); }); }, [], 0.08);
     t.to(st.rect, { x: full.x, y: full.y, w: full.w, h: full.h, duration: D.travel, ease: E.lens, onUpdate: () => { writeRect(st.rect); h.reveal(); } }, 0);
     t.to(st, { zoom, dolly: 0.08, focus: sub.z, aperture: apertureOf(s.fnum) * 1.6, radius: 0, rim: 0, vig: 0.38, duration: D.travel, ease: E.lens }, 0);
@@ -267,7 +280,9 @@ export function initProject(h: Host) {
           engine.holdPrevious();
           Object.assign(st, { rect, nd: 0, radius: 5, rim: 1, mix: 0, dim: 1, zoom: 1, dolly: 0 });
           gsap.to(st, { mix: 1, duration: 0.3, onUpdate: h.reveal });
-        }
+        } else h.cover(i);
+        // the frame shown may not be the one opened (previous and next): the AF goes to its subject
+        h.afHome();
       });
       t.add(h.hudOn());
       return;
@@ -294,6 +309,8 @@ export function initProject(h: Host) {
     const slug = slugAt(to);
     const my = ++token;
     pb?.close({ fromPop: true, instant: true });
+    // the counter leaves with the old roll; the new roll shows it once one of its prints takes focus
+    if (counter) counter.hidden = true;
     const old = [...col.children] as HTMLElement[];
     const out = gsap.to(old, { opacity: 0, duration: 0.2, ease: 'none' });
     const engine = h.engine();
@@ -308,7 +325,7 @@ export function initProject(h: Host) {
         engine.st.mix = 0;
         engine.st.focus = h.scenes[to].focus;
         gsap.to(engine.st, { mix: 1, duration: 0.4, onUpdate: h.reveal });
-      }
+      } else h.cover(to);
     }
     history.replaceState({ vf: 'project', slug }, '', projectUrl(slug));
     Promise.all([loadArticle(slug), loadEnh()]).then(async ([doc]) => {

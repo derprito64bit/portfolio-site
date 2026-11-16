@@ -90,7 +90,7 @@ export function initRoll(o: RollOptions): RollControl | null {
   grid?.append(af);
   const fine = matchMedia('(hover: hover) and (pointer: fine)');
   let rects: { x: number; y: number; w: number; h: number }[] = [];
-  let gridTop = 0, gridLeft = 0;
+  let gridTop = 0, gridLeft = 0, scrollMax = Infinity;
   let cur = -1;
   const dimOn = () => total >= DIM_MIN && fine.matches;
   const view = () => (win ? { top: window.scrollY, h: window.innerHeight, left: 0, w: window.innerWidth } : { top: (o.scroller as HTMLElement).scrollTop, h: (o.scroller as HTMLElement).clientHeight, left: 0, w: (o.scroller as HTMLElement).clientWidth });
@@ -102,6 +102,8 @@ export function initRoll(o: RollOptions): RollControl | null {
     const base = win ? { top: 0, left: 0, st: window.scrollY } : (() => { const s = (o.scroller as HTMLElement).getBoundingClientRect(); return { top: s.top, left: s.left, st: (o.scroller as HTMLElement).scrollTop }; })();
     gridTop = g.top - base.top + base.st;
     gridLeft = g.left - base.left;
+    const sc = win ? document.scrollingElement ?? document.documentElement : (o.scroller as HTMLElement);
+    scrollMax = sc.scrollHeight - (win ? window.innerHeight : sc.clientHeight);
     rects = prints.map((p) => {
       // the whole print, strip included: the brackets frame it as Flux's framed its sheet
       const r = p.getBoundingClientRect();
@@ -115,6 +117,13 @@ export function initRoll(o: RollOptions): RollControl | null {
     gsap.to(af, { x: r.x, y: r.y, width: r.w, height: r.h, duration: jump || reduced() ? 0 : D.step, ease: E.detent, overwrite: true });
   }
 
+  /** The HUD counter reads this roll's focused print, and is hidden while none is (never another roll's count). */
+  function count(n: number) {
+    if (!o.counter) return;
+    o.counter.textContent = n < 0 ? '' : `${pad(n + 1)} / ${pad(total)}`;
+    o.counter.hidden = n < 0;
+  }
+
   function setFocus(n: number, jump = false) {
     const dim = dimOn() && n >= 0;
     roll.toggleAttribute('data-dim', dim);
@@ -123,22 +132,34 @@ export function initRoll(o: RollOptions): RollControl | null {
     if (cur >= 0) prints[cur]?.removeAttribute('data-focus');
     const first = cur < 0;
     cur = n;
+    count(n);
     if (n < 0) { delete roll.dataset.focus; return; }
     prints[n].setAttribute('data-focus', '');
     roll.dataset.focus = String(n + 1);
-    if (o.counter) o.counter.textContent = `${pad(n + 1)} / ${pad(total)}`;
     if (dim) place(n, jump || first);
   }
 
-  /** The print nearest the view's centre, among those in view; -1 when none is. */
+  /** Across the view, a centre counts this much of a down-the-view distance: the centre line leads, not the 2-D centre. */
+  const X_WEIGHT = 0.25;
+  /** The print at the view's centre line (J3), among those in view; -1 when none is. A print the line crosses always
+   *  beats one it misses; among those, the nearest centre (down the view, then a quarter across) wins; when the line
+   *  falls between prints, the nearest edge does. At the end of the scroll the last print at least half in view takes
+   *  focus, so the roll's last print is always reachable. */
   function nearest() {
     const v = view();
-    const cy = v.top + v.h / 2 - gridTop, cx = v.left + v.w / 2 - gridLeft;
+    const top = v.top - gridTop, bottom = top + v.h;
+    const cy = top + v.h / 2, cx = v.left + v.w / 2 - gridLeft;
+    if (v.top >= scrollMax - 2) {
+      for (let i = rects.length - 1; i >= 0; i--) {
+        const r = rects[i];
+        if (Math.min(r.y + r.h, bottom) - Math.max(r.y, top) >= r.h * 0.5) return i;
+      }
+    }
     let best = -1, bd = Infinity;
     rects.forEach((r, i) => {
-      const top = r.y, bottom = r.y + r.h;
-      if (bottom < v.top - gridTop || top > v.top - gridTop + v.h) return;
-      const d = Math.hypot(r.x + r.w / 2 - cx, (top + bottom) / 2 - cy);
+      if (r.y + r.h < top || r.y > bottom) return;
+      const gap = Math.max(0, r.y - cy, cy - (r.y + r.h));
+      const d = gap > 0 ? 1e6 + gap : Math.abs(r.y + r.h / 2 - cy) + X_WEIGHT * Math.abs(r.x + r.w / 2 - cx);
       if (d < bd) { bd = d; best = i; }
     });
     return best;
@@ -156,6 +177,7 @@ export function initRoll(o: RollOptions): RollControl | null {
   const fineChange = () => setFocus(cur, true);
   fine.addEventListener('change', fineChange);
   cleanups.push(() => fine.removeEventListener('change', fineChange));
+  count(-1);
   refresh();
 
   // ---------------------------------------------------------------- loop clips (A11)
@@ -202,6 +224,7 @@ export function initRoll(o: RollOptions): RollControl | null {
       gsap.killTweensOf(af);
       cleanups.forEach((f) => f());
       af.remove();
+      count(-1);
     },
   };
 }

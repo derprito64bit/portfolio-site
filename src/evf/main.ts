@@ -641,15 +641,16 @@ function land(i: number) {
   updateReadouts(i, false);
   hudOn(0);
   const s = scenes[Math.min(i, scenes.length - 1)];
-  placeAF(sceneToFrac(subjectOf(s), rect));
   if (engine) {
     const st = engine.st;
     engine.setScene(s);
+    // the rect first: placeAF reads the engine's rect, which is still the intro's full screen until here
     Object.assign(st, { rect, alpha: 1, exposure: calm ? (m === 'info' ? 0.22 : 1) : 0, focus: m === 'info' ? 0.02 : s.focus, aperture: apertureOf(s.fnum), zoom: 1, dolly: 0, mix: 1, nd: 0, noise: noiseOf(s.iso), radius: 5, dim: 1, poolAmt: 0, rim: 1, vig: 0.28, zebra: 0, ca: 0, eyeOn: false, parx: 0, roll: 0 });
     if (!calm) gsap.to(st, { exposure: m === 'info' ? 0.22 : 1, duration: D.land, ease: E.out, onUpdate: reveal });
     engine.invalidate(300);
     engine.wantMeter();
   } else coverFor(i);
+  placeAF(sceneToFrac(subjectOf(s), rect));
   syncDist();
   lockAF(true);
   afEl.classList.remove('is-off');
@@ -675,6 +676,7 @@ const project = initProject({
   afHome: () => { placeAF(sceneToFrac(subjectOf(scenes[pos]), frameRect('work'))); lockAF(true); engine?.wantMeter(); },
   target: openTarget,
   jump,
+  cover: (i) => { if (!engine) coverFor(i); },
   // D-053: no hand-held sway while a project is opening, open or closing; back on close
   setSway: (on) => { if (engine) engine.sway = on && !calm; },
 });

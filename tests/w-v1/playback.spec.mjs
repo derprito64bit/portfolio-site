@@ -110,6 +110,96 @@ test('A10 in the Viewfinder: Esc in playback closes playback, not the project', 
   }
 });
 
+test.describe('A2 / A10 history over playback: one Esc per layer', () => {
+  const lands = async (page) => {
+    await page.keyboard.press('Escape');
+    await expect.poll(async () => (await pb(page)).open, { message: 'the first Esc closes playback' }).toBe(false);
+    await expect.poll(() => page.evaluate(() => [window.__vf.state(), location.pathname, location.hash])).toEqual(['open', '/work/project-06/', '']);
+    await page.keyboard.press('Escape');
+    await untilState(page, 'evf', 5);
+    await expect.poll(() => page.evaluate(() => `${location.pathname}${location.hash}`), { message: 'the second Esc lands on the frame' }).toBe('/#work-06');
+    // and stays there: no stale entry reopens the project
+    await page.waitForTimeout(400);
+    expect(await page.evaluate(() => window.__vf.state())).toBe('evf');
+  };
+
+  test('Back then Forward over a playback entry, then Esc, Esc: the frame', async ({ browser, browserName }) => {
+    const ctx = await context(browser, browserName, DESK);
+    const page = await ctx.newPage();
+    try {
+      await home(page);
+      await toFrame(page, 5);
+      await page.keyboard.press('Enter');
+      await untilState(page, 'open', 5);
+      await page.locator('#print-01 [data-print-open]').click();
+      await expect.poll(async () => (await pb(page))?.hash).toBe('#print-01');
+      await page.goBack();
+      await expect.poll(async () => (await pb(page)).open).toBe(false);
+      await page.goForward();
+      await expect.poll(async () => (await pb(page)).open, { message: 'Forward reopens playback' }).toBe(true);
+      await lands(page);
+    } finally {
+      await ctx.close();
+    }
+  });
+
+  test('a traversal straight onto /work/<slug>/#print-NN from the frame, then Esc, Esc: the frame', async ({ browser, browserName }) => {
+    const ctx = await context(browser, browserName, DESK);
+    const page = await ctx.newPage();
+    try {
+      await home(page);
+      await toFrame(page, 5);
+      await page.keyboard.press('Enter');
+      await untilState(page, 'open', 5);
+      await page.locator('#print-01 [data-print-open]').click();
+      await expect.poll(async () => (await pb(page))?.hash).toBe('#print-01');
+      await page.goBack();
+      await expect.poll(async () => (await pb(page)).open).toBe(false);
+      await page.goBack();
+      await untilState(page, 'evf', 5);
+      await page.evaluate(() => history.go(2));
+      await untilState(page, 'open', 5);
+      await expect.poll(async () => (await pb(page))?.open, { message: 'the traversal opens playback' }).toBe(true);
+      await lands(page);
+    } finally {
+      await ctx.close();
+    }
+  });
+});
+
+test('J4 paging never blanks the stage: one print is always up', async ({ browser, browserName }) => {
+  const ctx = await context(browser, browserName, DESK);
+  const page = await ctx.newPage();
+  try {
+    await cold(page, 'project-06');
+    await centrePrint(page, 3);
+    await page.locator('#print-03 [data-print-open]').click();
+    await expect.poll(async () => (await pb(page))?.open).toBe(true);
+    await page.waitForTimeout(700);
+    for (const key of ['ArrowRight', 'ArrowRight', 'ArrowLeft']) {
+      // every animation frame for 500 ms from the key: the most opaque frame or leaving copy on the stage
+      const watch = page.evaluate(() => new Promise((resolve) => {
+        const out = [];
+        const t0 = performance.now();
+        const tick = () => {
+          const els = [...document.querySelectorAll('dialog.pb .pb__stage > *')];
+          out.push(Math.max(0, ...els.map((e) => (getComputedStyle(e).visibility === 'hidden' ? 0 : Number(getComputedStyle(e).opacity)))));
+          if (performance.now() - t0 < 500) requestAnimationFrame(tick); else resolve(out);
+        };
+        requestAnimationFrame(tick);
+      }));
+      await page.keyboard.press(key);
+      const frames = await watch;
+      expect(frames.length, 'sampled').toBeGreaterThan(5);
+      expect(frames.filter((o) => o < 0.05).length, `${key}: blank frames (max opacity on the stage per frame: ${frames.map((o) => o.toFixed(2)).join(' ')})`).toBe(0);
+      expect(frames.at(-1), 'the page ends fully up').toBe(1);
+      expect(await page.locator('dialog.pb .pb__ghost').count(), 'the leaving copy is gone').toBe(0);
+    }
+  } finally {
+    await ctx.close();
+  }
+});
+
 test.describe('A13 calm, no WebGL, no JS', () => {
   test('reduced motion: a crossfade open, opacity-only expose, brackets that jump, no dim spring, a playback crossfade', async ({ browser, browserName }) => {
     const ctx = await context(browser, browserName, DESK, { reduced: true });

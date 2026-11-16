@@ -59,8 +59,9 @@ export function initPlayback(o: PlaybackOptions): PlaybackControl {
     const cap = el('span', 'pb__cap');
     const bar = el('div', 'pb__bar', {}, [title, count, close]);
     const foot = el('div', 'pb__foot', {}, [el('div', 'pb__nav', {}, [prev, next]), el('p', 'pb__strip', {}, [ro, cap])]);
-    const d = el('dialog', 'pb', { 'aria-labelledby': 'pb-h' }, [bg, el('div', 'pb__in', {}, [bar, el('div', 'pb__stage', {}, [frame]), foot])]) as HTMLDialogElement;
-    parts = { bg, count, close, frame, prev, next, ro, cap, bar, foot };
+    const stage = el('div', 'pb__stage', {}, [frame]);
+    const d = el('dialog', 'pb', { 'aria-labelledby': 'pb-h' }, [bg, el('div', 'pb__in', {}, [bar, stage, foot])]) as HTMLDialogElement;
+    parts = { bg, count, close, frame, stage, prev, next, ro, cap, bar, foot };
     close.addEventListener('click', () => api.close());
     prev.addEventListener('click', () => page(-1));
     next.addEventListener('click', () => page(1));
@@ -135,6 +136,27 @@ export function initPlayback(o: PlaybackOptions): PlaybackControl {
   const frameOf = (n: number) => prints[n]?.querySelector<HTMLElement>('.print__frame') ?? prints[n];
   const linkOf = (n: number) => prints[n]?.querySelector<HTMLElement>('[data-print-open]') ?? prints[n];
 
+  /** The roll's own copy of the print in playback hides while the playback frame flies from or to it (no double). */
+  let concealed: HTMLElement | null = null;
+  const unconceal = () => { if (concealed) concealed.style.visibility = ''; concealed = null; };
+  const conceal = (n: number) => { unconceal(); concealed = frameOf(n); concealed.style.visibility = 'hidden'; };
+
+  /** The print leaving a page: a still copy of the frame where it stands, so the stage is never empty (J4). */
+  let ghosts: HTMLElement[] = [];
+  const dropGhosts = () => { for (const g of ghosts) { gsap.killTweensOf(g); g.remove(); } ghosts = []; };
+  function ghostOf(f: HTMLElement) {
+    const g = f.cloneNode(true) as HTMLElement;
+    g.classList.add('pb__ghost');
+    g.setAttribute('aria-hidden', 'true');
+    g.inert = true;
+    // a still: a clip's copy keeps its poster and never loads
+    g.querySelectorAll('video').forEach((v) => { v.preload = 'none'; v.removeAttribute('src'); v.querySelectorAll('source').forEach((s) => s.remove()); });
+    Object.assign(g.style, { position: 'absolute', margin: '0', left: `${f.offsetLeft}px`, top: `${f.offsetTop}px`, width: `${f.offsetWidth}px`, height: `${f.offsetHeight}px`, pointerEvents: 'none' });
+    parts.stage.append(g);
+    ghosts.push(g);
+    return g;
+  }
+
   function page(dir: number) {
     if (cur < 0) return;
     const to = cur + dir;
@@ -143,13 +165,23 @@ export function initPlayback(o: PlaybackOptions): PlaybackControl {
     hist.replace(printHash(to + 1));
     // the roll follows behind, so the exit lands on the print being shown
     prints[to].scrollIntoView({ block: 'center', behavior: 'instant' as ScrollBehavior });
+    if (concealed) conceal(to);
     const f = parts.frame;
+    // a page that interrupts a page: the one leaving goes at once, the one arriving leaves from where it is
+    dropGhosts();
     gsap.killTweensOf(f);
-    if (reduced()) { fill(to); gsap.fromTo(f, { opacity: 0 }, { opacity: 1, duration: 0.2, ease: 'none' }); return; }
-    gsap.timeline()
-      .to(f, { opacity: 0, x: -dir * 24, duration: D.snap, ease: E.in })
-      .call(() => fill(to))
-      .fromTo(f, { opacity: 0, x: dir * 24 }, { opacity: 1, x: 0, duration: D.step, ease: E.out });
+    const g = ghostOf(f);
+    fill(to);
+    const gone = () => { g.remove(); ghosts = ghosts.filter((x) => x !== g); };
+    if (reduced()) {
+      // a crossfade: the two opacities always sum to one
+      gsap.to(g, { opacity: 0, duration: 0.2, ease: 'none', onComplete: gone });
+      gsap.fromTo(f, { opacity: 0, x: 0 }, { opacity: 1, duration: 0.2, ease: 'none' });
+      return;
+    }
+    // the old print leaves over D.snap while the next enters over D.step, half a snap behind: never a blank stage
+    gsap.to(g, { opacity: 0, x: `-=${dir * 24}`, duration: D.snap, ease: E.in, onComplete: gone });
+    gsap.fromTo(f, { opacity: 0, x: dir * 24 }, { opacity: 1, x: 0, duration: D.step, ease: E.out, delay: D.snap / 2 });
   }
 
   const api: PlaybackControl = {
@@ -173,6 +205,7 @@ export function initPlayback(o: PlaybackOptions): PlaybackControl {
       }
       // the print rises to fit: its frame is the start of the playback frame
       Flip.fit(frame, frameOf(n), { scale: true });
+      conceal(n);
       gsap.to(frame, { x: 0, y: 0, scaleX: 1, scaleY: 1, duration: D.land, ease: E.out });
       gsap.fromTo(bg, { opacity: 0 }, { opacity: 1, duration: D.step, ease: E.out });
       gsap.fromTo([bar, foot], { opacity: 0 }, { opacity: 1, duration: D.step, ease: E.out, delay: 0.2 });
@@ -190,6 +223,8 @@ export function initPlayback(o: PlaybackOptions): PlaybackControl {
       const { frame, bg, bar, foot } = parts;
       const done = () => {
         leaving = null;
+        dropGhosts();
+        unconceal();
         if (d.open) d.close();
         gsap.set([frame, bg, bar, foot], { clearProps: 'opacity,transform' });
         o.onHold?.(false);
@@ -199,8 +234,10 @@ export function initPlayback(o: PlaybackOptions): PlaybackControl {
       if (instant) { done(); return had; }
       leaving = gsap.timeline({ onComplete: done });
       if (reduced()) { leaving.to([frame, bg, bar, foot], { opacity: 0, duration: 0.2, ease: 'none' }); return had; }
+      dropGhosts();
+      conceal(n);
       leaving.to([bar, foot], { opacity: 0, duration: D.snap, ease: E.in }, 0);
-      leaving.to(frame, { ...Flip.fit(frame, frameOf(n), { scale: true, getVars: true }), duration: 0.33, ease: E.in }, 0);
+      leaving.to(frame, { ...Flip.fit(frame, frameOf(n), { scale: true, getVars: true }), opacity: 1, duration: 0.33, ease: E.in }, 0);
       leaving.to(bg, { opacity: 0, duration: 0.33, ease: E.in }, 0);
       return had;
     },
@@ -208,8 +245,12 @@ export function initPlayback(o: PlaybackOptions): PlaybackControl {
       const m = /^#print-(\d+)$/.exec(hash);
       if (m) {
         const n = Number(m[1]) - 1;
-        if (cur < 0) api.open(n, { flip: false, push: false });
-        else if (n !== cur && n >= 0 && n < total) { cur = n; fill(n); }
+        if (cur < 0) {
+          api.open(n, { flip: false, push: false });
+          // Forward (or a reload) onto an entry playback itself pushed: closing steps back over it, as after a push,
+          // so the entry is never rewritten into a duplicate of the page's own (which a later Close would land on)
+          if (cur >= 0 && hist.own()) pushed = true;
+        } else if (n !== cur && n >= 0 && n < total) { cur = n; fill(n); }
       } else if (cur >= 0) api.close({ fromPop: true });
     },
     isOpen: () => cur >= 0,

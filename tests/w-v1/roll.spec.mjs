@@ -267,6 +267,48 @@ test.describe('A9 focus', () => {
     }
   });
 
+  test('the centre line leads: a print the line crosses has focus; the last print takes it at the scroll end (12 / 12)', async ({ browser, browserName }) => {
+    const ctx = await context(browser, browserName, DESK);
+    const page = await ctx.newPage();
+    /** Steps the scroller (the window, or the open view's column) through the roll; at each stop, the focused print and
+     *  the prints the view's centre line crosses. */
+    const sweep = () => page.evaluate(async () => {
+      const col = document.querySelector('.proj:not([hidden]) .proj__col');
+      const sc = col || document.scrollingElement;
+      const vh = col ? col.clientHeight : innerHeight;
+      const vtop = () => (col ? col.getBoundingClientRect().top : 0);
+      const max = sc.scrollHeight - vh;
+      const out = [];
+      const frame = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      for (let y = 0; y <= max + 1; y += 120) {
+        sc.scrollTop = Math.min(y, max);
+        await frame();
+        const line = vtop() + vh / 2;
+        const crossing = [...document.querySelectorAll('.print')].filter((p) => { const r = p.getBoundingClientRect(); return r.top <= line && r.bottom >= line; }).map((p) => Number(p.dataset.print));
+        out.push({ y: sc.scrollTop, end: sc.scrollTop >= max - 2, focus: Number(document.querySelector('.roll').dataset.focus || 0), crossing });
+      }
+      sc.scrollTop = max;
+      await frame();
+      return { out, last: { focus: Number(document.querySelector('.roll').dataset.focus || 0), counter: document.querySelector('[data-print-count]').textContent } };
+    });
+    const check = ({ out, last }, where) => {
+      const wrong = out.filter((s) => !s.end && s.crossing.length && !s.crossing.includes(s.focus));
+      expect(wrong, `${where}: stops where focus is off the centre line`).toEqual([]);
+      expect(last, `${where}: the scroll end`).toEqual({ focus: 12, counter: '12 / 12' });
+    };
+    try {
+      await cold(page, 'project-06');
+      check(await sweep(), 'cold page');
+      await home(page);
+      await toFrame(page, 5);
+      await page.keyboard.press('Enter');
+      await untilState(page, 'open', 5);
+      check(await sweep(), 'the open view');
+    } finally {
+      await ctx.close();
+    }
+  });
+
   test('no dim under 4 prints, nor on touch', async ({ browser, browserName }) => {
     const ctx = await context(browser, browserName, DESK);
     const page = await ctx.newPage();
