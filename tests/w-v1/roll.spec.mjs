@@ -306,6 +306,12 @@ test.describe('A9 focus', () => {
       await page.keyboard.press('Enter');
       await untilState(page, 'open', 5);
       check(await sweep(), 'the open view');
+      // a tall view: at the scroll end the centre line crosses print 11, and the last print still takes focus
+      await page.setViewportSize({ width: 1440, height: 1800 });
+      await cold(page, 'project-06');
+      const tall = await sweep();
+      expect(tall.out.at(-1).crossing, 'the case the end rule exists for').not.toContain(12);
+      check(tall, 'cold page at 1440 x 1800');
     } finally {
       await ctx.close();
     }

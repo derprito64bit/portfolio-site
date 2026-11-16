@@ -176,12 +176,16 @@ export function initPlayback(o: PlaybackOptions): PlaybackControl {
     if (reduced()) {
       // a crossfade: the two opacities always sum to one
       gsap.to(g, { opacity: 0, duration: 0.2, ease: 'none', onComplete: gone });
-      gsap.fromTo(f, { opacity: 0, x: 0 }, { opacity: 1, duration: 0.2, ease: 'none' });
+      gsap.set(f, { opacity: 0, x: 0 });
+      gsap.to(f, { opacity: 1, duration: 0.2, ease: 'none' });
       return;
     }
     // the old print leaves over D.snap while the next enters over D.step, half a snap behind: never a blank stage
     gsap.to(g, { opacity: 0, x: `-=${dir * 24}`, duration: D.snap, ease: E.in, onComplete: gone });
-    gsap.fromTo(f, { opacity: 0, x: dir * 24 }, { opacity: 1, x: 0, duration: D.step, ease: E.out, delay: D.snap / 2 });
+    // set, then to: a delayed fromTo that a quick next page kills during its delay leaves its start state behind
+    // (GSAP keeps re-rendering it), which held the frame and the ground at opacity 0 on a later open
+    gsap.set(f, { opacity: 0, x: dir * 24 });
+    gsap.to(f, { opacity: 1, x: 0, duration: D.step, ease: E.out, delay: D.snap / 2 });
   }
 
   const api: PlaybackControl = {
@@ -200,15 +204,17 @@ export function initPlayback(o: PlaybackOptions): PlaybackControl {
       gsap.killTweensOf([frame, bg, bar, foot]);
       gsap.set([frame, bg, bar, foot], { clearProps: 'opacity,transform' });
       if (reduced() || !flip) {
-        gsap.fromTo([bg, frame, bar, foot], { opacity: 0 }, { opacity: 1, duration: reduced() ? 0.2 : D.step, ease: 'none' });
+        gsap.set([bg, frame, bar, foot], { opacity: 0 });
+        gsap.to([bg, frame, bar, foot], { opacity: 1, duration: reduced() ? 0.2 : D.step, ease: 'none' });
         return;
       }
       // the print rises to fit: its frame is the start of the playback frame
       Flip.fit(frame, frameOf(n), { scale: true });
       conceal(n);
       gsap.to(frame, { x: 0, y: 0, scaleX: 1, scaleY: 1, duration: D.land, ease: E.out });
-      gsap.fromTo(bg, { opacity: 0 }, { opacity: 1, duration: D.step, ease: E.out });
-      gsap.fromTo([bar, foot], { opacity: 0 }, { opacity: 1, duration: D.step, ease: E.out, delay: 0.2 });
+      gsap.set([bg, bar, foot], { opacity: 0 });
+      gsap.to(bg, { opacity: 1, duration: D.step, ease: E.out });
+      gsap.to([bar, foot], { opacity: 1, duration: D.step, ease: E.out, delay: 0.2 });
     },
     close({ fromPop = false, instant = false } = {}) {
       if (cur < 0 || !dlg) return false;

@@ -195,6 +195,31 @@ test('J4 paging never blanks the stage: one print is always up', async ({ browse
       expect(frames.at(-1), 'the page ends fully up').toBe(1);
       expect(await page.locator('dialog.pb .pb__ghost').count(), 'the leaving copy is gone').toBe(0);
     }
+    // rapid paging (each page cut short by the next), Esc, a reopen, Back / Forward / Back, Forward: playback is fully
+    // up each time (a start state left behind by a cut-short tween once held the frame and the ground at opacity 0)
+    for (let round = 0; round < 3; round++) {
+      await page.keyboard.press('Escape');
+      await expect.poll(async () => (await pb(page)).open).toBe(false);
+      await page.locator('#print-02 [data-print-open]').click();
+      await page.waitForTimeout(700);
+      for (let i = 0; i < 6; i++) { await page.keyboard.press('ArrowRight'); await page.waitForTimeout(30 + 10 * round); }
+      await page.waitForTimeout(700);
+      await page.keyboard.press('Escape');
+      await expect.poll(async () => (await pb(page)).open).toBe(false);
+      await page.waitForTimeout(500);
+      await page.locator('#print-07 [data-print-open]').click();
+      await page.waitForTimeout(400);
+      await page.goBack();
+      await page.goForward();
+      await page.goBack();
+      await expect.poll(async () => (await pb(page)).open).toBe(false);
+      await page.waitForTimeout(500);
+      await page.goForward();
+      await page.waitForTimeout(900);
+      const up = await page.evaluate(() => ['.pb__frame', '.pb__bg', '.pb__bar'].map((s) => getComputedStyle(document.querySelector(`dialog.pb ${s}`)).opacity));
+      expect(up, `round ${round + 1}: after rapid paging and a reopen, the frame, the ground and the bar are up`).toEqual(['1', '1', '1']);
+      expect(await page.evaluate(() => document.querySelectorAll('.print__frame[style*="visibility: hidden"]').length), 'only the print in playback is hidden in the roll').toBeLessThanOrEqual(1);
+    }
   } finally {
     await ctx.close();
   }
