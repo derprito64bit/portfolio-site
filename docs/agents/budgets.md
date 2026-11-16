@@ -10,6 +10,8 @@ All dates and times in this file are UTC, except a time written with its own off
 
 - **Retired at W-V0a (2026-10-29, D-048, D-049):** the Darkroom rows: the X-T5 camera, pre-GL JS and the GL chunk, the home HTML on the wire, fonts, 3D, canvas, print stills, the GPU worst moment, idle, the hero, input blocking, drift and sound. Git history keeps them (tag `darkroom-final`). Their replacements are the budgets-v2 section below.
 
+- **Since D-059 (2026-11-15),** the timed rows here (Lighthouse, LCP, TBT) bind only at the pre-G3a quiet-window set, and CLS binds now from a deterministic trace. See the budgets-v2 Timing heading.
+
 - Lighthouse 13.5.0 under the GES-1 protocol (built dist over gzip, 5 runs, median by score, auto tier, valid only on a real renderer and under Measurement validity R1-R5 below): performance >= 90 mobile and >= 95 desktop; accessibility 100; best practices >= 95. SEO is not gated while noindex is on.
 - LCP <= 2.5 s mobile and <= 2.0 s desktop. The LCP element follows budgets-v2's Timing table: the name on `/`; the h1 or the first print on `/work/<slug>/` (W-V0a, 2026-10-29; the Darkroom's print-still and dock rules retired). CLS <= 0.02. TBT <= 150 ms, mobile and desktop.
 - Layout: overflow 0 px as the maximum over the run, at every profile and mode. No clipped text under text spacing, at 200% zoom or at 320 px. Targets >= 44x44 px (shared floor with the Manor: 24 px). Text >= 12 px. Contact within 5.0 screens at 390x844.
@@ -262,7 +264,7 @@ HARD fails the gate. TARGET is reported, and a miss needs a one-line note.
 | Metric | Cap | How it is measured |
 |---|---|---|
 | Frame rate at rest (intro and frames) | 30 fps at most | Engine frame counters (the `?vf-test` stats) over 10 s with no input |
-| Main thread at rest | 3 ms per second at most | Trace over the same 10 s |
+| Main thread at rest | 3 ms per second at most | Trace over the same 10 s (host-timed; binds at the pre-G3a set, D-059) |
 | Stops | 0 frames when the tab is hidden, under reduced motion, and from 60 s after the last input | The same counters |
 | Project roll at rest | 0 draws from 1 s after the motion end, unless an honour is moving | The same counters. Motion end = the later of the last input and the last presented frame |
 

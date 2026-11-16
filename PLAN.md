@@ -5,8 +5,8 @@
 - One crew at a time, one stage per session.
 - The owner gives each stage the go-ahead and caps crew rounds.
 
-## Where things stand (2026-10-29, after W-V0)
-- **2026-11-15, the owner answered eight questions (D-057 to D-062):** budgets-v2 is confirmed ('Balanced', D-057): the host-independent rows (every byte cap, the media caps, CLS from a deterministic trace, the engine-counter rows) bind as must-fix now, and every budget applies on phones, which get the full experience; the idle rule D-053 is confirmed, so the intro's redraw at the display rate is a W-V3 must-fix; the video rules stand as proposed. Fonts: 200 kB in at most 4 files, target 170 kB (D-058; today about 270 kB in 6, for W-V3 or W-V4). Timed tests wait for one quiet-window set before G3a (D-059): no timed set at any crew's approval candidate, and the Lighthouse baseline is taken in that window. At the cap, a crew with no must-fix left is merged with CI green and its should-fix items queued in #106, without asking (D-060). Hosting option A is approved: W-R runs the game repo's publish.ps1 once (D-061). The five plan questions are closed (D-062). This supersedes "budgets-v2 stays proposed" and "not must-fix while budgets are proposed" in the bullets below.
+## Where things stand (2026-10-29, after W-V0; owner answers 2026-11-15)
+- **2026-11-15, the owner answered eight questions (D-057 to D-062):** budgets-v2 is confirmed ('Balanced', D-057): the host-independent rows (every byte cap, the media caps, CLS from a deterministic trace, the engine-counter rows) bind as must-fix now, and every budget applies on phones, which get the full experience; the idle rule D-053 is confirmed, so the intro's redraw at the display rate is a W-V3 must-fix; the video rules stand as proposed. Fonts: 200 kB in at most 4 files, target 170 kB (D-058; today about 270 kB in 6, for W-V3 or W-V4). Timed tests wait for one quiet-window set before G3a (D-059): no timed set at any crew's approval candidate, and the Lighthouse baseline is taken in that window. At the cap, a crew with no must-fix left is merged with CI green and its should-fix items queued in #106, without asking (D-060). Hosting option A is approved: W-R runs the game repo's publish.ps1 once (D-061). The five plan questions are closed (D-062).
 - **W-V0 is done: Viewfinder is on main and the Darkroom is retired. Next = launch W-V1 in a fresh session (NEXT STAGE below).** Its spec v1 and a W-V0 rulings comment are posted on #21.
 - **main = 0c72687 plus this stage's docs PR.** Merged this stage:
   - #107: the owner's name in `content/owner-facts.md` (Aaron Chen, CONFIRMED 2026-10-29, from the owner in chat);
@@ -14,8 +14,8 @@
   - #109 (3f9ef98): the name on the intro and the contact screen;
   - **W-V0b #110** (0c72687): `?vf-test` hooks only (D-055), per-channel engine counters (#92 in part), the idle check on them, a state-machine smoke in Chromium and WebKit with GL in CI at 640 × 400, DPR 1, and `crew.mjs lighthouse` re-pointed to Viewfinder; #11 closed.
 - **CI has no GPU.** GL runs in CI only at 640 × 400, DPR 1; the rest runs on the flat path (`H_NO3D=1`). Full-size GL runs (smoke, idle, Lighthouse) are one command each on the reference host.
-- **The Lighthouse baseline is blocked (host):** the PC was busy (6 host-suspect mobile runs; the desktop precheck stayed busy 30 minutes). Re-run it in the owner's quiet window with the one command in `portfolio-evidence/v2/baseline/README.md`. budgets-v2 stays proposed until then and the owner's yes (D-048).
-- **Reported to the owner (not must-fix while budgets are proposed):** fonts about 270 kB in 6 files against 130 kB and 3; CLS on `/` 0.0978 mobile (host-suspect runs) and 0.051 desktop (one clean run); the intro redraws at the display rate at rest (about 240 fps on the 238 Hz host). Each is in #106 with its stage.
+- **The Lighthouse baseline is blocked (host):** the PC was busy (6 host-suspect mobile runs; the desktop precheck stayed busy 30 minutes). Re-run it in the owner's quiet window with the one command in `portfolio-evidence/v2/baseline/README.md`. Under D-059 it is taken in the one pre-G3a quiet-window set.
+- **Over budgets-v2 on main (pre-existing, each in #106 with its stage):** fonts about 270 kB in 6 files against 200 kB and 4 (D-058); CLS on `/` 0.0978 mobile (host-suspect runs) and 0.051 desktop (one clean run); the intro redraws at the display rate (about 240 fps on the 238 Hz host; must-fix in W-V3, D-057).
 - **The queue is #106** ("Follow-up queue (v2)", 22 open items with done-when lines). #91 is closed.
 - **Session cost (W-V0):** agent tokens W-V0a worker about 392k (Sonnet), W-V0b builder about 465k (Opus xhigh), two verifiers and the spec refuter about 350k (Sonnet). No dollar ledger for this non-loop stage.
 - **System review:** `portfolio-evidence/loop-audit/SYSTEM-REVIEW-2026-10-13.md`.
@@ -251,7 +251,7 @@ Crew totals: about $525 to $925. Add about $50 to $70 of orchestrator time per s
 3. WCAG 2.2 AA: axe 0 on every route and state; a keyboard path for every action; forced colours and `prefers-contrast`; the wheel lock applies to the frame only, never to the document; an NVDA transcript of the full path.
 4. Reduced motion: an inventory of every motion, each with a live calm path, tested.
 5. Phone: the whole site at 390 × 844, 320 × 640 and landscape.
-6. Perf: every budgets-v2 row on real media. A clean TBT set (10 runs) on `/` and on the heaviest project. The 4x CPU floors. The media byte caps.
+6. Perf: every host-independent budgets-v2 row on real media (the byte caps, the media caps, CLS from a deterministic trace, the engine counters). TBT and the 4x CPU floors are measured when convenient with a host-suspect flag and bind at the one pre-G3a quiet-window set (D-059).
 7. Meta: a title and description per page from content; canonical; an OG image per project (1200 × 630, built from its first print); JSON-LD Person only once the name is confirmed. noindex stays on every page with a placeholder. The sitemap follows D-013.
 8. A 404 page and favicons in the site's own language. No `[ ]` monogram.
 9. `?vf-test` hooks are absent without the parameter.
@@ -260,7 +260,7 @@ Crew totals: about $525 to $925. Add about $50 to $70 of orchestrator time per s
 
 ### W-R: hosting (#12)
 
-**Scope:** option A (D-047). It needs the owner's yes to run the fork's publish script once (owner question 3). Without that yes, W-R stops before step 3 and asks again. Nothing is published.
+**Scope:** option A (D-047), approved by the owner 2026-11-15 (D-061): W-R runs the fork's publish.ps1 once, the only exception to the fork's pause. It asks the owner only if the live Pages source does not match publish.ps1.
 
 **Acceptance:**
 1. The live Pages source is checked (`gh api .../pages`) and recorded.
@@ -304,7 +304,7 @@ Crew totals: about $525 to $925. Add about $50 to $70 of orchestrator time per s
 
 - **Today:** the game repo (derprito64bit.github.io) owns Pages. Its `scripts/fork/publish.ps1` (run by hand) composes the root from `../portfolio-site/dist`, plus `/manor/`, `/play/` and `/arcade/`. It also has a manual `web.yml` that deploys through "GitHub Actions" Pages. Which source is live is not yet known.
 - **The plan (D-047): option A at go-live.**
-- **Needs the owner:** a one-off yes to run the fork's publish script while the fork is paused (question 3). There is no silent default: without a yes, W-R stops and asks again.
+- **Approved (D-061, 2026-11-15):** the one-off run of the fork's publish script at go-live; nothing else in the fork changes.
 - **Does not need the owner:** checking which Pages source is live. The orchestrator reads it with `gh api` (read-only) before W-R. If it is the Actions source, publish.ps1's gh-pages push would not go live; then W-R asks the owner which path to use.
 - **After launch, owner calls only:** a repo rename (B), a token secret (C) or a paid domain (D).
 
