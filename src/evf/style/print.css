@@ -101,6 +101,13 @@
 .pb__cap { min-width: 0; font-size: 13px; line-height: 17px; color: var(--ink-2); text-align: right; }
 .pb__cap .ph { white-space: normal; font-size: 12px; line-height: 16px; }
 
+/* a short view (a phone on its side): playback gives the print the height */
+@media (max-height: 520px) {
+  .pb__in { grid-template-rows: 48px minmax(0, 1fr) auto; }
+  .pb__foot { padding: 4px var(--g) 6px; }
+  .pb__frame { width: min(100%, calc((100svh - 48px - 72px) * var(--ar))); }
+}
+
 /* ---------------- phone (under 760 px): one column, prints alternate sides ---------------- */
 @media (max-width: 759px) {
   .roll__grid { display: flex; flex-direction: column; align-items: flex-start; row-gap: 44px; }

@@ -52,6 +52,12 @@ async function boot() {
   canvas.className = 'gl';
   canvas.setAttribute('aria-hidden', 'true');
   document.body.prepend(canvas);
+  // a lost context leaves the plain dark ground at once; the article never depended on it
+  canvas.addEventListener('webglcontextlost', () => {
+    engine = null;
+    canvas.remove();
+    html.classList.add('nogl');
+  }, { once: true });
   try {
     const { Engine: EngineClass } = await import('../gl/engine');
     const e = new EngineClass(canvas, { stats: hooks.stats });
