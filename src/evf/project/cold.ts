@@ -76,7 +76,11 @@ async function boot() {
     else {
       // the exposure starts once the first frame (black) is up: the first draw can stall, and a tween started before
       // it jumps to mid-exposure in one frame
-      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      await new Promise<void>((done) => {
+        let ticks = 0;
+        const tick = () => { if (++ticks < 2) return; gsap.ticker.remove(tick); done(); };
+        gsap.ticker.add(tick);
+      });
       if (engine === e) gsap.to(e.st, { exposure: 1, duration: D.land, ease: E.out, onUpdate: () => e.invalidate(120) });
     }
   } catch (err) {
