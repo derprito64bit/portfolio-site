@@ -317,6 +317,55 @@ test.describe('A9 focus', () => {
     }
   });
 
+  test('hover to focus: a fine pointer on a print takes the brackets and full brightness; the next scroll returns to the centre line', async ({ browser, browserName }) => {
+    const ctx = await context(browser, browserName, DESK);
+    const page = await ctx.newPage();
+    const focusOf = () => page.evaluate(() => document.querySelector('.roll').dataset.focus);
+    try {
+      for (const where of ['cold', 'open']) {
+        if (where === 'cold') await cold(page, 'project-06');
+        else { await home(page); await toFrame(page, 5); await page.keyboard.press('Enter'); await untilState(page, 'open', 5); }
+        await centrePrint(page, 5);
+        await page.waitForFunction(() => document.querySelector('.roll')?.dataset.focus === '5', null, { timeout: 3000 });
+        // another print in view, away from the centre line
+        // another print with a part in view (under the bar): the pointer goes to the middle of that part
+        const other = await page.evaluate(() => {
+          for (const p of document.querySelectorAll('.print')) {
+            if (p.dataset.print === '5') continue;
+            const r = p.querySelector('.print__frame').getBoundingClientRect();
+            const top = Math.max(r.top, 120), bottom = Math.min(r.bottom, innerHeight - 10);
+            const left = Math.max(r.left, 10), right = Math.min(r.right, innerWidth - 10);
+            if (bottom - top > 60 && right - left > 60) return { n: p.dataset.print, x: (left + right) / 2, y: (top + bottom) / 2 };
+          }
+          return null;
+        });
+        expect(other, `${where}: a second print in view to hover`).not.toBeNull();
+        await page.mouse.move(other.x - 30, other.y - 20);
+        await page.mouse.move(other.x, other.y, { steps: 3 });
+        await expect.poll(focusOf, { message: `${where}: hover moves the focus to print ${other.n}`, timeout: 1000 }).toBe(other.n);
+        await page.waitForTimeout(400);
+        const st = await page.evaluate((n) => {
+          const p = document.querySelector(`.print[data-print="${n}"]`), a = document.querySelector('.roll__af');
+          const r = p.getBoundingClientRect(), q = a.getBoundingClientRect();
+          return { focused: p.hasAttribute('data-focus'), opacity: getComputedStyle(p).opacity, dx: Math.abs(r.left - q.left), dy: Math.abs(r.top - q.top), counter: document.querySelector('[data-print-count]').textContent };
+        }, other.n);
+        expect(st.focused && st.opacity === '1', `${where}: the hovered print has focus at full brightness`).toBe(true);
+        expect(Math.max(st.dx, st.dy), `${where}: the brackets frame the hovered print`).toBeLessThanOrEqual(2);
+        expect(st.counter).toBe(`${String(other.n).padStart(2, '0')} / 12`);
+        // a scroll (the pointer resting where it is) goes back to the centre line; an after-scroll hover update at the
+        // same point does not pull it off again
+        await centrePrint(page, 5);
+        await page.evaluate(() => { const c = document.querySelector('.proj:not([hidden]) .proj__col'); if (c) c.scrollTop += 6; else window.scrollBy(0, 6); });
+        await expect.poll(focusOf, { message: `${where}: the scroll returns to the centre line`, timeout: 1000 }).toBe('5');
+        await page.waitForTimeout(500);
+        expect(await focusOf(), `${where}: still the centre line after the scroll settles`).toBe('5');
+        await page.mouse.move(5, 300);
+      }
+    } finally {
+      await ctx.close();
+    }
+  });
+
   test('no dim under 4 prints, nor on touch', async ({ browser, browserName }) => {
     const ctx = await context(browser, browserName, DESK);
     const page = await ctx.newPage();

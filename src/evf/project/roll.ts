@@ -169,6 +169,18 @@ export function initRoll(o: RollOptions): RollControl | null {
   }
   const onScroll = () => setFocus(nearest());
   on(o.scroller, 'scroll', onScroll, { passive: true });
+  // hover to focus (the Viewfinder's promise): a fine pointer moving onto a print takes the brackets and full brightness
+  // there; the next scroll goes back to the centre line. A move at the same point (a browser's after-scroll hover
+  // update) is not the pointer's, so it never pulls focus off the centre line.
+  let px = NaN, py = NaN;
+  if (grid) on(grid, 'pointermove', (ev) => {
+    const e = ev as PointerEvent;
+    if (e.pointerType === 'touch' || !dimOn() || (e.clientX === px && e.clientY === py)) return;
+    px = e.clientX; py = e.clientY;
+    const p = (e.target as Element).closest('.print');
+    const i = p ? prints.indexOf(p as HTMLElement) : -1;
+    if (i >= 0 && i !== cur) setFocus(i);
+  });
   const refresh = () => { cache(); setFocus(nearest(), true); };
   let pending: gsap.core.Tween | null = null;
   const later = () => { pending?.kill(); pending = gsap.delayedCall(0.05, refresh); };
