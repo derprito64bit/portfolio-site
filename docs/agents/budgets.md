@@ -2,13 +2,15 @@
 
 A change that exceeds a budget fails its gate. Evidence standard: GES-1 (W-D030).
 
-**Direction reset (D-037, owner 2026-10-28):** concept prototypes are not bound by the byte, GL or camera budgets below. They are judged on design, smoothness and accessibility. The budgets are re-set with the owner for the chosen concept; the measurement rules (R1 to R5) stay. **Since W-V0a (2026-10-29)** main is Viewfinder, and its checks read budgets-v2 (below; proposed until the owner confirms, D-048).
+**Direction reset (D-037, owner 2026-10-28):** concept prototypes are not bound by the byte, GL or camera budgets below. They are judged on design, smoothness and accessibility. The budgets are re-set with the owner for the chosen concept; the measurement rules (R1 to R5) stay. **Since W-V0a (2026-10-29)** main is Viewfinder, and its checks read budgets-v2 (below; confirmed by the owner 2026-11-15, D-057, fonts per D-058, timed rows at the pre-G3a set per D-059).
 
 All dates and times in this file are UTC, except a time written with its own offset (the host calibration's -04:00 times) and that calibration's date, 2026-10-04, which is the host's local date (2026-10-05 UTC).
 
 ## Site (portfolio-site, `/`)
 
 - **Retired at W-V0a (2026-10-29, D-048, D-049):** the Darkroom rows: the X-T5 camera, pre-GL JS and the GL chunk, the home HTML on the wire, fonts, 3D, canvas, print stills, the GPU worst moment, idle, the hero, input blocking, drift and sound. Git history keeps them (tag `darkroom-final`). Their replacements are the budgets-v2 section below.
+
+- **Since D-059 (2026-11-15),** the timed rows here (Lighthouse, LCP, TBT) bind only at the pre-G3a quiet-window set, and CLS binds now from a deterministic trace. See the budgets-v2 Timing heading.
 
 - Lighthouse 13.5.0 under the GES-1 protocol (built dist over gzip, 5 runs, median by score, auto tier, valid only on a real renderer and under Measurement validity R1-R5 below): performance >= 90 mobile and >= 95 desktop; accessibility 100; best practices >= 95. SEO is not gated while noindex is on.
 - LCP <= 2.5 s mobile and <= 2.0 s desktop. The LCP element follows budgets-v2's Timing table: the name on `/`; the h1 or the first print on `/work/<slug>/` (W-V0a, 2026-10-29; the Darkroom's print-still and dock rules retired). CLS <= 0.02. TBT <= 150 ms, mobile and desktop.
@@ -34,7 +36,7 @@ Tests read this block instead of parsing the sentences above (requested in the W
 {
   "schema": 2,
   "note": "Schema 2 (W-V0a, D-048): the site block is the budgets-v2 caps. Readers: size-limit, media-caps, the harness, crew.mjs. protocol, zero.axeViolationsWcag and focusRing are kept from schema 1 for surviving readers. The host block is unchanged.",
-  "status": "proposed (owner to confirm, D-048)",
+  "status": "confirmed by the owner (D-057), 2026-11-15; fonts per D-058; host-timed rows bind at the pre-G3a set (D-059)",
   "site": {
     "lighthouse": {
       "perfMobileMin": 90,
@@ -70,8 +72,8 @@ Tests read this block instead of parsing the sentences above (requested in the W
       "htmlProject": 16000
     },
     "fonts": {
-      "bytesMax": 130000,
-      "filesMax": 3
+      "bytesMax": 200000,
+      "filesMax": 4
     },
     "rest": {
       "fpsMax": 30,
@@ -212,15 +214,17 @@ Tests read this block instead of parsing the sentences above (requested in the W
 }
 ```
 
-## Budgets v2: the site (proposed, owner to confirm, D-048)
+## Budgets v2: the site (confirmed by the owner (D-057), 2026-11-15)
 
-**Status: proposed, owner to confirm (D-048).** Planner draft, 2026-10-29. It replaces the Darkroom Site rows above (marked retired at W-V0) once confirmed. It locks after two things: W-V0's Lighthouse baseline on Viewfinder (5 runs, mobile and desktop), and the owner's yes. Until then a breach is reported to the owner at the cap. It is not a must-fix. The Game section of budgets.md is unchanged.
+**Status: confirmed by the owner (D-057), 2026-11-15; fonts per D-058.** **Timing split (D-059):** the host-independent rows bind as must-fix in every crew from now on: the byte caps, the media caps, CLS from a deterministic trace, and the engine-counter rows (life at rest: 30 fps at most, 0 draws in the roll at rest). The host-timed rows (Lighthouse scores, LCP, FCP, TBT, the longest boot task, the 4x-CPU frame and long-task rows, main-thread time at rest, honours-pass GPU time) are measured when convenient and reported with a host-suspect flag, but never block a crew. They bind at one full timed set (with the Lighthouse baseline) in one owner-given quiet window before G3a, and its misses become G3a must-fix items. No timed set runs at a crew's approval candidate.
+
+Planner draft, 2026-10-29. It replaces the Darkroom Site rows above (marked retired at W-V0). Every row applies on mobile too: phones get the full experience, adapted for small screens (D-057). The Game section of budgets.md is unchanged.
 
 Basis: the measured Viewfinder and Flux builds (`plan-inputs/budgets.md`), plus the grafts (about +14 kB gz JS and +3 kB gz CSS), real media, and a 25% margin. kB = 1,000 B.
 
 ### What changes from the Darkroom budgets
 - **Retired:** the X-T5 and 3D rows, the canvas Mpx caps, print stills, the GPU worst moment, the hero readable time, sound, the Swup input-blocking row, drift for GL prints, and the GL cap of 187.6 kB (D-027, D-035). These measured code that is gone.
-- **Replaced:** pre-GL JS 35 kB becomes critical JS 80 kB. Viewfinder's index script is already 62.3 kB gz, because GSAP loads before first paint. The GL cap becomes an engine cap of 60 kB (Viewfinder's engine is 25.2 kB gz). Fonts go from 100 kB to 130 kB, because Archivo is 90.1 kB.
+- **Replaced:** pre-GL JS 35 kB becomes critical JS 80 kB. Viewfinder's index script is already 62.3 kB gz, because GSAP loads before first paint. The GL cap becomes an engine cap of 60 kB (Viewfinder's engine is 25.2 kB gz). Fonts go from 100 kB to 130 kB, because Archivo is 90.1 kB (raised to 200 kB in 4 files by the owner, D-058).
 - **New:** life at rest, fps floors at 4x CPU, a long-task count, project-page HTML, and media caps per print class.
 - **Kept:** Lighthouse scores, LCP, CLS, TBT, the layout and accessibility floors, and R1 to R5.
 
@@ -239,9 +243,9 @@ HARD fails the gate. TARGET is reported, and a miss needs a one-line note.
 | CSS (inline plus linked) | 14 kB gz | 10 | Inline `<style>` plus linked CSS, gzip -9 |
 | HTML `/` | 14 kB gz | 12 | gzip -9 of `dist/index.html`, inline CSS included. Checked by size-limit's `HTML (/)` group since W-V0a; the negative control (an inflated `index.html` fails exactly that row) is in `tests/w-f/size-groups.test.mjs` |
 | HTML `/work/<slug>/` | 16 kB gz | 12 | gzip -9 of the largest project page, inline CSS included |
-| Fonts, cold first load | 130 kB, 3 files at most | 117 | woff2 bytes fetched on a cold `/` load, from the network log. Latin subset only. Preload the two faces above the fold. `font-display: swap` with a metric-matched fallback |
+| Fonts, cold first load (D-058) | 200 kB, 4 files at most | 170 | woff2 bytes fetched on a cold `/` load, from the network log. Latin subset only. Preload the two faces above the fold. `font-display: swap` with a metric-matched fallback |
 
-### Timing (the gate's one Lighthouse run; timed sets at the approval candidate and before G3a)
+### Timing (host-timed rows: reported with a host-suspect flag, never blocking a crew; binding at the one pre-G3a quiet-window set, D-059. CLS from a deterministic trace binds now)
 
 | Metric | Hard cap | Target | How it is measured |
 |---|---|---|---|
@@ -260,7 +264,7 @@ HARD fails the gate. TARGET is reported, and a miss needs a one-line note.
 | Metric | Cap | How it is measured |
 |---|---|---|
 | Frame rate at rest (intro and frames) | 30 fps at most | Engine frame counters (the `?vf-test` stats) over 10 s with no input |
-| Main thread at rest | 3 ms per second at most | Trace over the same 10 s |
+| Main thread at rest | 3 ms per second at most | Trace over the same 10 s (host-timed; binds at the pre-G3a set, D-059) |
 | Stops | 0 frames when the tab is hidden, under reduced motion, and from 60 s after the last input | The same counters |
 | Project roll at rest | 0 draws from 1 s after the motion end, unless an honour is moving | The same counters. Motion end = the later of the last input and the last presented frame |
 
@@ -305,7 +309,7 @@ R1 (precheck), R2 (host-suspect runs), R3 (replace, never average), R4 (a rerun 
 
 ### Machine-readable block
 
-The v2 caps now live in the `json budgets` block above (schema 2, still proposed until the owner confirms, D-048).
+The v2 caps now live in the `json budgets` block above (schema 2, confirmed by the owner 2026-11-15, D-057; fonts per D-058).
 
 ## Game (the Manor, in the Manor repo)
 

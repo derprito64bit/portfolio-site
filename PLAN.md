@@ -5,7 +5,8 @@
 - One crew at a time, one stage per session.
 - The owner gives each stage the go-ahead and caps crew rounds.
 
-## Where things stand (2026-10-29, after W-V0)
+## Where things stand (2026-10-29, after W-V0; owner answers 2026-11-15)
+- **2026-11-15, the owner answered eight questions (D-057 to D-062):** budgets-v2 is confirmed ('Balanced', D-057): the host-independent rows (every byte cap, the media caps, CLS from a deterministic trace, the engine-counter rows) bind as must-fix now, and every budget applies on phones, which get the full experience; the idle rule D-053 is confirmed, so the intro's redraw at the display rate is a W-V3 must-fix; the video rules stand as proposed. Fonts: 200 kB in at most 4 files, target 170 kB (D-058; today about 270 kB in 6, for W-V3 or W-V4). Timed tests wait for one quiet-window set before G3a (D-059): no timed set at any crew's approval candidate, and the Lighthouse baseline is taken in that window. At the cap, a crew with no must-fix left is merged with CI green and its should-fix items queued in #106, without asking (D-060). Hosting option A is approved: W-R runs the game repo's publish.ps1 once (D-061). The five plan questions are closed (D-062).
 - **W-V0 is done: Viewfinder is on main and the Darkroom is retired. Next = launch W-V1 in a fresh session (NEXT STAGE below).** Its spec v1 and a W-V0 rulings comment are posted on #21.
 - **main = 0c72687 plus this stage's docs PR.** Merged this stage:
   - #107: the owner's name in `content/owner-facts.md` (Aaron Chen, CONFIRMED 2026-10-29, from the owner in chat);
@@ -13,8 +14,8 @@
   - #109 (3f9ef98): the name on the intro and the contact screen;
   - **W-V0b #110** (0c72687): `?vf-test` hooks only (D-055), per-channel engine counters (#92 in part), the idle check on them, a state-machine smoke in Chromium and WebKit with GL in CI at 640 × 400, DPR 1, and `crew.mjs lighthouse` re-pointed to Viewfinder; #11 closed.
 - **CI has no GPU.** GL runs in CI only at 640 × 400, DPR 1; the rest runs on the flat path (`H_NO3D=1`). Full-size GL runs (smoke, idle, Lighthouse) are one command each on the reference host.
-- **The Lighthouse baseline is blocked (host):** the PC was busy (6 host-suspect mobile runs; the desktop precheck stayed busy 30 minutes). Re-run it in the owner's quiet window with the one command in `portfolio-evidence/v2/baseline/README.md`. budgets-v2 stays proposed until then and the owner's yes (D-048).
-- **Reported to the owner (not must-fix while budgets are proposed):** fonts about 270 kB in 6 files against 130 kB and 3; CLS on `/` 0.0978 mobile (host-suspect runs) and 0.051 desktop (one clean run); the intro redraws at the display rate at rest (about 240 fps on the 238 Hz host). Each is in #106 with its stage.
+- **The Lighthouse baseline is blocked (host):** the PC was busy (6 host-suspect mobile runs; the desktop precheck stayed busy 30 minutes). Re-run it in the owner's quiet window with the one command in `portfolio-evidence/v2/baseline/README.md`. Under D-059 it is taken in the one pre-G3a quiet-window set.
+- **Over budgets-v2 on main (pre-existing, each in #106 with its stage):** fonts about 270 kB in 6 files against 200 kB and 4 (D-058); CLS on `/` 0.0978 mobile (host-suspect runs) and 0.051 desktop (one clean run); the intro redraws at the display rate (about 240 fps on the 238 Hz host; must-fix in W-V3, D-057).
 - **The queue is #106** ("Follow-up queue (v2)", 22 open items with done-when lines). #91 is closed.
 - **Session cost (W-V0):** agent tokens W-V0a worker about 392k (Sonnet), W-V0b builder about 465k (Opus xhigh), two verifiers and the spec refuter about 350k (Sonnet). No dollar ledger for this non-loop stage.
 - **System review:** `portfolio-evidence/loop-audit/SYSTEM-REVIEW-2026-10-13.md`.
@@ -37,16 +38,17 @@ The rules are the review's "Proposed operating model".
    - **Rare-edge regressions** block only when the fix is at most one crew task with no new harness.
    - **Everything else goes to #91** with a done-when line: anything pre-existing on main, tooling hardening and single-run flakes.
    - **A busy host means "blocked, rerun".** It never means "cannot approve". A should-fix doesn't become a must-fix just because it recurs.
-3. **Perf:**
-   - bytes in CI size-limit;
-   - LCP and CLS from the gate's single Lighthouse run;
-   - timed rows (mobile TBT, readable, GPU ratio) **once per PR at the approval candidate**, plus once before G3a, scoped to the rows the diff can reach.
-   - Those runs come from a detached script queue with a hostload precheck, 5 runs each (10 for TBT).
+3. **Perf (D-059, owner 2026-11-15):**
+   - crews gate on host-independent rows only: bytes in CI size-limit, the media caps, CLS from a deterministic trace, the engine counters, and the functional gate;
+   - host-timed rows (the gate's single Lighthouse run, LCP, FCP, TBT, the longest boot task, the 4x-CPU rows, main-thread time at rest, honours-pass GPU time) are measured when convenient and reported with a host-suspect flag, but never block a crew;
+   - **no timed set at a crew's approval candidate** (this replaces "once per PR at the approval candidate"). One full timed set runs once, in one owner-given quiet window, before G3a: the Lighthouse baseline (5 mobile and 5 desktop runs), mobile TBT (10 runs), and the 4x-CPU frame and long-task rows. Its misses become G3a must-fix items.
+   - That set comes from the detached script queue with a hostload precheck, under R1 to R5.
    - A fail must reproduce in a second clean set. An investigator agent with main controls runs only on a fail.
-4. **Caps:**
-   - W-S2: **3 code rounds plus 1 evidence round**.
+4. **Caps (D-060, owner 2026-11-15):**
+   - Crews: **3 code rounds plus 1 evidence round**.
    - Stop early if the must-fix count hasn't fallen for 2 rounds.
-   - At the cap, give the owner a 5-line summary with cost per round: merge with follow-ups, one more round, or hold.
+   - At the cap, when no must-fix remains (only should-fix items), the orchestrator merges with CI green and queues the rest in #106 with done-when lines, without asking.
+   - Only when a must-fix still blocks at the cap does the owner get a 5-line summary: merge with follow-ups, one more round, or hold.
 5. **Waits and context:**
    - no LLM call blocks longer than **270 s** (the cache lives 5 minutes);
    - each agent gets a small versioned **spec** (10k chars or less), an open-items digest (3k or less) and the last judge verdict, never whole threads;
@@ -62,8 +64,8 @@ The lean loop stays as written in PLAN.md. Changes:
 - **Crew ids:** `W-V0` to `W-V4`, then `W-R`. Branches `crew/w-v<n>`. Config keys `wv<n>`. Evidence root: `C:\Users\Aaron\Documents\GitHub\portfolio-evidence\v2`.
 - **crew-config defaults:** `breaker.extraPassGlobs` becomes `src/evf/gl/**`, `src/evf/router.ts`, `src/evf/project/**`, `src/pages/**` and `src/layouts/**`. A diff there gets 2 breaker passes (navigation or GL lifecycle).
 - **Jury:** the motion benchmark stays the bar. Each slice's spec names its rows. The jury also checks the "never become" list in docs/agents/north-star.md.
-- **Caps:** slices get 3 code rounds plus 1 evidence round. Stop early when the must-fix count is flat for 2 rounds. At the cap, give the owner the 5-line summary with costs.
-- **Budgets:** budgets-v2 binds as must-fix only after the owner confirms it (D-048). Until then a breach goes to the owner at the cap.
+- **Caps:** slices get 3 code rounds plus 1 evidence round. Stop early when the must-fix count is flat for 2 rounds. At the cap with no must-fix left, the orchestrator merges with CI green and queues the should-fix items in #106 (D-060); only a must-fix still blocking at the cap goes to the owner as the 5-line summary.
+- **Budgets:** budgets-v2 is confirmed (D-057; fonts per D-058). Its host-independent rows bind as must-fix in every crew now. The host-timed rows bind only at the one pre-G3a quiet-window set (D-059); before that they are reported with a host-suspect flag and never block a crew.
 - **W-V0 is not a crew loop.** It is two orchestrator PRs, built from `C:\Users\Aaron\Documents\GitHub\portfolio-evidence\research-reset\2026-10-29\plan\w-v0-checklist.md`. W-V0a (land, delete, re-point) is mechanical: one Sonnet worker (medium). W-V0b (engine counters, `?vf-test` gating, the smoke, the baseline) is the base of every later gate: one Opus builder (xhigh, as for crews). One Sonnet verifier checks each PR, and CI must be green. W-V1 cannot start until both have merged.
 - **Cost basis:** W-S2 took 4 rounds for about $140 in crew runs (rounds of $59, $32, $28 and $20), plus about $70 for the orchestrator session.
 
@@ -78,7 +80,7 @@ The lean loop stays as written in PLAN.md. Changes:
 
 ## Plan v2 files
 
-- Decisions D-038 to D-056: `docs/agents/decisions.md`. North star v2: `docs/agents/north-star.md`. Budgets (proposed, D-048): the budgets-v2 section of `docs/agents/budgets.md`.
+- Decisions D-038 to D-062: `docs/agents/decisions.md`. North star v2: `docs/agents/north-star.md`. Budgets (confirmed by the owner 2026-11-15, D-057 to D-059): the budgets-v2 section of `docs/agents/budgets.md`.
 - The landing checklist and the first crew spec stay in the evidence repo: `C:\Users\Aaron\Documents\GitHub\portfolio-evidence\research-reset\2026-10-29\plan\w-v0-checklist.md` and `C:\Users\Aaron\Documents\GitHub\portfolio-evidence\research-reset\2026-10-29\plan\first-crew-spec.md`.
 - Owner questions: the "Owner questions" section below.
 
@@ -90,9 +92,10 @@ Done before this point: the plan's docs PR (#105), the owner questions, the issu
 2. **Launch** from a sibling worktree at origin/main (never from `portfolio-site/.claude/worktrees/`: Astro builds fail there):
    `node scripts/fleet/loop/launch.cjs wv1 --spec C:\Users\Aaron\Documents\GitHub\portfolio-evidence\v2\specs\wv1\spec-v1.md --spec-meta C:\Users\Aaron\Documents\GitHub\portfolio-evidence\v2\specs\wv1\meta-v1.json --out C:\Users\Aaron\Documents\GitHub\portfolio-evidence\v2\runs\wv1`
    It prints LAUNCH READY; then run `Workflow({ scriptPath: '<out>\crew-loop.wv1.js' })` with no args.
+   No quiet window and no timed set at W-V1's approval candidate (D-059): `crew-config.json`'s `wv1` entry has no perf sets, and the mobile TBT gate is gone. The gate's one Lighthouse run is reported with a host-suspect flag and never blocks.
 3. **Watch** each round with `orchestrator-tools/2026-10-27/round-watch.mjs`, and post a cost line per round (`scripts/fleet/cost-line.mjs`). Reap browsers after each round.
 4. **First progress note to the owner:** the crew's first-checkpoint list of how its prints differ from Flux's.
-5. **At the cap** (3 code rounds plus 1 evidence round): the 5-line summary with cost per round; merge with follow-ups, one more round, or hold.
+5. **At the cap** (3 code rounds plus 1 evidence round), per D-060: with no must-fix left, merge with CI green and queue the should-fix items in #106 with done-when lines, without asking. Only when a must-fix still blocks, give the owner the 5-line summary: merge with follow-ups, one more round, or hold.
 6. **Size check after round 1:** about 2,200 changed lines is expected. Over 2,500, or A10 and A11 not started: move A10, A11 and J4 into a W-V1b slice.
 7. **After merge:** update the build-log artifact, back up, log, and move on to W-V2 (#22) in a fresh session.
 
@@ -248,7 +251,7 @@ Crew totals: about $525 to $925. Add about $50 to $70 of orchestrator time per s
 3. WCAG 2.2 AA: axe 0 on every route and state; a keyboard path for every action; forced colours and `prefers-contrast`; the wheel lock applies to the frame only, never to the document; an NVDA transcript of the full path.
 4. Reduced motion: an inventory of every motion, each with a live calm path, tested.
 5. Phone: the whole site at 390 × 844, 320 × 640 and landscape.
-6. Perf: every budgets-v2 row on real media. A clean TBT set (10 runs) on `/` and on the heaviest project. The 4x CPU floors. The media byte caps.
+6. Perf: every host-independent budgets-v2 row on real media (the byte caps, the media caps, CLS from a deterministic trace, the engine counters). TBT and the 4x CPU floors are measured when convenient with a host-suspect flag and bind at the one pre-G3a quiet-window set (D-059).
 7. Meta: a title and description per page from content; canonical; an OG image per project (1200 × 630, built from its first print); JSON-LD Person only once the name is confirmed. noindex stays on every page with a placeholder. The sitemap follows D-013.
 8. A 404 page and favicons in the site's own language. No `[ ]` monogram.
 9. `?vf-test` hooks are absent without the parameter.
@@ -257,7 +260,7 @@ Crew totals: about $525 to $925. Add about $50 to $70 of orchestrator time per s
 
 ### W-R: hosting (#12)
 
-**Scope:** option A (D-047). It needs the owner's yes to run the fork's publish script once (owner question 3). Without that yes, W-R stops before step 3 and asks again. Nothing is published.
+**Scope:** option A (D-047), approved by the owner 2026-11-15 (D-061): W-R runs the fork's publish.ps1 once, the only exception to the fork's pause. It asks the owner only if the live Pages source does not match publish.ps1.
 
 **Acceptance:**
 1. The live Pages source is checked (`gh api .../pages`) and recorded.
@@ -270,7 +273,7 @@ Crew totals: about $525 to $925. Add about $50 to $70 of orchestrator time per s
 
 ### G3a and go-live hidden from search (D-013)
 
-1. **Pre-G3a perf set** on main: a clean TBT set and the 4x floors, in the owner's quiet window.
+1. **The one binding timed set (D-059)** on main, in one owner-given quiet window, under R1 to R5: the Lighthouse baseline (5 mobile and 5 desktop runs, taken in this same window), mobile TBT (10 runs), and the 4x-CPU frame and long-task rows. Its misses become G3a must-fix items.
 2. **The full gate** on main: Chromium, WebKit, phone, calm, no-WebGL and keyboard.
 3. **The owner's review** on the preview (:4400), with a one-page checklist: the intro, the raise, every project with its prints and honours, the honours section, contact, the phone and the calm path. The G3a questions follow.
 4. **Must-fix:** at most one small crew round (W-V5, cap 1 code round).
@@ -301,7 +304,7 @@ Crew totals: about $525 to $925. Add about $50 to $70 of orchestrator time per s
 
 - **Today:** the game repo (derprito64bit.github.io) owns Pages. Its `scripts/fork/publish.ps1` (run by hand) composes the root from `../portfolio-site/dist`, plus `/manor/`, `/play/` and `/arcade/`. It also has a manual `web.yml` that deploys through "GitHub Actions" Pages. Which source is live is not yet known.
 - **The plan (D-047): option A at go-live.**
-- **Needs the owner:** a one-off yes to run the fork's publish script while the fork is paused (question 3). There is no silent default: without a yes, W-R stops and asks again.
+- **Approved (D-061, 2026-11-15):** the one-off run of the fork's publish script at go-live; nothing else in the fork changes.
 - **Does not need the owner:** checking which Pages source is live. The orchestrator reads it with `gh api` (read-only) before W-R. If it is the Actions source, publish.ps1's gh-pages push would not go live; then W-R asks the owner which path to use.
 - **After launch, owner calls only:** a repo rename (B), a token secret (C) or a paid domain (D).
 
@@ -312,7 +315,7 @@ Crew totals: about $525 to $925. Add about $50 to $70 of orchestrator time per s
 - **Into W-V0:** the console gate (#84) and flash-harness-zero-frame (W-V0a); the home HTML check with a negative control (W-V0a); the engine frame counters (#92) and the idle check, rebuilt on D-053's counters (W-V0b).
 - **Into W-V2:** "a lost WebGL context restores to a visible frame, never black".
 - **Into the v2 queue, each with a done-when line:** the lint AST check; run-mjs plant fixes; hostload MsMpEng; the reaper nits; the blender_gpu nits (fork, paused).
-- **Gate:** mobile TBT on a clean set, at W-V1's approval candidate and before G3a.
+- **Gate:** mobile TBT on a clean set, before G3a only, in the one quiet-window set (D-059 dropped the W-V1 approval-candidate run).
 - **Docs items (W-V0a):** budgets.md R2 and R4 wording and the HTML byte row are written by the orchestrator in W-V0a, when the Darkroom rows retire. The plan's docs PR (#105) does not change them; the HTML byte row stays marked "Retired at W-V0" until then.
 
 ## The queue (#91) disposition
@@ -330,13 +333,12 @@ Crew totals: about $525 to $925. Add about $50 to $70 of orchestrator time per s
 
 ## Owner questions, at the right stage
 
-- **Now, with the plan (one message; the "Owner questions" section below):**
-  1. confirm budgets-v2;
-  2. the real name and the one line;
-  3. hosting option A's one-off publish run;
-  4. what media to expect, and which project each honour belongs to;
-  5. a quiet PC window for the timed sets.
-  Questions 1 and 5 matter by W-V1's approval candidate. Questions 2 to 4 can wait until their stage, but early answers save rework. Each has a no-answer default that is an action, never an assumed yes: without a yes to question 1, budgets-v2 stays "proposed" and breaches are reported; without a yes to question 3, W-R stops and asks again.
+- **Now, with the plan: answered on 2026-11-15 (D-057 to D-062).**
+  1. confirm budgets-v2: confirmed (D-057), fonts raised to 200 kB in 4 files (D-058);
+  2. the real name and the one line: the name was answered on 2026-10-29 (Aaron Chen, `content/owner-facts.md`); the one line is still open, a visible placeholder until given;
+  3. hosting option A's one-off publish run: approved (D-061);
+  4. what media to expect, and which project each honour belongs to: the video rules stand as proposed (D-057); the material itself and the honour links come at the content step;
+  5. a quiet PC window for the timed sets: one window before G3a (D-059).
 - **At the content step (material, not questions):** the facts themselves, the order, and the media files. Default: the placeholders stay visible.
 - **Asked later, at G3a, with defaults:** approval to go live (default: go-live waits for a yes); whether any page with real content may be indexed yet (default: stay noindex); the default film-dial setting (default: Standard). These do not count against the five now.
 - **Retired questions:** the camera and print composition, the strap, the phone opening, the 4.7 s opening trim, the GL budget, the warp location, and hiding Lens and Look. The old design they belonged to is gone.

@@ -170,38 +170,8 @@
         "floors": ""
       },
       "perf": {
-        "sets": [
-          {
-            "id": "LH",
-            "row": "Lighthouse on the built / and /work/project-06/ (mobile 10 runs, desktop 5) at the approval candidate, against the budgets-v2 section of budgets.md (proposed until the owner confirms, D-048)",
-            "cmd": [
-              "node",
-              "scripts/crew.mjs",
-              "lighthouse",
-              "--routes",
-              "/,/work/project-06/",
-              "--runs",
-              "10",
-              "--crew",
-              "W-V1",
-              "--out",
-              "{out}"
-            ],
-            "cwd": "{tree}",
-            "precheck": false,
-            "watch": false,
-            "confirmFails": true,
-            "result": "manifest.json",
-            "paths": [
-              "src/**",
-              "public/**",
-              "content/**",
-              "astro.config.mjs",
-              "package.json",
-              "package-lock.json"
-            ]
-          }
-        ]
+        "$comment": "D-059 (owner 2026-11-15): no host-timed set runs at a crew's approval candidate; crews gate on host-independent rows only (bytes, media caps, CLS from a deterministic trace, the engine counters, the functional gate). The Lighthouse set W-V1 had here (/ and /work/project-06/, mobile 10 runs, desktop 5) moves to the one pre-G3a quiet-window set; git history keeps its definition.",
+        "sets": []
       }
     }
   }
