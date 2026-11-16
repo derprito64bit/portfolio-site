@@ -91,6 +91,38 @@ test('A10: a deep link to #print-NN opens playback at once, without the Flip', a
   }
 });
 
+// wv1-pb-failed-image (queued from judge r2): playback of a print whose image failed shows the same "image unavailable"
+// print at its aspect, with no broken-image glyph and no raw alt text (9f25a82 cloned the failed <picture>).
+test('A10 / A8 a failed image opens in playback as the same "image unavailable" print, at its aspect', async ({ browser, browserName }) => {
+  const ctx = await context(browser, browserName, DESK);
+  const page = await ctx.newPage();
+  await page.route(/\/media\//, (r) => r.abort());
+  try {
+    await cold(page, 'project-06');
+    await centrePrint(page, 3);
+    await expect(page.locator('#print-03')).toHaveClass(/is-failed/, { timeout: 5000 });
+    await page.locator('#print-03 [data-print-open]').click();
+    await expect.poll(async () => (await pb(page))?.open).toBe(true);
+    await page.waitForTimeout(800);
+    const s = await page.evaluate(() => {
+      const f = document.querySelector('dialog.pb .pb__frame');
+      const r = f.getBoundingClientRect();
+      return {
+        failed: f.hasAttribute('data-failed'), media: f.querySelectorAll('img, picture, video').length,
+        label: getComputedStyle(f, '::after').content, ar: r.width / r.height, want: Number(document.querySelector('#print-03').dataset.ar),
+      };
+    });
+    expect(s.failed, 'the playback frame is the failed print').toBe(true);
+    expect(s.media, 'no image or clip element (no broken glyph, no alt text)').toBe(0);
+    expect(s.label).toBe('"Image unavailable"');
+    expect(Math.abs(s.ar - s.want), `at its aspect (${s.ar} vs ${s.want})`).toBeLessThan(0.02);
+    await page.keyboard.press('Escape');
+    await expect.poll(async () => (await pb(page))?.open).toBe(false);
+  } finally {
+    await ctx.close();
+  }
+});
+
 test('A10 in the Viewfinder: Esc in playback closes playback, not the project', async ({ browser, browserName }) => {
   const ctx = await context(browser, browserName, DESK);
   const page = await ctx.newPage();

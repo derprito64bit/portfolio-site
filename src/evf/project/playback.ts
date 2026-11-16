@@ -97,12 +97,16 @@ export function initPlayback(o: PlaybackOptions): PlaybackControl {
     frame.style.setProperty('--ar', ar);
     const lq = p.style.getPropertyValue('--lqip');
     const box = p.hasAttribute('data-letterbox');
+    // a print whose image failed is the same "image unavailable" print here, at its aspect (no broken glyph, no alt)
+    const failed = p.classList.contains('is-failed');
     frame.toggleAttribute('data-letterbox', box);
-    if (lq && !box) frame.style.setProperty('--lqip', lq); else frame.style.removeProperty('--lqip');
+    frame.toggleAttribute('data-failed', failed);
+    if (lq && !box && !failed) frame.style.setProperty('--lqip', lq); else frame.style.removeProperty('--lqip');
     frame.replaceChildren();
     const type = p.dataset.type;
     const pic = p.querySelector('picture');
-    if (type === 'video') {
+    if (failed) { /* the label is the frame's own (print.css) */ }
+    else if (type === 'video') {
       const img = p.querySelector<HTMLImageElement>('img.print__img');
       const src = p.querySelector('video')?.dataset.src ?? '';
       const v = el('video', '', { controls: '', playsinline: '', preload: src ? 'metadata' : 'none', 'aria-label': img?.alt || 'Clip' }) as HTMLVideoElement;

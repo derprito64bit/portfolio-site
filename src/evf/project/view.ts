@@ -5,7 +5,8 @@ import type { Engine } from '../gl/engine';
 
 export function wireView(proj: HTMLElement, col: HTMLElement, isOpen: () => boolean, engine: () => Engine | null) {
   // -4 EV as the roll comes up (the frame recedes behind the prints); drawn again as the scroll settles, because after a
-  // jump scroll WebKit can spend the first 120 ms on one stale frame (the frame stayed at full exposure behind the roll)
+  // jump scroll a busy WebKit can spend the first window on one stale frame (the frame stayed at full exposure behind
+  // the roll); the second window opens from a ticker frame, so it always gets one
   let again: gsap.core.Tween | null = null;
   col.addEventListener('scroll', () => {
     const e = engine();
@@ -13,9 +14,9 @@ export function wireView(proj: HTMLElement, col: HTMLElement, isOpen: () => bool
     const d = Math.pow(2, -4 * Math.min(1, Math.max(0, col.scrollTop / (col.clientHeight * 0.85))));
     if (Math.abs(d - e.st.dim) < 0.002) return;
     e.st.dim = d;
-    e.invalidate(120);
+    e.invalidate(250);
     again?.kill();
-    again = gsap.delayedCall(0.25, () => e.invalidate(120));
+    again = gsap.delayedCall(0.3, () => e.invalidate(400));
   }, { passive: true });
 
   // the dialog keeps Tab inside it, in document order, links included: WebKit's own Tab skips links (Safari's default),

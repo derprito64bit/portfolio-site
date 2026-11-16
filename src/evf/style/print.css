@@ -49,8 +49,8 @@
 /* a typed placeholder box (no file) and a failed image: the same size, its own label */
 .print__box { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; border: 1px dashed rgba(236, 233, 226, 0.25); color: var(--ink-3); }
 .print.is-failed .print__img, .print.is-failed .print__play { visibility: hidden; }
-.print.is-failed .print__frame { background: var(--panel); border: 1px dashed rgba(236, 233, 226, 0.25); }
-.print.is-failed .print__frame::after {
+.print.is-failed .print__frame, .pb__frame[data-failed] { background: var(--panel); border: 1px dashed rgba(236, 233, 226, 0.25); }
+.print.is-failed .print__frame::after, .pb__frame[data-failed]::after {
   content: 'Image unavailable'; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
   font-family: var(--f-mono); font-size: 12px; letter-spacing: 0.07em; text-transform: uppercase; color: var(--ink-2);
 }

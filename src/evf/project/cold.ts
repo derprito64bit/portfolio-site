@@ -100,11 +100,12 @@ window.addEventListener('scroll', () => {
   if (Math.abs(d - lastDim) < 0.002) return;
   lastDim = d;
   engine.st.dim = d;
-  engine.invalidate(120);
-  // once more as the scroll settles: after a jump scroll WebKit can spend the 120 ms on one stale frame, which left the
-  // frame at full exposure behind the roll (and a print's ring over it)
+  engine.invalidate(250);
+  // once more as the scroll settles: after a jump scroll a busy WebKit can spend the first window on one stale frame
+  // (or none: a late frame past the window draws nothing), which left the frame at full exposure behind the roll, and a
+  // print's ring over it. The second window opens from a ticker frame, so it always gets one.
   again?.kill();
-  again = gsap.delayedCall(0.25, () => engine?.invalidate(120));
+  again = gsap.delayedCall(0.3, () => engine?.invalidate(400));
 }, { passive: true });
 
 let rz: gsap.core.Tween | null = null;
