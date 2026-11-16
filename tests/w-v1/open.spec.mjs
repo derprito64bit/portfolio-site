@@ -47,7 +47,7 @@ for (const [label, profile] of [['1440', DESK], ['390', PHONE]]) {
         await page.waitForRequest((r) => new URL(r.url()).pathname === '/work/project-03/', { timeout: 3000 });
         expect(work.filter((w) => w.path === '/work/project-04/'), 'frame 4 was current under 300 ms: never fetched').toEqual([]);
         expect(page.url(), 'frames replaceState /#work-NN').toMatch(/\/\?vf-test#work-03$/);
-        const histBefore = await page.evaluate(() => history.length);
+        const histBefore = await page.evaluate(() => { history.replaceState({ ...(history.state || {}), wv1: 'home' }, ''); return history.length; });
 
         const opener = await page.evaluate(() => { document.querySelector('[data-open]').focus(); return document.activeElement.matches('[data-open]'); });
         expect(opener).toBe(true);
@@ -75,6 +75,7 @@ for (const [label, profile] of [['1440', DESK], ['390', PHONE]]) {
         await page.keyboard.press('Escape');
         await untilState(page, 'evf', 2);
         await expect.poll(() => page.url(), { message: 'Close is history.back() to the frame' }).toMatch(/\/\?vf-test#work-03$/);
+        expect(await page.evaluate(() => [history.state?.wv1, history.length]), 'back on the home entry itself, not a replaced one').toEqual(['home', histBefore + 1]);
         expect(await page.title()).toBe('derprito64bit · Personal portfolio');
         expect(await page.evaluate(() => document.activeElement?.matches('[data-open]')), 'focus on the opener (#78)').toBe(true);
         await expect(page.locator('#proj')).toBeHidden();

@@ -125,6 +125,10 @@ test.describe('A13 calm, no WebGL, no JS', () => {
       }));
       expect(cs.transition.split(',').every((d) => parseFloat(d) === 0), 'no dim spring').toBe(true);
       expect(cs.imgTransition.split(',').every((d) => parseFloat(d) === 0)).toBe(true);
+      // the first focus always jumps into place; the next change must too
+      await centrePrint(page, 2);
+      await page.waitForFunction(() => document.querySelector('#proj .roll')?.dataset.focus === '2', null, { timeout: 3000 });
+      await page.waitForTimeout(300);
       await centrePrint(page, 3);
       await page.waitForFunction(() => document.querySelector('#proj .roll')?.dataset.focus === '3', null, { timeout: 3000 });
       const jump = await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => {

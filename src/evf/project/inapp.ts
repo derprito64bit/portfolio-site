@@ -341,12 +341,14 @@ export function initProject(h: Host) {
   function onPop() {
     const r = parse();
     if (ownBack) { ownBack = false; if (r.kind === 'home') { homeHere(); return; } }
-    const S = h.state();
+    let S = h.state();
     if (r.kind === 'project') {
       const i = projects.findIndex((p) => p.slug === r.slug);
       if (i < 0) { location.reload(); return; }
       if ((S === 'open' || S === 'opening') && i === h.pos()) { pb?.sync(location.hash); return; }
       if (S === 'open') { location.reload(); return; }
+      // Forward during the close: the close lands first
+      if (S === 'closing') { h.finishTl(); S = h.state(); }
       if (S === 'evf' || S === 'intro') {
         h.jump(i);
         open({ fromPop: true, print: r.print });
