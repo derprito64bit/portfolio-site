@@ -64,7 +64,9 @@ export function chartSvg({ W, H, w, h, n, tint, poster, loop }) {
     const v = Math.round(12 + (243 * i) / (steps - 1));
     ramp += `<rect x="${(ins * 2 + i * rw).toFixed(1)}" y="${ry}" width="${Math.ceil(rw)}" height="${rh}" fill="rgb(${v},${v},${v})"/>`;
   }
-  const arm = Math.round(m * 0.07);
+  // the chart's frame-line corners are quiet ink-3 ticks: the phosphor AF brackets on the focused print stay the only
+  // bright corners in the roll (jury r1, J5)
+  const arm = Math.round(m * 0.035);
   const corners = [[ins, ins, 1, 1], [W - ins, ins, -1, 1], [ins, H - ins, 1, -1], [W - ins, H - ins, -1, -1]]
     .map(([x, y, dx, dy]) => `M${x + dx * arm} ${y}H${x}V${y + dy * arm}`).join('');
   const fs = Math.max(9, Math.round(m * 0.055));
@@ -76,7 +78,7 @@ export function chartSvg({ W, H, w, h, n, tint, poster, loop }) {
     + `<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="${(R * 0.08).toFixed(1)}" fill="${mix(tint, 0.18)}"/>`
     + `<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="${R.toFixed(1)}" fill="none" stroke="#817d76" stroke-width="${sw}"/>`
     + `<path d="M${cx - R * 1.35} ${cy}H${cx - R * 1.1}M${cx + R * 1.1} ${cy}H${cx + R * 1.35}M${cx} ${cy - R * 1.35}V${cy - R * 1.1}M${cx} ${cy + R * 1.1}V${cy + R * 1.35}" stroke="#ece9e2" stroke-width="${sw}"/>`
-    + `<path d="${corners}" fill="none" stroke="#ece9e2" stroke-width="${sw * 2}"/>`
+    + `<path d="${corners}" fill="none" stroke="#817d76" stroke-width="${sw}"/>`
     + ramp
     + `<text x="${ins * 2}" y="${ins * 2 + fs}" font-family="Consolas, 'DejaVu Sans Mono', 'Liberation Mono', 'Courier New', monospace" font-size="${fs}" fill="#ece9e2">${pad2(n)}</text>`
     + `<text x="${W - ins * 2}" y="${ins * 2 + fs}" font-family="Consolas, 'DejaVu Sans Mono', 'Liberation Mono', 'Courier New', monospace" font-size="${fs}" fill="#a29e95" text-anchor="end">${esc(label)}</text>`

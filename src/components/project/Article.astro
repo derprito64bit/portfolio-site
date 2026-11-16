@@ -30,7 +30,6 @@ const host = (u: string) => { try { return new URL(u).host; } catch { return u; 
     </dl>
     <p class="pj__blurb"><Text text={p.blurb} wrap /></p>
     <div class="pj__body">{p.body.map((b) => <p><Text text={b} wrap /></p>)}</div>
-    <p class="pj__cue mono" aria-hidden="true">Roll · {pad2(p.prints.length)}</p>
   </header>
   <Roll prints={p.prints} />
   <div class="pj__honours" id="honours" data-honours></div>

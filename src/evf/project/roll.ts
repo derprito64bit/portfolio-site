@@ -141,9 +141,11 @@ export function initRoll(o: RollOptions): RollControl | null {
 
   /** Across the view, a centre counts this much of a down-the-view distance: the centre line leads, not the 2-D centre. */
   const X_WEIGHT = 0.25;
+  /** When the centre line falls between prints, one whose edge is within this fraction of the view from it takes focus. */
+  const NEAR = 0.25;
   /** The print at the view's centre line (J3), among those in view; -1 when none is. A print the line crosses always
    *  beats one it misses; among those, the nearest centre (down the view, then a quarter across) wins; when the line
-   *  falls between prints, the nearest edge does. At the end of the scroll the last print at least half in view takes
+   *  falls between prints, the nearest edge does if it is near. At the end of the scroll the last print at least half in view takes
    *  focus, so the roll's last print is always reachable. */
   function nearest() {
     const v = view();
@@ -159,6 +161,7 @@ export function initRoll(o: RollOptions): RollControl | null {
     rects.forEach((r, i) => {
       if (r.y + r.h < top || r.y > bottom) return;
       const gap = Math.max(0, r.y - cy, cy - (r.y + r.h));
+      if (gap > v.h * NEAR) return; // a print just entering at an edge is not the subject yet
       const d = gap > 0 ? 1e6 + gap : Math.abs(r.y + r.h / 2 - cy) + X_WEIGHT * Math.abs(r.x + r.w / 2 - cx);
       if (d < bd) { bd = d; best = i; }
     });

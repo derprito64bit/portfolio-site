@@ -33,9 +33,11 @@
 .pj-count[hidden] { display: none; }
 
 /* ---------------- the header screen ---------------- */
+/* it stops short of the fold: the roll's own label and the top edge of print 1 are the first view's last line, so the
+   roll exposes as the last beat of the arrival (J1), and there is one roll label, not a cue above another */
 .pj__head {
   display: flex; flex-direction: column; justify-content: flex-start;
-  width: min(560px, 44%); min-height: calc(100svh - var(--top)); padding: 8vh 24px 0 0;
+  width: min(560px, 44%); min-height: calc(86svh - var(--top)); padding: 8vh 24px 0 0;
 }
 .pj__k { color: var(--ink-2); }
 .pj__t {
@@ -51,8 +53,6 @@
 .pj__meta a { color: var(--ink); text-underline-offset: 3px; }
 .pj__blurb { font-size: 19px; line-height: 1.45; margin-bottom: 22px; max-width: 34ch; }
 .pj__body p { color: var(--ink-2); margin-bottom: 14px; max-width: 48ch; }
-.pj__cue { margin-top: auto; padding: 32px 0 28px; display: flex; align-items: center; gap: 14px; color: var(--ink-3); }
-.pj__cue::after { content: ''; width: 40px; height: 1px; background: var(--ink-3); }
 .ph--wrap { display: inline; white-space: normal; line-height: 1.9; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
 
 /* ---------------- after the roll ---------------- */
@@ -74,7 +74,6 @@
   .pj__t { font-size: 44px; }
   .pj__meta { grid-template-columns: 1fr; }
   .pj .ph { white-space: normal; }
-  .pj__cue { display: none; }
   .pj__nav a { flex: 1 1 0; }
   .pj__nav a[rel='next'] { justify-content: flex-end; text-align: right; }
 }
