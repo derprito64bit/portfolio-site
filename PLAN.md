@@ -56,6 +56,7 @@ The rules are the review's "Proposed operating model".
 6. **Cost:**
    - Post a cost line per round (ledger scripts in `portfolio-evidence/loop-audit/review-2026-10-13-scripts/`).
    - No budget pause; the owner cares that spend buys visible quality.
+   - **Models (owner 2026-11-16):** the orchestrator session runs on Fable and only orchestrates; every agent it spawns runs on Opus or Sonnet. `crew-config.json` pins crew, gate, judge and jury to `opus` (xhigh), so they never inherit the session model.
    - The global CLAUDE.md token rules apply: Opus at xhigh only for crew, gate, judge and jury; sonnet or haiku at low or medium for search, mechanical and verify stages; the muse-worker agent for routine scripting while its router runs.
 
 ### Operating model: kept, with small changes (PLAN v2)

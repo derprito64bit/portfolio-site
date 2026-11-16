@@ -45,15 +45,19 @@
     },
     "models": {
       "crew": {
+        "model": "opus",
         "effort": "xhigh"
       },
       "gate": {
+        "model": "opus",
         "effort": "xhigh"
       },
       "judge": {
+        "model": "opus",
         "effort": "xhigh"
       },
       "jury": {
+        "model": "opus",
         "effort": "xhigh"
       },
       "breaker": {
