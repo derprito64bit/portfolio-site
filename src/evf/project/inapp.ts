@@ -77,8 +77,8 @@ export function initProject(h: Host) {
 
   // ---------------------------------------------------------------- the frame's box never moves (A7: CLS)
   // The zoom moves no layout: the frame's box (and the HUD hung off it) stays the work frame's from Open to Close. The
-  // GL draws the travel from the engine's rect; the corner marks follow it by transform; with no WebGL the tint cover
-  // fills the view by transform. So no frame of the open or the close is a layout shift, input or not (browser Back).
+  // GL draws the travel from the engine's rect and the corner marks follow it by transform, so no frame of the open or
+  // the close is a layout shift, input or not (browser Back). With no WebGL the box is the cover (coverFill).
   const frameEl = $('[data-frame]');
   const marks = () => $$('.mk', frameEl);
   /** The frame's box, as layout.ts last wrote it. */
@@ -97,12 +97,9 @@ export function initProject(h: Host) {
   /** Open: the marks are off the view's corners and stay hidden (a resize while open never draws them over the page). */
   const marksOff = () => { for (const m of marks()) m.style.visibility = 'hidden'; };
   const marksHome = () => { for (const m of marks()) { m.style.transform = ''; m.style.visibility = ''; } };
-  /** No WebGL: the tint cover fills the view (open) by transform, or sits back in the box. */
-  function coverFill(on: boolean) {
-    const b = boxRect(), f = frameRect('open');
-    frameEl.style.transformOrigin = on ? '0 0' : '';
-    frameEl.style.transform = on ? `translate(${f.x - b.x}px,${f.y - b.y}px) scale(${f.w / b.w},${f.h / b.h})` : '';
-  }
+  /** No WebGL: the tint cover is the frame's own box, so the box fills the view while open: one write at Open (and on a
+   *  resize while open), one at the close's swap. A scaled transform here lost the page in CI's WebKit. */
+  const coverFill = (on: boolean) => writeRect(frameRect(on ? 'open' : 'work'));
 
   // ---------------------------------------------------------------- the roll, playback and the frame behind
   // their code is a lazy chunk, loaded with the prefetch or at Open, so the home page's first script stays lean; it also
@@ -276,8 +273,6 @@ export function initProject(h: Host) {
     h.setState('closing');
     const i = h.pos();
     const rect = frameRect('work');
-    // the box is the work frame's already (main.ts keeps it so on a resize while open): this writes nothing new
-    writeRect(rect);
     const it = items();
     const engine = h.engine();
     const done = () => {
@@ -322,6 +317,8 @@ export function initProject(h: Host) {
     h.setTl(t);
     t.to(it, { opacity: 0, y: -8, duration: D.snap, ease: E.in });
     t.to(st, { nd: 0, dim: 1, duration: D.step * k * 2, ease: E.in }, 0);
+    // the box is the work frame's already (main.ts keeps it so on a resize while open): this writes nothing new
+    writeRect(rect);
     const R = st.rect;
     marksAt(R, rect);
     for (const m of marks()) m.style.visibility = '';
