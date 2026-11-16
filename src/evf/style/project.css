@@ -12,7 +12,7 @@
 .proj__col:focus { outline: none; }
 .pj { padding: var(--top) var(--g) 0; }
 .pj-page .gl { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; }
-.pj-page .pj, .pj-page .pj-bar { position: relative; z-index: 2; }
+.pj-page .pj { position: relative; z-index: 2; }
 
 /* the bar: Back (23 mm, the wide end) on the left, the print counter and the focal length on the right */
 .proj__bar, .pj-bar {
@@ -20,7 +20,7 @@
   display: flex; align-items: center; gap: 22px; pointer-events: auto;
   background: linear-gradient(rgba(5, 5, 5, 0.72), rgba(5, 5, 5, 0));
 }
-.pj-page .pj-bar { position: fixed; }
+.pj-page .pj-bar { position: fixed; z-index: 4; }
 .proj__back, .pj-back {
   display: inline-flex; gap: 10px; align-items: center; min-height: 44px; padding: 0 14px 0 12px; margin: 0 auto 0 -12px;
   color: var(--ink); background: var(--black); text-decoration: none; transition: color var(--snap);

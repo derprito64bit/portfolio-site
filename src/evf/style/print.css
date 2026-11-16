@@ -78,7 +78,7 @@
   background: transparent; color: var(--ink); overflow: hidden;
 }
 .pb::backdrop { background: transparent; }
-.pb__bg { position: absolute; inset: 0; background: rgba(3, 3, 3, 0.95); }
+.pb__bg { position: absolute; inset: 0; background: var(--black); }
 .pb__in { position: absolute; inset: 0; display: grid; grid-template-rows: var(--top) minmax(0, 1fr) auto; }
 .pb__bar { display: flex; align-items: center; gap: 22px; padding: 0 var(--g); }
 .pb__k { color: var(--ink-2); margin-right: auto; font-weight: 400; }

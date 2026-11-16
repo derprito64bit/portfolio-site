@@ -324,9 +324,12 @@ export function initProject(h: Host) {
     else if (S === 'open' && e.key === 'ArrowLeft' && !e.altKey) { e.preventDefault(); step(-1); }
   }
 
+  /** Back home after a project: the entry's address names the frame now shown (previous and next may have moved it). */
+  const homeHere = () => { if (location.pathname === '/') history.replaceState(history.state, '', homeUrl(workHash(h.pos() + 1))); };
+
   function onPop() {
     const r = parse();
-    if (ownBack) { ownBack = false; if (r.kind === 'home') return; }
+    if (ownBack) { ownBack = false; if (r.kind === 'home') { homeHere(); return; } }
     const S = h.state();
     if (r.kind === 'project') {
       const i = projects.findIndex((p) => p.slug === r.slug);
@@ -339,7 +342,10 @@ export function initProject(h: Host) {
       }
       return;
     }
-    if (S === 'open' || S === 'opening') close('pop');
+    if (S === 'open' || S === 'opening') { close('pop'); homeHere(); return; }
+    // an address typed or traversed to another frame: move there without animation
+    const to = r.frame ? r.frame - 1 : -1;
+    if (S === 'evf' && to >= 0 && to < h.works && to !== h.pos()) h.jump(to);
   }
 
   /** A frame became current: prefetch its page once it has stayed 300 ms. */
