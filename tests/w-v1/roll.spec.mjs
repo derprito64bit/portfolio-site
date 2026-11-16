@@ -134,6 +134,42 @@ test.describe('A7 layout', () => {
     }
   });
 
+  // the AF brackets sit 7 px outside the focused print: on a print flush with the roll's edge they overflowed the roll
+  // by 7 px at 1440 (the gate's frames row, 9f25a82); every step of the roll, cold and in the open view
+  test('overflow 0 at 1440 with the brackets on: every step through the roll, cold and in the open view', async ({ browser, browserName }) => {
+    const ctx = await context(browser, browserName, DESK);
+    const page = await ctx.newPage();
+    // the worst overflow over the 320 ms after a scroll step, read every frame: a bracket glide onto a print flush with
+    // the edge overshoots (vf.detent), so a single late read would miss it
+    const over = () => page.evaluate(() => new Promise((done) => {
+      const read = () => Math.max(document.documentElement.scrollWidth - document.documentElement.clientWidth, ...[...document.querySelectorAll('.proj__col, .roll, .roll__grid, .pj, dialog[open]')].map((e) => e.scrollWidth - e.clientWidth));
+      let worst = read();
+      const t0 = performance.now();
+      const tick = () => { worst = Math.max(worst, read()); if (performance.now() - t0 < 320) requestAnimationFrame(tick); else done(worst); };
+      requestAnimationFrame(tick);
+    }));
+    const sweep = async (where) => {
+      const worst = [];
+      const max = await page.evaluate(() => { const c = document.querySelector('.proj:not([hidden]) .proj__col') ?? document.scrollingElement; return c.scrollHeight - c.clientHeight; });
+      for (let y = 0; y <= max + 299; y += 300) {
+        await scrollTo(page, y);
+        const v = await over();
+        if (v > 0) worst.push(`${y}: ${v}px (focus ${await page.evaluate(() => document.querySelector('.roll')?.dataset.focus)})`);
+      }
+      expect(worst, `${where}: steps with overflow`).toEqual([]);
+    };
+    try {
+      for (const slug of ['project-01', 'project-05', 'project-06']) { await cold(page, slug); await sweep(slug); }
+      await home(page);
+      await toFrame(page, 5);
+      await page.keyboard.press('Enter');
+      await untilState(page, 'open', 5);
+      await sweep('the open view');
+    } finally {
+      await ctx.close();
+    }
+  });
+
   test('CLS 0.02 or less over the open path (Chromium: the layout-shift entries)', async ({ browser, browserName }) => {
     test.skip(browserName !== 'chromium', 'WebKit has no layout-shift entries; the gate traces CLS in Chromium');
     const ctx = await context(browser, browserName, DESK, { init: [`(() => { window.__cls = 0; new PerformanceObserver((l) => { for (const e of l.getEntries()) if (!e.hadRecentInput) window.__cls += e.value; }).observe({ type: 'layout-shift', buffered: true }); })();`] });

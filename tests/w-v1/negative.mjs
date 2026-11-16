@@ -30,7 +30,7 @@ export const PLANTS = [
   ['three-loops', 'A11', 'src/evf/project/roll.ts', 'export const MAX_PLAYING = 2;', 'export const MAX_PLAYING = 3;', 'roll.spec.mjs', 'two at most'],
   ['loops-when-calm', 'A11', 'src/evf/project/roll.ts', 'const allowed = !held && !reduced() &&', 'const allowed = !held &&', 'roll.spec.mjs', 'reduced motion: no inline play'],
   ['back-36px', 'A12', 'src/evf/style/project.css', 'display: inline-flex; gap: 10px; align-items: center; min-height: 44px;', 'display: inline-flex; gap: 10px; align-items: center; min-height: 36px; max-height: 36px;', 'open.spec.mjs', 'A12 phone'],
-  ['calm-brackets-glide', 'A13', 'src/evf/project/roll.ts', 'duration: jump || reduced() ? 0 : D.step', 'duration: jump ? 0 : D.step', 'playback.spec.mjs', 'reduced motion: a crossfade open'],
+  ['calm-brackets-glide', 'A13', 'src/evf/project/roll.ts', 'if (jump || reduced()) { gsap.killTweensOf(box);', 'if (jump) { gsap.killTweensOf(box);', 'playback.spec.mjs', 'reduced motion: a crossfade open'],
   ['sway-stays', 'A14', 'src/evf/main.ts', 'setSway: (on) => { if (engine) engine.sway = on && !calm; },', 'setSway: () => { if (engine) engine.sway = !calm; },', 'idle.spec.mjs', 'A14 in the Viewfinder'],
   // round 2 (the judge's r1 must-fix list): each plant puts one fixed defect back
   ['af-intro-rect', 'A2', 'src/evf/main.ts', '} else coverFor(i);\n  placeAF(sceneToFrac(subjectOf(s), rect));\n  syncDist();',
@@ -54,6 +54,8 @@ export const PLANTS = [
   ['pb-esc-swallow', 'A10', 'src/evf/project/playback.ts', "if (e.key === 'Escape') { if (cur < 0) return; e.preventDefault();", "if (e.key === 'Escape') { e.preventDefault();", 'playback.spec.mjs', 'Esc, Esc'],
   ['pb-scroll-restore', 'A10', 'src/evf/project/playback.ts', "history.scrollRestoration = 'manual'; hist.push(", 'hist.push(', 'playback.spec.mjs', 'paging 06 to 07'],
   ['pb-failed-glyph', 'A10', 'src/evf/project/playback.ts', "const failed = p.classList.contains('is-failed');", 'const failed = false;', 'playback.spec.mjs', 'failed image opens'],
+  ['af-in-grid', 'A7', 'src/evf/project/roll.ts', 'host?.append(af);', 'grid?.append(af);', 'roll.spec.mjs', 'overflow 0 at 1440'],
+  ['no-clamp', 'A7', 'src/evf/project/roll.ts', 'const l = Math.max(box.x, BR), r = Math.min(box.x + box.w, maxR);', 'const l = box.x, r = box.x + box.w;', 'roll.spec.mjs', 'overflow 0 at 1440'],
   ['no-hover', 'A9', 'src/evf/project/roll.ts', "if (grid) on(grid, 'pointermove'", "if (!grid) on(grid, 'pointermove'", 'roll.spec.mjs', 'hover to focus'],
 ];
 

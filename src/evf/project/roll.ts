@@ -87,10 +87,25 @@ export function initRoll(o: RollOptions): RollControl | null {
   af.className = 'roll__af';
   af.setAttribute('aria-hidden', 'true');
   af.append(...Array.from({ length: 4 }, () => document.createElement('i')));
-  grid?.append(af);
+  // the brackets live in the article's host (the column, or the cold page's article), not in the roll: their corners sit
+  // 7 px outside the print, which for a print flush with the roll's edge overflowed the roll (gate overflow 7 at 1440);
+  // the host's own padding holds them
+  const host = (grid ? o.root : null) as HTMLElement | null;
+  host?.append(af);
   const fine = matchMedia('(hover: hover) and (pointer: fine)');
   let rects: { x: number; y: number; w: number; h: number }[] = [];
-  let gridTop = 0, gridLeft = 0, scrollMax = Infinity;
+  let gridTop = 0, gridLeft = 0, scrollMax = Infinity, offX = 0, offY = 0, maxR = Infinity;
+  /** How far the brackets' corners sit outside the print (print.css). */
+  const BR = 7;
+  // the brackets' box, tweened; drawn clamped so vf.detent's overshoot never carries a corner past the host's padding
+  // box (a glide onto a print flush with the edge overflowed the page by 3 px for a frame)
+  const box = { x: 0, y: 0, w: 0, h: 0 };
+  const draw = () => {
+    const l = Math.max(box.x, BR), r = Math.min(box.x + box.w, maxR);
+    af.style.transform = `translate(${l}px,${box.y}px)`;
+    af.style.width = `${Math.max(0, r - l)}px`;
+    af.style.height = `${box.h}px`;
+  };
   let cur = -1;
   const dimOn = () => total >= DIM_MIN && fine.matches;
   const view = () => (win ? { top: window.scrollY, h: window.innerHeight, left: 0, w: window.innerWidth } : { top: (o.scroller as HTMLElement).scrollTop, h: (o.scroller as HTMLElement).clientHeight, left: 0, w: (o.scroller as HTMLElement).clientWidth });
@@ -102,6 +117,8 @@ export function initRoll(o: RollOptions): RollControl | null {
     const base = win ? { top: 0, left: 0, st: window.scrollY } : (() => { const s = (o.scroller as HTMLElement).getBoundingClientRect(); return { top: s.top, left: s.left, st: (o.scroller as HTMLElement).scrollTop }; })();
     gridTop = g.top - base.top + base.st;
     gridLeft = g.left - base.left;
+    // the grid's place in the host's padding box (the column scrolls its content, the brackets with it)
+    if (host) { const h = host.getBoundingClientRect(); offX = g.left - h.left - host.clientLeft + host.scrollLeft; offY = g.top - h.top - host.clientTop + host.scrollTop; maxR = host.clientWidth - BR; }
     const sc = win ? document.scrollingElement ?? document.documentElement : (o.scroller as HTMLElement);
     scrollMax = sc.scrollHeight - (win ? window.innerHeight : sc.clientHeight);
     rects = prints.map((p) => {
@@ -114,7 +131,9 @@ export function initRoll(o: RollOptions): RollControl | null {
   function place(n: number, jump: boolean) {
     const r = rects[n];
     if (!r) return;
-    gsap.to(af, { x: r.x, y: r.y, width: r.w, height: r.h, duration: jump || reduced() ? 0 : D.step, ease: E.detent, overwrite: true });
+    const to = { x: offX + r.x, y: offY + r.y, w: r.w, h: r.h };
+    if (jump || reduced()) { gsap.killTweensOf(box); Object.assign(box, to); draw(); }
+    else gsap.to(box, { ...to, duration: D.step, ease: E.detent, overwrite: true, onUpdate: draw });
   }
 
   /** The HUD counter reads this roll's focused print, and is hidden while none is (never another roll's count). */
@@ -236,7 +255,7 @@ export function initRoll(o: RollOptions): RollControl | null {
       held = true;
       reconcile();
       pending?.kill();
-      gsap.killTweensOf(af);
+      gsap.killTweensOf(box);
       cleanups.forEach((f) => f());
       af.remove();
       count(-1);
