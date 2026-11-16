@@ -59,6 +59,8 @@ test('A14 on a cold /work/project-06/: the frame behind holds still once exposed
     test.skip(!(await page.evaluate(() => Boolean(window.__vfEngine))), 'no WebGL in this browser here');
     expect(await page.evaluate(() => window.__vfEngine.sway)).toBe(false);
     await page.waitForFunction(() => window.__vf.stats().composite > 0, null, { timeout: GL_MS, polling: 50 });
+    // the arrival's exposure ramp (it starts once the first frame is up) is over before the roll is read at rest
+    await page.waitForFunction(() => window.__vfEngine.st.exposure >= 0.999, null, { timeout: GL_MS, polling: 50 });
     for (const y of [400, 900, 1600]) { await scrollTo(page, y); await page.waitForTimeout(120); }
     await page.waitForTimeout(1000);
     await page.evaluate(() => window.__vf.resetStats());

@@ -41,6 +41,7 @@ export const PLANTS = [
   ['page-blank', 'J4', 'src/evf/project/playback.ts', 'const g = ghostOf(f);', "const g = document.createElement('i');", 'playback.spec.mjs', 'J4 paging'],
   ['focus-2d', 'J3', 'src/evf/project/roll.ts', 'const d = gap > 0 ? 1e6 + gap : Math.abs(r.y + r.h / 2 - cy) + X_WEIGHT * Math.abs(r.x + r.w / 2 - cx);', 'const d = Math.hypot(r.x + r.w / 2 - cx, r.y + r.h / 2 - cy);', 'roll.spec.mjs', 'centre line leads'],
   ['touch-dims', 'A9', 'src/evf/project/roll.ts', 'const dimOn = () => total >= DIM_MIN && fine.matches;', 'const dimOn = () => total >= DIM_MIN;', 'roll.spec.mjs', 'no dim under 4'],
+  ['cold-sway', 'A14', 'src/evf/project/cold.ts', 'e.sway = false; // a page to read', 'e.sway = true; // a page to read', 'idle.spec.mjs', 'A14 on a cold'],
   ['no-end-rule', 'J3', 'src/evf/project/roll.ts', 'if (v.top >= scrollMax - 2) {', 'if (false) {', 'roll.spec.mjs', 'centre line leads'],
 ];
 
