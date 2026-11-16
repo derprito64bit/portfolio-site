@@ -43,6 +43,15 @@ export const PLANTS = [
   ['touch-dims', 'A9', 'src/evf/project/roll.ts', 'const dimOn = () => total >= DIM_MIN && fine.matches;', 'const dimOn = () => total >= DIM_MIN;', 'roll.spec.mjs', 'no dim under 4'],
   ['cold-sway', 'A14', 'src/evf/project/cold.ts', 'e.sway = false; // a page to read', 'e.sway = true; // a page to read', 'idle.spec.mjs', 'A14 on a cold'],
   ['no-end-rule', 'J3', 'src/evf/project/roll.ts', 'if (v.top >= scrollMax - 2) {', 'if (false) {', 'roll.spec.mjs', 'centre line leads'],
+  // round 3 (the judge's r2 must-fix list and wv1-hover-af)
+  ['zoom-layout', 'A7', 'src/evf/project/inapp.ts', 'onUpdate: () => { marksAt(R, box); h.reveal(); } }, 0);', 'onUpdate: () => { writeRect(R); marksAt(R, box); h.reveal(); } }, 0);', 'cls-gl.spec.mjs', 'A7 with GL'],
+  ['close-layout', 'A7', 'src/evf/project/inapp.ts', 'onUpdate: () => { marksAt(R, rect); h.reveal(); } }, 0.06);', 'onUpdate: () => { writeRect(R); marksAt(R, rect); h.reveal(); } }, 0.06);', 'cls-gl.spec.mjs', 'A7 with GL'],
+  ['opener-evf', 'A2', 'src/evf/project/inapp.ts', "a && a !== evf && evf.contains(a) && a.matches('button, a[href]')", 'a && a !== document.body && evf.contains(a)', 'keys.spec.mjs', 'Close returns focus'],
+  ['focus-back', 'A2', 'src/evf/project/inapp.ts', "(($('#proj-title') ?? $('[data-close]', proj)) as HTMLElement)", "($('[data-close]', proj) as HTMLElement)", 'keys.spec.mjs', 'keys scroll the column'],
+  ['trap-off', 'A2', 'src/evf/project/view.ts', "if (e.key !== 'Tab' || !isOpen()) return;", "if (e.key !== 'Tab' || isOpen()) return;", 'keys.spec.mjs', 'keys scroll the column'],
+  ['resize-cover', 'A13', 'src/evf/project/inapp.ts', 'if (!e) { coverFill(true); return; }', 'if (!e) return;', 'keys.spec.mjs', 'resize or rotate while open'],
+  ['marks-show', 'A2', 'src/evf/project/inapp.ts', "const marksOff = () => { for (const m of marks()) m.style.visibility = 'hidden'; };", 'const marksOff = () => {};', 'keys.spec.mjs', 'resize or rotate while open'],
+  ['no-hover', 'A9', 'src/evf/project/roll.ts', "if (grid) on(grid, 'pointermove'", "if (!grid) on(grid, 'pointermove'", 'roll.spec.mjs', 'hover to focus'],
 ];
 
 const SKIP = new Set(['node_modules', 'dist', '.git', 'test-results', '.astro', 'playwright-report']);

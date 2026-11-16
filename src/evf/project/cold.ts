@@ -81,7 +81,8 @@ async function boot() {
         const tick = () => { if (++ticks < 2) return; gsap.ticker.remove(tick); done(); };
         gsap.ticker.add(tick);
       });
-      if (engine === e) gsap.to(e.st, { exposure: 1, duration: D.land, ease: E.out, onUpdate: () => e.invalidate(120) });
+      // on the lens curve: a slow start, so no first frame steps from black (vf.out cut in at once)
+      if (engine === e) gsap.to(e.st, { exposure: 1, duration: D.land, ease: E.lens, onUpdate: () => e.invalidate(120) });
     }
   } catch (err) {
     console.warn('[viewfinder] WebGL unavailable, using flat frames', err);

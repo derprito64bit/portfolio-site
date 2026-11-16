@@ -191,10 +191,14 @@ export function initProject(h: Host) {
       if (h.calm || !engine) { gsap.fromTo(kids, { opacity: 0 }, { opacity: 1, duration: 0.2, ease: 'none', clearProps: 'opacity' }); return; }
       const head = kids.find((k) => k.matches('.pj__head'));
       const details = head ? ([...head.children] as HTMLElement[]) : [];
-      const rest = kids.filter((k) => k !== head);
+      const roll = kids.find((k) => k.matches('.roll'));
+      const rest = kids.filter((k) => k !== head && k !== roll);
       const at = Math.max(0, lead - 0.1); // the first detail 0.1 s before the landing, so it is there as the zoom settles
       if (head) { gsap.set(details, { opacity: 0 }); head.style.opacity = ''; }
       gsap.to(details, { opacity: 1, duration: 0.36, ease: E.out, stagger: 0.1, delay: at, clearProps: 'opacity' });
+      // the roll is the last beat of the same exposure: up in 0.2 s at the landing, so print 1's own expose (-3 EV to
+      // clear) is what shows, not a late block fade
+      if (roll) gsap.fromTo(roll, { opacity: 0 }, { opacity: 1, duration: 0.2, ease: 'none', delay: lead, clearProps: 'opacity' });
       gsap.fromTo(rest, { opacity: 0 }, { opacity: 1, duration: 0.4, ease: E.out, delay: at + details.length * 0.1, clearProps: 'opacity' });
     };
     const settle = () => {

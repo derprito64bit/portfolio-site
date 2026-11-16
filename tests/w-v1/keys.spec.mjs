@@ -103,3 +103,41 @@ for (const [label, profile] of [['1440', DESK], ['390', PHONE]]) {
     });
   });
 }
+
+// wv1-resize-open-rect (queued from judge r2): a resize or rotate while a project is open never draws the frame's marks
+// over the page, and with no WebGL the tint cover still fills the view; Close lands with the marks home.
+test('A2 / A13 a resize or rotate while open: no marks over the page, the cover fills the view; Close lands home', async ({ browser, browserName }) => {
+  const ctx = await context(browser, browserName, DESK);
+  const page = await ctx.newPage();
+  const read = () => page.evaluate(() => {
+    const f = document.querySelector('[data-frame]').getBoundingClientRect();
+    return {
+      frame: [f.left, f.top, f.width, f.height].map(Math.round),
+      view: [innerWidth, innerHeight],
+      marks: [...document.querySelectorAll('[data-frame] .mk')].map((m) => getComputedStyle(m).visibility),
+      transforms: [...document.querySelectorAll('[data-frame] .mk')].map((m) => m.style.transform),
+    };
+  });
+  try {
+    await home(page);
+    await toFrame(page, 1);
+    await page.keyboard.press('Enter');
+    await untilState(page, 'open', 1);
+    for (const size of [{ width: 1200, height: 800 }, { width: 390, height: 844 }, { width: 844, height: 390 }]) {
+      await page.setViewportSize(size);
+      await page.waitForTimeout(300);
+      const s = await read();
+      expect(s.marks, `${size.width} x ${size.height}: the marks stay hidden while open`).toEqual(['hidden', 'hidden', 'hidden', 'hidden']);
+      expect(s.frame, `${size.width} x ${size.height}: the flat cover fills the view`).toEqual([0, 0, size.width, size.height]);
+    }
+    await page.keyboard.press('Escape');
+    await untilState(page, 'evf', 1);
+    const s = await read();
+    expect(s.marks, 'home: the marks show').toEqual(['visible', 'visible', 'visible', 'visible']);
+    expect(s.transforms, 'home: no transform left on the marks').toEqual(['', '', '', '']);
+    const box = await page.evaluate(() => ['--fx', '--fy', '--fw', '--fh'].map((k) => Math.round(parseFloat(document.documentElement.style.getPropertyValue(k)))));
+    expect(s.frame, 'home: the frame sits in its box').toEqual(box);
+  } finally {
+    await ctx.close();
+  }
+});
