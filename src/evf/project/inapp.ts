@@ -11,8 +11,8 @@ import { projects } from '../data';
 import { frameRect, writeRect, isPhone } from '../layout';
 import { parse, projectUrl, homeUrl, workHash } from '../router';
 import { adopt, loadArticle, prefetch, requestCount } from './article';
-import { initRoll, type RollControl } from './roll';
-import { initPlayback, type PlaybackControl } from './playback';
+import type { RollControl } from './roll';
+import type { PlaybackControl } from './playback';
 import { apertureOf, landedState, openZoom, subjectOf, zoomCentre, type Pt3 } from './framing';
 import '../style/project.css';
 import '../style/print.css';
@@ -75,11 +75,17 @@ export function initProject(h: Host) {
   const slugAt = (i: number) => projects[i]?.slug ?? '';
 
   // ---------------------------------------------------------------- the roll, playback and the frame behind
+  // their code is a lazy chunk, loaded with the prefetch or at Open, so the home page's first script stays lean
+  type Enh = typeof import('./enhance');
+  let enh: Enh | null = null;
+  let enhLoad: Promise<Enh> | null = null;
+  const loadEnh = () => (enhLoad ??= import('./enhance').then((m) => (enh = m), (e) => { enhLoad = null; throw e; }));
   function enhance() {
     roll?.destroy();
     pb?.destroy();
-    roll = initRoll({ root: col, scroller: col, calm: h.calm, counter });
-    pb = initPlayback({ prints: roll?.prints ?? [], calm: h.calm, onHold: (on) => roll?.hold(on) });
+    if (!enh) return;
+    roll = enh.initRoll({ root: col, scroller: col, calm: h.calm, counter });
+    pb = enh.initPlayback({ prints: roll?.prints ?? [], calm: h.calm, onHold: (on) => roll?.hold(on) });
     if (counter) counter.hidden = !(roll?.prints.length);
   }
   function unenhance() {
@@ -116,7 +122,7 @@ export function initProject(h: Host) {
 
   /** Fetch, parse and adopt the page for frame i; resolves false if a newer open or close took over. */
   async function bring(i: number, my: number) {
-    const doc = await loadArticle(slugAt(i));
+    const [doc] = await Promise.all([loadArticle(slugAt(i)), loadEnh()]);
     if (my !== token) return false;
     const { title } = adopt(doc, col);
     document.title = title;
@@ -300,7 +306,7 @@ export function initProject(h: Host) {
       }
     }
     history.replaceState({ vf: 'project', slug }, '', projectUrl(slug));
-    loadArticle(slug).then(async (doc) => {
+    Promise.all([loadArticle(slug), loadEnh()]).then(async ([doc]) => {
       await out.then();
       if (my !== token) return;
       unenhance();
@@ -352,7 +358,7 @@ export function initProject(h: Host) {
   function framed(i: number) {
     clearTimeout(prefetchTimer);
     if (i < 0 || i >= h.works) return;
-    prefetchTimer = window.setTimeout(() => { if (h.pos() === i && (h.state() === 'evf' || h.state() === 'raising')) prefetch(slugAt(i)); }, PREFETCH_MS);
+    prefetchTimer = window.setTimeout(() => { if (h.pos() === i && (h.state() === 'evf' || h.state() === 'raising')) { prefetch(slugAt(i)); loadEnh().catch(() => {}); } }, PREFETCH_MS);
   }
 
   function onResize() {

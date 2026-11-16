@@ -50,7 +50,7 @@
 .print.is-failed .print__img, .print.is-failed .print__play { visibility: hidden; }
 .print.is-failed .print__frame { background: var(--panel); border: 1px dashed rgba(236, 233, 226, 0.25); }
 .print.is-failed .print__frame::after {
-  content: attr(data-failed); position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  content: 'Image unavailable'; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
   font-family: var(--f-mono); font-size: 12px; letter-spacing: 0.07em; text-transform: uppercase; color: var(--ink-2);
 }
 

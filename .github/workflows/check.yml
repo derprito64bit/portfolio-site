@@ -88,6 +88,13 @@ jobs:
           SMOKE_JSON: smoke-flat.json
         run: npm run test:smoke
 
+      # W-V1 (#21): the project pages and the film prints. A1, A4 and A15 read dist; A2 and A5 to A13 run on the flat path
+      # (WebGL off), DOM only, in Chromium and WebKit at 1440 x 900 and 390 x 844; A14 with GL at 640 x 400, DPR 1.
+      - name: W-V1 tests (dist; prints, open, playback and calm on the flat path; idle with GL at G1; Chromium and WebKit)
+        run: |
+          npm run test:w-v1-dist
+          npm run test:w-v1
+
       - name: Idle check with GL at G1 (frame counters at rest, hidden and reduced; Chromium trace cross-check)
         run: npm run h:idle -- --profile G1 --window 5 --browsers chromium,webkit --out idle.json
 
