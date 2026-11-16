@@ -292,7 +292,8 @@ test('J4 paging never blanks the stage: one print is always up', async ({ browse
       const frames = await watch;
       expect(frames.length, 'sampled').toBeGreaterThan(5);
       expect(frames.filter((o) => o < 0.05).length, `${key}: blank frames (max opacity on the stage per frame: ${frames.map((o) => o.toFixed(2)).join(' ')})`).toBe(0);
-      expect(frames.at(-1), 'the page ends fully up').toBe(1);
+      // fully up once the page lands (polled: a slow CI engine can run the 0.3 s fade past the 500 ms window above)
+      await expect.poll(() => page.evaluate(() => Math.max(0, ...[...document.querySelectorAll('dialog.pb .pb__stage > *')].map((e) => (getComputedStyle(e).visibility === 'hidden' ? 0 : Number(getComputedStyle(e).opacity))))), { message: 'the page ends fully up', timeout: 3000 }).toBe(1);
       expect(await page.locator('dialog.pb .pb__ghost').count(), 'the leaving copy is gone').toBe(0);
     }
     // rapid paging (each page cut short by the next), Esc, a reopen, Back / Forward / Back, Forward: playback is fully

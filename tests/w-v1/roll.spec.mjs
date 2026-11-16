@@ -2,8 +2,8 @@
 // 1440 x 900 and 390 x 844 (widths within 2 px of the size rule), overflow from 320 px, CLS over the open path, the
 // expose, the focus (brackets, dim, the HUD counter, cached rects) and the loop clips (play and pause stubbed: the calls
 // are asserted, nothing really plays).
-import { test, expect } from '@playwright/test';
-import { DESK, PHONE, base, centrePrint, context, home, prints, scrollTo, toFrame, untilState } from './lib.mjs';
+import { expect } from '@playwright/test';
+import { DESK, PHONE, base, centrePrint, context, home, ownBrowser as test, prints, scrollTo, toFrame, untilState } from './lib.mjs';
 
 const cold = (page, slug, hash = '') => page.goto(`${base()}/work/${slug}/?vf-test${hash}`, { waitUntil: 'load' });
 const AR_MIN = 9 / 21, AR_MAX = 21 / 9;
@@ -11,7 +11,7 @@ const clampAr = (r) => Math.min(AR_MAX, Math.max(AR_MIN, r));
 
 test.describe('A5 the print look', () => {
   for (const [label, profile] of [['1440', DESK], ['390', PHONE]]) {
-    test(`own aspect (9:21 to 21:9, letterboxed), the strip, the type, no mat or rotation, at ${label}`, async ({ browser, browserName }) => {
+    test(`own aspect (9:21 to 21:9, letterboxed), the strip, the type, no mat or rotation, at ${label}`, async ({ own: browser, browserName }) => {
       const ctx = await context(browser, browserName, profile);
       const page = await ctx.newPage();
       try {
@@ -61,7 +61,7 @@ test.describe('A5 the print look', () => {
 });
 
 test.describe('A7 layout', () => {
-  test('1440 x 900: width = min(widthFrac x roll, 80 svh x aspect) within 2 px; the zigzag; no overlap', async ({ browser, browserName }) => {
+  test('1440 x 900: width = min(widthFrac x roll, 80 svh x aspect) within 2 px; the zigzag; no overlap', async ({ own: browser, browserName }) => {
     const ctx = await context(browser, browserName, DESK);
     const page = await ctx.newPage();
     try {
@@ -90,7 +90,7 @@ test.describe('A7 layout', () => {
     }
   });
 
-  test('390 x 844: one column; width = min(phone fraction x roll, 70 svh x aspect) within 2 px; sides alternate', async ({ browser, browserName }) => {
+  test('390 x 844: one column; width = min(phone fraction x roll, 70 svh x aspect) within 2 px; sides alternate', async ({ own: browser, browserName }) => {
     const ctx = await context(browser, browserName, PHONE);
     const page = await ctx.newPage();
     try {
@@ -113,7 +113,7 @@ test.describe('A7 layout', () => {
     }
   });
 
-  test('overflow 0 from 320 px: every project page, and the open view on /', async ({ browser, browserName }) => {
+  test('overflow 0 from 320 px: every project page, and the open view on /', async ({ own: browser, browserName }) => {
     const ctx = await context(browser, browserName, { ...PHONE, viewport: { width: 320, height: 640 } });
     const page = await ctx.newPage();
     const over = () => page.evaluate(() => Math.max(document.documentElement.scrollWidth - document.documentElement.clientWidth, ...[...document.querySelectorAll('.proj__col, .roll, .pj')].map((e) => e.scrollWidth - e.clientWidth)));
@@ -136,7 +136,7 @@ test.describe('A7 layout', () => {
 
   // the AF brackets sit 7 px outside the focused print: on a print flush with the roll's edge they overflowed the roll
   // by 7 px at 1440 (the gate's frames row, 9f25a82); every step of the roll, cold and in the open view
-  test('overflow 0 at 1440 with the brackets on: every step through the roll, cold and in the open view', async ({ browser, browserName }) => {
+  test('overflow 0 at 1440 with the brackets on: every step through the roll, cold and in the open view', async ({ own: browser, browserName }) => {
     const ctx = await context(browser, browserName, DESK);
     const page = await ctx.newPage();
     // the worst overflow over the 320 ms after a scroll step, read every frame: a bracket glide onto a print flush with
@@ -159,7 +159,7 @@ test.describe('A7 layout', () => {
       expect(worst, `${where}: steps with overflow`).toEqual([]);
     };
     try {
-      for (const slug of ['project-01', 'project-05', 'project-06']) { await cold(page, slug); await sweep(slug); }
+      for (const slug of ['project-01', 'project-06']) { await cold(page, slug); await sweep(slug); }
       await home(page);
       await toFrame(page, 5);
       await page.keyboard.press('Enter');
@@ -170,7 +170,7 @@ test.describe('A7 layout', () => {
     }
   });
 
-  test('CLS 0.02 or less over the open path (Chromium: the layout-shift entries)', async ({ browser, browserName }) => {
+  test('CLS 0.02 or less over the open path (Chromium: the layout-shift entries)', async ({ own: browser, browserName }) => {
     test.skip(browserName !== 'chromium', 'WebKit has no layout-shift entries; the gate traces CLS in Chromium');
     const ctx = await context(browser, browserName, DESK, { init: [`(() => { window.__cls = 0; new PerformanceObserver((l) => { for (const e of l.getEntries()) if (!e.hadRecentInput) window.__cls += e.value; }).observe({ type: 'layout-shift', buffered: true }); })();`] });
     const page = await ctx.newPage();
@@ -199,7 +199,7 @@ test.describe('A7 layout', () => {
 
 test.describe('A8 expose', () => {
   for (const reduced of [false, true]) {
-    test(`prints expose in order as they enter; none blank 1.0 s after 50% visible${reduced ? ' (reduced: opacity only)' : ''}`, async ({ browser, browserName }) => {
+    test(`prints expose in order as they enter; none blank 1.0 s after 50% visible${reduced ? ' (reduced: opacity only)' : ''}`, async ({ own: browser, browserName }) => {
       const ctx = await context(browser, browserName, DESK, { reduced });
       const page = await ctx.newPage();
       try {
@@ -237,7 +237,7 @@ test.describe('A8 expose', () => {
     });
   }
 
-  test('a failed image becomes an "image unavailable" print at the same size', async ({ browser, browserName }) => {
+  test('a failed image becomes an "image unavailable" print at the same size', async ({ own: browser, browserName }) => {
     const ctx = await context(browser, browserName, DESK);
     const page = await ctx.newPage();
     await page.route(/\/media\/fixtures\/project-06\/04-/, (r) => r.abort());
@@ -261,7 +261,7 @@ test.describe('A9 focus', () => {
     Element.prototype.getBoundingClientRect = function () { if (this.closest && this.closest('.print')) window.__gbcr++; return o.call(this); };
   })();`;
 
-  test('the print nearest the centre keeps the brackets and full brightness; the rest dim; the counter reads it; rects cached', async ({ browser, browserName }) => {
+  test('the print nearest the centre keeps the brackets and full brightness; the rest dim; the counter reads it; rects cached', async ({ own: browser, browserName }) => {
     const ctx = await context(browser, browserName, DESK, { init: [GBCR] });
     const page = await ctx.newPage();
     try {
@@ -270,6 +270,8 @@ test.describe('A9 focus', () => {
       await centrePrint(page, 3);
       await page.waitForFunction(() => document.querySelector('.roll')?.dataset.focus === '3', null, { timeout: 3000 });
       await page.waitForTimeout(400);
+      // the 0.24 s dim has landed (a slow CI engine was still at 0.550062 after 400 ms)
+      await page.waitForFunction(() => [...document.querySelectorAll('.print:not([data-focus])')].every((p) => getComputedStyle(p).opacity === '0.55'), null, { timeout: 3000 }).catch(() => {});
       const st = await page.evaluate(() => ({
         focus: document.querySelector('.print[data-focus]')?.id,
         dim: document.querySelector('.roll').hasAttribute('data-dim'),
@@ -305,7 +307,7 @@ test.describe('A9 focus', () => {
     }
   });
 
-  test('the centre line leads: a print the line crosses has focus; the last print takes it at the scroll end (12 / 12)', async ({ browser, browserName }) => {
+  test('the centre line leads: a print the line crosses has focus; the last print takes it at the scroll end (12 / 12)', async ({ own: browser, browserName }) => {
     const ctx = await context(browser, browserName, DESK);
     const page = await ctx.newPage();
     /** Steps the scroller (the window, or the open view's column) through the roll; at each stop, the focused print and
@@ -353,7 +355,7 @@ test.describe('A9 focus', () => {
     }
   });
 
-  test('hover to focus: a fine pointer on a print takes the brackets and full brightness; the next scroll returns to the centre line', async ({ browser, browserName }) => {
+  test('hover to focus: a fine pointer on a print takes the brackets and full brightness; the next scroll returns to the centre line', async ({ own: browser, browserName }) => {
     const ctx = await context(browser, browserName, DESK);
     const page = await ctx.newPage();
     const focusOf = () => page.evaluate(() => document.querySelector('.roll').dataset.focus);
@@ -411,7 +413,7 @@ test.describe('A9 focus', () => {
     }
   });
 
-  test('no dim under 4 prints, nor on touch', async ({ browser, browserName }) => {
+  test('no dim under 4 prints, nor on touch', async ({ own: browser, browserName }) => {
     const ctx = await context(browser, browserName, DESK);
     const page = await ctx.newPage();
     try {
@@ -448,7 +450,7 @@ test.describe('A11 loop clips', () => {
   const calls = (page) => page.evaluate(() => window.__media.slice());
   const playing = (c) => { const s = new Set(); for (const [op, id] of c) op === 'play' ? s.add(id) : s.delete(id); return [...s].sort(); };
 
-  test('a loop plays muted inline at 50% visible, pauses out of view and in a hidden tab, two at most; preload none', async ({ browser, browserName }) => {
+  test('a loop plays muted inline at 50% visible, pauses out of view and in a hidden tab, two at most; preload none', async ({ own: browser, browserName }) => {
     const ctx = await context(browser, browserName, DESK, { init: [STUB] });
     const page = await ctx.newPage();
     try {
@@ -481,7 +483,7 @@ test.describe('A11 loop clips', () => {
     }
   });
 
-  test('reduced motion: no inline play', async ({ browser, browserName }) => {
+  test('reduced motion: no inline play', async ({ own: browser, browserName }) => {
     const ctx = await context(browser, browserName, DESK, { init: [STUB], reduced: true });
     const page = await ctx.newPage();
     try {

@@ -2,9 +2,21 @@
 // two gate viewports, the page's test API (?vf-test, D-055, read only), state waits and layout reads. Every wait is on
 // page state, never a fixed sleep, except where a row names a duration (the 1.0 s expose, the 100 ms brackets, A14's
 // 1 s and 3 s).
+import { test as base0 } from '@playwright/test';
 import { NO_WEBGL_INIT, consoleGate, flatPathVerdict } from '../harness/lib.mjs';
 
 export { consoleGate, flatPathVerdict };
+
+/** `test` with `own`: a browser of the row's own, launched with the project's options and closed after the row. CI's
+ *  one long-lived WebKit was lost late in the run (the page closed mid-row, a different roll row each run; never on the
+ *  reference host), so the roll's rows run each in a fresh browser. The assertions are the same. */
+export const ownBrowser = base0.extend({
+  own: async ({ playwright, browserName, launchOptions, channel }, use) => {
+    const b = await playwright[browserName].launch({ ...launchOptions, ...(channel ? { channel } : {}), headless: true });
+    await use(b);
+    await b.close();
+  },
+});
 export const DESK = { viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1, hasTouch: false, isMobile: false };
 export const PHONE = { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true };
 export const STEP_MS = Number(process.env.W_V1_STEP_MS) || 20000;
