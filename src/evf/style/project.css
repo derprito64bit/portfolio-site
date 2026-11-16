@@ -10,6 +10,8 @@
   padding: 0 var(--g); pointer-events: auto; scrollbar-width: thin; scrollbar-color: var(--ink-4) transparent;
 }
 .proj__col:focus { outline: none; }
+/* the title takes focus at the landing (tabindex -1, not a Tab stop) so the keys scroll the column; no ring on it */
+#proj-title:focus { outline: none; }
 .pj { padding: var(--top) var(--g) 0; }
 .pj-page .gl { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; }
 .pj-page .pj { position: relative; z-index: 2; }
