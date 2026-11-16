@@ -1,10 +1,14 @@
-// The one content loader. It validates content/*.json (schema v2) at import time, so an invalid file fails the
-// build with every error listed. Pages import from here, never from content/ directly.
+// The one content loader. It validates content/*.json (schema v2, media v3: D-042) at import time, so an invalid file
+// fails the build with every error listed. Pages import from here, never from content/ directly. Build-time only: it
+// reads the test-chart manifest from the build cache (./fixtures.ts).
 import projectsJson from '../../../content/projects.json';
 import honoursJson from '../../../content/honours.json';
 import profileJson from '../../../content/profile.json';
 import tokensJson from '../../../content/tokens.json';
+import mediaJson from './media.json';
 import { validateContent, frameCode, hasToken } from './validate.js';
+import { printsOf, type MediaManifest } from './prints.ts';
+import { readFixtures } from './fixtures.ts';
 import type { Content, Honour, Profile, Project, ProjectView } from './types.ts';
 
 export type * from './types.ts';
@@ -15,11 +19,13 @@ const { errors } = validateContent({
   honours: honoursJson,
   profile: profileJson,
   lookIds,
+  media: mediaJson,
 });
 if (errors.length) {
   throw new Error(`Content v2 is invalid (${errors.length}):\n  ${errors.join('\n  ')}`);
 }
 
+const fixtures = readFixtures();
 const projects: ProjectView[] = (projectsJson.projects as unknown as Project[]).map((p, i) => {
   const frame = frameCode(i);
   return {
@@ -28,6 +34,9 @@ const projects: ProjectView[] = (projectsJson.projects as unknown as Project[]).
     linkName: `${frame}, ${p.title}`,
     href: `/work/${p.slug}/`,
     noindex: hasToken(JSON.stringify(p)),
+    label: `Project ${String(i + 1).padStart(2, '0')}`,
+    number: i + 1,
+    prints: printsOf(p.slug, p.media, mediaJson as unknown as MediaManifest, fixtures),
   };
 });
 

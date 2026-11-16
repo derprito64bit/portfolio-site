@@ -1,0 +1,14 @@
+---
+// A content string with its typed placeholders as visible slots (W-D022): every [PLACEHOLDER: ...] token renders inside
+// span.ph, the rest as text. Never innerHTML (D-055).
+import { splitTokens } from '../../lib/content/index.ts';
+
+interface Props {
+  text: string;
+  /** Let a long token wrap with the line (body copy). */
+  wrap?: boolean;
+}
+const { text, wrap = false } = Astro.props;
+const parts = splitTokens(text);
+---
+{parts.map((p) => (p.token ? <span class:list={['ph', { 'ph--wrap': wrap }]}>{p.text}</span> : p.text))}

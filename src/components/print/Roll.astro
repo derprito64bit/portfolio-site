@@ -1,0 +1,23 @@
+---
+// The roll (D-044): every media entry of a project as a film print, laid out at build on 12 columns (one column on a
+// phone). No JS needed; project/roll.ts adds the expose, the focus and the inline loops.
+import type { PrintView } from '../../lib/content/index.ts';
+import { pad2 } from '../../lib/prints/ladder.ts';
+import Print from './Print.astro';
+
+interface Props {
+  prints: PrintView[];
+}
+const { prints } = Astro.props;
+const n = prints.length;
+---
+<section class="roll" aria-labelledby="roll-h" data-roll data-count={n}>
+  <h2 class="roll__k mono" id="roll-h"><span>Roll · <b>{pad2(n)}</b> {n === 1 ? 'exposure' : 'exposures'}</span></h2>
+  {n ? (
+    <div class="roll__grid">
+      {prints.map((p) => <Print print={p} total={n} />)}
+    </div>
+  ) : (
+    <p class="roll__empty"><span class="ph">[PLACEHOLDER: media]</span></p>
+  )}
+</section>

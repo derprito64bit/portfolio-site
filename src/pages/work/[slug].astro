@@ -1,0 +1,46 @@
+---
+// /work/<slug>/ (D-040, D-041, W-V1 A1): a project as a real page, whole without JS. With JS, project/cold.ts boots the
+// camera layer behind it (the frame exposes behind the header, no intro) and enhances the roll; Back lands on the
+// project's frame in the Viewfinder. The Viewfinder on / adopts this page's article when a frame opens.
+import '@fontsource-variable/archivo/wdth.css';
+import '@fontsource-variable/chivo-mono/wght.css';
+import '../../evf/style.css';
+import '../../evf/style/project.css';
+import '../../evf/style/print.css';
+import Site from '../../layouts/Site.astro';
+import Article from '../../components/project/Article.astro';
+import { content } from '../../lib/content/index.ts';
+import { pad2 } from '../../lib/prints/ladder.ts';
+
+export function getStaticPaths() {
+  return content.projects.map((p, i) => ({ params: { slug: p.slug }, props: { i } }));
+}
+
+const { i } = Astro.props as { i: number };
+const list = content.projects;
+const N = list.length;
+const p = list[i];
+const prev = list[(i - 1 + N) % N];
+const next = list[(i + 1) % N];
+const count = p.prints.length;
+---
+<Site title={p.label} path={p.href} noindex={p.noindex} description={`${p.label} in the portfolio of derprito64bit.`} htmlClass="vf pj-page" skipTo="#pj" skipLabel="Skip to the project">
+  <script is:inline slot="head">
+    (() => {
+      const d = document.documentElement;
+      d.classList.add('pj-js');
+      if (matchMedia('(prefers-reduced-motion: reduce)').matches) d.classList.add('calm');
+      // the prints wait underexposed for the roll script; if it never runs, show them as they are
+      setTimeout(() => { if (!d.hasAttribute('data-roll')) d.classList.remove('pj-js'); }, 4000);
+    })();
+  </script>
+  <header class="pj-bar" slot="before">
+    <a class="pj-back mono" href={`/#work-${pad2(p.number)}`} data-close><span aria-hidden="true">←</span> Back <span class="num proj__fl" aria-hidden="true">23mm</span></a>
+    <span class="pj-count num" data-print-count aria-hidden="true" hidden={!count}>01 / {pad2(count)}</span>
+    <span class="num proj__fl2" aria-hidden="true">56mm</span>
+  </header>
+  <Article project={p} prev={prev} next={next} total={N} />
+</Site>
+<script>
+  import '../../evf/project/cold';
+</script>

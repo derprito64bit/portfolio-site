@@ -1,0 +1,41 @@
+---
+// The project article (D-040, D-041, W-V1 A1): the whole page without JS, and what the Viewfinder adopts into #proj when
+// a frame opens (project/article.ts: its children move into the column, the h1 becomes an h2). The header screen (kicker,
+// h1, the typed title, role, year, tools and link, blurb, body), the roll, an empty #honours slot (W-V2) and the previous
+// and next projects. Copy is UI only; every fact comes from content/ or stays a typed placeholder.
+import type { ProjectView } from '../../lib/content/index.ts';
+import { pad2 } from '../../lib/prints/ladder.ts';
+import Roll from '../print/Roll.astro';
+import Text from './Text.astro';
+
+interface Props {
+  project: ProjectView;
+  prev: ProjectView;
+  next: ProjectView;
+  total: number;
+}
+const { project: p, prev, next, total } = Astro.props;
+const host = (u: string) => { try { return new URL(u).host; } catch { return u; } };
+---
+<article class="pj" id="pj" data-slug={p.slug} data-frame={p.number} data-label={p.label} aria-labelledby="pj-title">
+  <header class="pj__head">
+    <p class="pj__k mono">Work · Frame {pad2(p.number)}/{pad2(total)}</p>
+    <h1 class="pj__t" id="pj-title">{p.label}</h1>
+    <p class="pj__ph"><Text text={p.title} /></p>
+    <dl class="pj__meta">
+      <div><dt class="mono">Role</dt><dd><Text text={p.role} /></dd></div>
+      <div><dt class="mono">Year</dt><dd><Text text={p.year} /></dd></div>
+      <div><dt class="mono">Tools</dt><dd>{p.tools.length ? p.tools.map((t, i) => <>{i ? ', ' : ''}<Text text={t} /></>) : <span class="ph">[PLACEHOLDER: tools]</span>}</dd></div>
+      <div><dt class="mono">Link</dt><dd>{p.url ? <a href={p.url} rel="noopener">{host(p.url)}</a> : <span class="ph">[PLACEHOLDER: link]</span>}</dd></div>
+    </dl>
+    <p class="pj__blurb"><Text text={p.blurb} wrap /></p>
+    <div class="pj__body">{p.body.map((b) => <p><Text text={b} wrap /></p>)}</div>
+    <p class="pj__cue mono" aria-hidden="true">Roll · {pad2(p.prints.length)}</p>
+  </header>
+  <Roll prints={p.prints} />
+  <div class="pj__honours" id="honours" data-honours></div>
+  <nav class="pj__nav mono" aria-label="Projects">
+    <a href={prev.href} rel="prev" data-step="-1" data-slug={prev.slug}><span aria-hidden="true">←&nbsp;</span>Previous · {prev.label}</a>
+    <a href={next.href} rel="next" data-step="1" data-slug={next.slug}>Next · {next.label}<span aria-hidden="true">&nbsp;→</span></a>
+  </nav>
+</article>
