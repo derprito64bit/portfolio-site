@@ -169,11 +169,13 @@ test.describe('A8 expose', () => {
       try {
         await cold(page, 'project-06');
         await page.evaluate(() => {
-          window.__exp = [];
+          // print 1's top edge closes the first view, so it may have exposed already
+          window.__exp = [...document.querySelectorAll('.print.is-exp')].map((p) => p.id);
           new MutationObserver((ms) => { for (const m of ms) if (m.target.classList.contains('is-exp') && !window.__exp.includes(m.target.id)) window.__exp.push(m.target.id); })
             .observe(document.querySelector('.roll__grid'), { subtree: true, attributes: true, attributeFilter: ['class'] });
         });
-        const before = await page.evaluate(() => [...document.querySelectorAll('.print')].map((p) => getComputedStyle(p.querySelector('.print__frame'))[document.documentElement.classList.contains('calm') ? 'opacity' : 'filter']));
+        const before = await page.evaluate(() => [...document.querySelectorAll('.print')].filter((p) => p.getBoundingClientRect().top > innerHeight).map((p) => getComputedStyle(p.querySelector('.print__frame'))[document.documentElement.classList.contains('calm') ? 'opacity' : 'filter']));
+        expect(before.length, 'prints below the fold').toBeGreaterThanOrEqual(11);
         expect(before.every((v) => v !== 'none' && v !== '1'), 'below the fold the prints wait underexposed').toBe(true);
         for (let y = 500; y < 9000; y += 450) {
           await scrollTo(page, y);

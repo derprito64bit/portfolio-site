@@ -32,6 +32,15 @@ export const PLANTS = [
   ['back-36px', 'A12', 'src/evf/style/project.css', 'display: inline-flex; gap: 10px; align-items: center; min-height: 44px;', 'display: inline-flex; gap: 10px; align-items: center; min-height: 36px; max-height: 36px;', 'open.spec.mjs', 'A12 phone'],
   ['calm-brackets-glide', 'A13', 'src/evf/project/roll.ts', 'duration: jump || reduced() ? 0 : D.step', 'duration: jump ? 0 : D.step', 'playback.spec.mjs', 'reduced motion: a crossfade open'],
   ['sway-stays', 'A14', 'src/evf/main.ts', 'setSway: (on) => { if (engine) engine.sway = on && !calm; },', 'setSway: () => { if (engine) engine.sway = !calm; },', 'idle.spec.mjs', 'A14 in the Viewfinder'],
+  // round 2 (the judge's r1 must-fix list): each plant puts one fixed defect back
+  ['af-intro-rect', 'A2', 'src/evf/main.ts', '} else coverFor(i);\n  placeAF(sceneToFrac(subjectOf(s), rect));\n  syncDist();',
+    '} else coverFor(i);\n  const was = engine?.st.rect;\n  if (engine) engine.st.rect = { x: 0, y: 0, w: innerWidth, h: innerHeight };\n  placeAF(sceneToFrac(subjectOf(s), rect));\n  if (engine && was) engine.st.rect = was;\n  syncDist();', 'landing.spec.mjs', 'landing with GL'],
+  ['no-flat-cover', 'A13', 'src/evf/project/inapp.ts', '} else h.cover(to);', '}', 'open.spec.mjs', 'tint cover follows'],
+  ['counter-stale', 'A9', 'src/evf/project/roll.ts', 'if (!o.counter) return;', 'if (!o.counter || n < 0) return;', 'open.spec.mjs', 'HUD counter never'],
+  ['pb-rewrite', 'A10', 'src/evf/project/playback.ts', 'if (cur >= 0 && hist.own()) pushed = true;', '', 'playback.spec.mjs', 'history over playback'],
+  ['page-blank', 'J4', 'src/evf/project/playback.ts', 'const g = ghostOf(f);', "const g = document.createElement('i');", 'playback.spec.mjs', 'J4 paging'],
+  ['focus-2d', 'J3', 'src/evf/project/roll.ts', 'const d = gap > 0 ? 1e6 + gap : Math.abs(r.y + r.h / 2 - cy) + X_WEIGHT * Math.abs(r.x + r.w / 2 - cx);', 'const d = Math.hypot(r.x + r.w / 2 - cx, r.y + r.h / 2 - cy);', 'roll.spec.mjs', 'centre line leads'],
+  ['no-end-rule', 'J3', 'src/evf/project/roll.ts', 'if (v.top >= scrollMax - 2) {', 'if (false) {', 'roll.spec.mjs', 'centre line leads'],
 ];
 
 const SKIP = new Set(['node_modules', 'dist', '.git', 'test-results', '.astro', 'playwright-report']);
