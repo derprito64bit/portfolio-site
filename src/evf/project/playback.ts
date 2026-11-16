@@ -95,7 +95,9 @@ export function initPlayback(o: PlaybackOptions): PlaybackControl {
     const ar = p.style.getPropertyValue('--ar') || p.dataset.ar || '1.5';
     frame.style.setProperty('--ar', ar);
     const lq = p.style.getPropertyValue('--lqip');
-    if (lq) frame.style.setProperty('--lqip', lq); else frame.style.removeProperty('--lqip');
+    const box = p.hasAttribute('data-letterbox');
+    frame.toggleAttribute('data-letterbox', box);
+    if (lq && !box) frame.style.setProperty('--lqip', lq); else frame.style.removeProperty('--lqip');
     frame.replaceChildren();
     const type = p.dataset.type;
     const pic = p.querySelector('picture');
