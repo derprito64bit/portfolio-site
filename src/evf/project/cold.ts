@@ -92,6 +92,7 @@ async function boot() {
 }
 
 let lastDim = -1;
+let again: gsap.core.Tween | null = null;
 window.addEventListener('scroll', () => {
   if (!engine) return;
   const d = dimAt();
@@ -99,6 +100,10 @@ window.addEventListener('scroll', () => {
   lastDim = d;
   engine.st.dim = d;
   engine.invalidate(120);
+  // once more as the scroll settles: after a jump scroll WebKit can spend the 120 ms on one stale frame, which left the
+  // frame at full exposure behind the roll (and a print's ring over it)
+  again?.kill();
+  again = gsap.delayedCall(0.25, () => engine?.invalidate(120));
 }, { passive: true });
 
 let rz: gsap.core.Tween | null = null;
