@@ -34,7 +34,11 @@ function leave() {
   S = 'closing';
   location.replace(homeUrl(workHash(n)));
 }
-document.querySelector('[data-close]')?.addEventListener('click', (e) => { e.preventDefault(); leave(); });
+// a modified or non-primary click is the browser's (/#work-NN in a new tab or window): the page stays
+document.querySelector('[data-close]')?.addEventListener('click', (e) => {
+  if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+  e.preventDefault(); leave();
+});
 window.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && !pb.isOpen() && !e.defaultPrevented) { e.preventDefault(); leave(); }
 });

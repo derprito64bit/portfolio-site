@@ -128,10 +128,12 @@ export function initProject(h: Host) {
     pb?.destroy();
     roll = pb = null;
   }
-  // the article's own links: previous and next swap in place; anything else leaves normally
+  // the article's own links: previous and next swap in place; anything else leaves normally, and a modified or
+  // non-primary click is the browser's (a new tab or window)
   col.addEventListener('click', (e) => {
     const a = (e.target as Element).closest<HTMLAnchorElement>('a[data-step]');
     if (!a || h.state() !== 'open') return;
+    if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
     e.preventDefault();
     step(Number(a.dataset.step) || 1);
   });

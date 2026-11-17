@@ -307,6 +307,15 @@ test('A12 phone: Back closes on the first tap after scrolling; targets 44 px; sw
 });
 
 // fix-pass B4
+/** A synthetic click on `sel` with modifiers `m`: was it already default-prevented when it reached the window? The window
+ *  then cancels it, so the browser's own action (a new tab or window) never runs in the test. */
+const modClick = (page, sel, m = {}) => page.evaluate(([s, mods]) => {
+  let prevented = null;
+  addEventListener('click', (e) => { prevented = e.defaultPrevented; e.preventDefault(); }, { once: true });
+  document.querySelector(s).dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0, ...mods }));
+  return prevented;
+}, [sel, m]);
+
 for (const [label, profile] of [['1440', DESK], ['390', PHONE]]) {
   test.describe(`A2 history at ${label}`, () => {
     // f25: a Forward (or Back) that lands while the camera lowers or raises finishes that move, then acts on the entry
@@ -370,6 +379,48 @@ for (const [label, profile] of [['1440', DESK], ['390', PHONE]]) {
         expect(held, 'the in-app fetch (open or prefetch) was the held one').toBeGreaterThan(0);
         await page.waitForFunction(() => window.__vf && window.__vf.state() === 'open', null, { timeout: 10000 });
         expect(await page.locator('#evf').count(), 'the page itself, not the Viewfinder').toBe(0);
+      } finally {
+        await ctx.close();
+      }
+    });
+
+    // f26: Ctrl, Cmd, Shift or Alt clicks (and other buttons) on previous or next are the browser's (a new tab or
+    // window), not a swap in place; the plain click, last, still swaps
+    test('a modified click on previous or next goes to the browser; a plain click swaps in place', async ({ browser, browserName }) => {
+      const ctx = await context(browser, browserName, profile);
+      const page = await ctx.newPage();
+      try {
+        await home(page);
+        await toFrame(page, 2);
+        await page.keyboard.press('Enter');
+        await untilState(page, 'open', 2);
+        const next = '#proj .pj__nav a[rel="next"]';
+        expect(await modClick(page, next, { ctrlKey: true }), 'a Ctrl click is not taken over').toBe(false);
+        expect(await modClick(page, next, { shiftKey: true }), 'a Shift click is not taken over').toBe(false);
+        await page.waitForTimeout(500);
+        expect(await vf(page)).toEqual({ state: 'open', pos: 2 });
+        expect(await page.evaluate(() => [document.querySelector('#proj-title')?.textContent.trim(), location.pathname])).toEqual(['Project 03', '/work/project-03/']);
+        expect(await modClick(page, next), 'the plain click swaps in place').toBe(true);
+        await page.waitForFunction(() => document.querySelector('#proj-title')?.textContent.trim() === 'Project 04', null, { timeout: 10000 });
+      } finally {
+        await ctx.close();
+      }
+    });
+
+    // f26: on a cold project page, a Ctrl click on Back is the browser's (/#work-NN in a new tab); the page stays
+    test('a modified click on a cold page\'s Back goes to the browser; a plain click leaves for the frame', async ({ browser, browserName }) => {
+      const ctx = await context(browser, browserName, profile);
+      const page = await ctx.newPage();
+      try {
+        await page.goto(`${base()}/work/project-06/?vf-test`, { waitUntil: 'load' });
+        await untilState(page, 'open', 5);
+        expect(await modClick(page, '[data-close]', { ctrlKey: true }), 'a Ctrl click is not taken over').toBe(false);
+        await page.waitForTimeout(500);
+        expect(new URL(page.url()).pathname, 'the page stays').toBe('/work/project-06/');
+        expect(await page.evaluate(() => window.__vf.state())).toBe('open');
+        // last: the plain click leaves (location.replace), so the page is gone after it
+        expect(await modClick(page, '[data-close]'), 'the plain click leaves for the frame').toBe(true);
+        await page.waitForURL(/\/\?vf-test#work-06$/);
       } finally {
         await ctx.close();
       }

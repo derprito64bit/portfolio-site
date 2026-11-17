@@ -73,6 +73,8 @@ export const PLANTS = [
   // a reference-host plant: only the GL row kills it; with no __vfEngine (no WebGL here) the row skips and this is MISSED
   ['owned-opening', 'A13', 'src/evf/main.ts', "const owned = S === 'open' || S === 'opening';", "const owned = S === 'open';", 'cls-gl.spec.mjs', 'resize or rotate during the open'],
   ['not-parsed-wait', 'A2', 'src/evf/project/inapp.ts', 'if (!ready) { fail(); return; }', 'if (!ready) return;', 'open.spec.mjs', 'not parsed by the landing'],
+  ['step-mod-click', 'A2', 'src/evf/project/inapp.ts', 'if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;', '', 'open.spec.mjs', 'a modified click on previous or next'],
+  ['cold-back-mod-click', 'A2', 'src/evf/project/cold.ts', 'if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;', '', 'open.spec.mjs', 'a modified click on a cold page'],
 ];
 
 const SKIP = new Set(['node_modules', 'dist', '.git', 'test-results', '.astro', 'playwright-report']);
