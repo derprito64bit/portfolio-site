@@ -4,11 +4,16 @@
 // Run: npm run build, then npm run test:w-v1.
 import { defineConfig } from '@playwright/test';
 
+// probe only: the browser's own stderr and exit in the log
+process.env.DEBUG = 'pw:browser';
+
 const CI = Boolean(process.env.CI);
 
 export default defineConfig({
   testDir: '.',
-  testMatch: '**/*.spec.mjs',
+  testMatch: '**/roll.spec.mjs',
+  grep: /brackets on|centre line leads|hover to focus/,
+  repeatEach: 2,
   globalSetup: './global-setup.mjs',
   workers: 1,
   fullyParallel: false,
@@ -18,15 +23,6 @@ export default defineConfig({
   outputDir: '../../test-results/w-v1',
   use: { headless: true, trace: 'off', screenshot: 'off', video: 'off' },
   projects: [
-    {
-      name: 'chromium',
-      use: {
-        browserName: 'chromium',
-        // the installed Chrome (real GPU) on the reference host; Playwright's Chromium in CI or with PW_BUNDLED=1
-        ...(CI || process.env.PW_BUNDLED ? {} : { channel: 'chrome' }),
-        launchOptions: { args: ['--mute-audio', '--autoplay-policy=no-user-gesture-required', '--ignore-gpu-blocklist'] },
-      },
-    },
     { name: 'webkit', use: { browserName: 'webkit' } },
   ],
 });
