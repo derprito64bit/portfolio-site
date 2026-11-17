@@ -68,6 +68,10 @@ export const PLANTS = [
   ['pb-end-handoff', 'A10', 'src/evf/project/playback.ts', '(otherOff ? parts.close : other).focus({ preventScroll: true });', 'void other; void otherOff;', 'playback.spec.mjs', 'to either end'],
   ['pb-tab-out', 'A10', 'src/evf/project/playback.ts', "if (e.key === 'Tab') { tab(e, dlg); return; }", "if (e.key === 'Tab') return;", 'playback.spec.mjs', 'to either end'],
   ['pb-clip-arrows', 'A10', 'src/evf/project/playback.ts', "if ((e.target as Element | null)?.closest?.('video, input, select, textarea')) return;", '', 'playback.spec.mjs', 'cold #print-NN load'],
+  // fix-pass B4
+  ['resize-opening', 'A13', 'src/evf/project/inapp.ts', "if (S !== 'open' && S !== 'opening') return;", "if (S !== 'open') return;", 'keys.spec.mjs', 'resize or rotate during the open'],
+  // a reference-host plant: only the GL row kills it; with no __vfEngine (no WebGL here) the row skips and this is MISSED
+  ['owned-opening', 'A13', 'src/evf/main.ts', "const owned = S === 'open' || S === 'opening';", "const owned = S === 'open';", 'cls-gl.spec.mjs', 'resize or rotate during the open'],
 ];
 
 const SKIP = new Set(['node_modules', 'dist', '.git', 'test-results', '.astro', 'playwright-report']);

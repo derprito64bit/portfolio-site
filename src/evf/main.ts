@@ -995,9 +995,10 @@ window.addEventListener('resize', () => {
   rz = requestAnimationFrame(() => {
     fitName(nameEl);
     engine?.resize();
-    const m: Mode = S === 'open' ? 'open' : modeOf(pos) === 'info' ? 'work' : modeOf(pos);
+    const owned = S === 'open' || S === 'opening'; // the open project owns the frame (mid-zoom too)
+    const m: Mode = owned ? 'open' : modeOf(pos) === 'info' ? 'work' : modeOf(pos);
     const r = frameRect(m);
-    if (S === 'open') { writeRect(frameRect('work')); } else writeRect(r);
+    if (owned) writeRect(frameRect('work')); else writeRect(r);
     if (engine) { engine.st.rect = r; placeAF(afFrac); syncDist(); engine.invalidate(200); }
     project.onResize();
   });

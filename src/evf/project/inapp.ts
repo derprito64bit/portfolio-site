@@ -72,6 +72,8 @@ export function initProject(h: Host) {
   /** The next popstate is our own history.back(). */
   let ownBack = false;
   let token = 0;
+  /** A resize landed during the open's zoom: the landing re-aims the view (onResize). */
+  let reaim = false;
   let opener: HTMLElement | null = null;
   let prefetchTimer = 0;
   const slugAt = (i: number) => projects[i]?.slug ?? '';
@@ -148,6 +150,7 @@ export function initProject(h: Host) {
   // ---------------------------------------------------------------- open
   function open({ fromPop = false, print = null as number | null } = {}) {
     if (h.state() !== 'evf' || h.pos() >= h.works) return;
+    reaim = false;
     h.finishTl();
     const i = h.pos();
     const slug = slugAt(i);
@@ -205,6 +208,8 @@ export function initProject(h: Host) {
       h.setState('open');
       marksOff();
       enhance();
+      // after enhance(): the re-aim recaches the new roll
+      if (reaim) { reaim = false; onResize(); }
       arrive();
       // the column itself (tabindex -1, the scroller): the keys scroll the page at once, Space never presses Back, and
       // Tab goes on into the article (Shift+Tab reaches Back). A focused title inside it lost the page in CI's WebKit
@@ -430,10 +435,13 @@ export function initProject(h: Host) {
   }
 
   function onResize() {
-    if (h.state() !== 'open') return;
+    const S = h.state();
+    if (S !== 'open' && S !== 'opening') return;
     const e = h.engine();
     // main.ts has written the new work frame's box: the cover fills the view again from it
     if (!e) { coverFill(true); return; }
+    // mid-zoom (GL): main.ts gave the engine the new full view; the marks go now, the landing re-aims (settle)
+    if (S === 'opening') { marksOff(); reaim = true; return; }
     const s = h.scenes[h.pos()];
     const z = landedState(s, subjectOf(s), e.st.zoom);
     e.st.rect = z.rect;

@@ -84,3 +84,51 @@ test('A7 with GL: the open zoom and the close (Esc, and browser Back) shift no l
     await ctx.close();
   }
 });
+
+// fix-pass B4
+/** The state at the first resize after __rzState is armed (set to null). */
+const RZ_STATE = `addEventListener('resize', () => { if (window.__rzState === null) window.__rzState = window.__vf && window.__vf.state(); });`;
+
+// f06: a resize that lands during the 1.1 s GL zoom: once it lands, the GL draws the open view over the new viewport,
+// the marks stay off, and the frame's box is the new work frame (no layout move)
+test('A2 / A13 with GL: a resize or rotate during the open: the open view fills the new viewport once it lands', async ({ browser, browserName }) => {
+  test.skip(browserName !== 'chromium', 'the GL row runs in Chromium (the reference host\'s GPU)');
+  test.setTimeout(240_000);
+  const ctx = await context(browser, browserName, G1, { gl: true, init: [RZ_STATE] });
+  const page = await ctx.newPage();
+  try {
+    await home(page);
+    test.skip(!(await page.evaluate(() => Boolean(window.__vfEngine))), 'no WebGL in this browser here: the row guards on the reference host');
+    await page.keyboard.press('Enter');
+    await untilState(page, 'evf', 0, GL_MS);
+    await page.keyboard.press('ArrowRight');
+    await untilState(page, 'evf', 1, GL_MS);
+    const fw0 = await page.evaluate(() => { window.__rzState = null; return document.documentElement.style.getPropertyValue('--fw'); });
+    // the zoom is time-based (1.1 s), so the resize lands inside it even with software GL
+    await page.keyboard.press('Enter');
+    await page.setViewportSize({ width: 400, height: 640 });
+    // mid-zoom, once main.ts's resize frame has run: the engine already draws the new full view (not the work frame)
+    await page.waitForFunction((w) => document.documentElement.style.getPropertyValue('--fw') !== w, fw0, { timeout: GL_MS, polling: 'raf' });
+    const mid = await page.evaluate(() => { const r = window.__vfEngine.st.rect; return { state: window.__vf.state(), rect: [r.x, r.y, r.w, r.h].map(Math.round) }; });
+    test.info().annotations.push({ type: 'mid-zoom', description: JSON.stringify(mid) });
+    if (mid.state === 'opening') expect(mid.rect, 'mid-zoom: the engine draws the new full view').toEqual([0, 0, 400, 640]);
+    await untilState(page, 'open', 1, GL_MS);
+    expect(await page.evaluate(() => window.__rzState), 'the resize landed during the open').toBe('opening');
+    await page.waitForTimeout(300);
+    const s = await page.evaluate(() => {
+      const f = document.querySelector('[data-frame]').getBoundingClientRect();
+      const r = window.__vfEngine.st.rect;
+      return {
+        rect: [r.x, r.y, r.w, r.h].map(Math.round),
+        marks: [...document.querySelectorAll('[data-frame] .mk')].map((m) => getComputedStyle(m).visibility),
+        frame: [f.left, f.top, f.width, f.height].map(Math.round),
+        box: ['--fx', '--fy', '--fw', '--fh'].map((k) => Math.round(parseFloat(document.documentElement.style.getPropertyValue(k)))),
+      };
+    });
+    expect(s.rect, 'the GL draws the open view over the new viewport').toEqual([0, 0, 400, 640]);
+    expect(s.marks, 'the marks stay hidden while open').toEqual(['hidden', 'hidden', 'hidden', 'hidden']);
+    expect(s.frame, 'the frame box is the new work frame (no layout move)').toEqual(s.box);
+  } finally {
+    await ctx.close();
+  }
+});
