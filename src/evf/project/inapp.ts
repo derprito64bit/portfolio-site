@@ -58,7 +58,7 @@ export const PREFETCH_MS = 300;
 export function initProject(h: Host) {
   const proj = $('#proj');
   const col = $('[data-proj-col]');
-  col.tabIndex = -1;
+  // probe P3: the column is not focusable
   const evf = $('#evf');
   const afEl = $('[data-af]');
   const flEl = $('[data-fl]');
@@ -203,13 +203,13 @@ export function initProject(h: Host) {
       if (my !== token) return;
       if (!ready) { fail(); return; } // not parsed by the landing: the page itself
       h.setState('open');
-      marksOff();
+      // probe P3: marks left on
       enhance();
       arrive();
       // the column itself (tabindex -1, the scroller): the keys scroll the page at once, Space never presses Back, and
       // Tab goes on into the article (Shift+Tab reaches Back). A focused title inside it lost the page in CI's WebKit
       // over long column scrolls.
-      col.focus({ preventScroll: true });
+      ($('[data-close]', proj) as HTMLElement).focus({ preventScroll: true });
       // a traversal straight onto .../#print-NN: playback follows the entry (and knows whether it pushed it)
       const here = parse();
       if (print && pb && here.kind === 'project' && here.print === print) pb.sync(location.hash);
