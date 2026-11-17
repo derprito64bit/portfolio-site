@@ -80,6 +80,7 @@ export const PLANTS = [
   ['cold-restore-hide', 'A10', 'src/evf/project/cold.ts', "addEventListener('pagehide', autoRestore);", '', 'playback.spec.mjs', 'a reload after playback'],
   // a reference-host plant (GL in Chromium): with no __vfEngine the row skips and this is MISSED
   ['cold-scroll-dirty', 'J3', 'src/evf/project/cold.ts', 'if (!engine) return;\n  const d = dimAt();', "if (!engine) return;\n  document.body.dataset.d = '1';\n  const d = dimAt();", 'cls-gl.spec.mjs', 'reads the scroll before the roll writes'],
+  ['typed-hash-pushed', 'A2', 'src/evf/project/inapp.ts', 'if (history.state == null) pushed = false;', '', 'playback.spec.mjs', 'while the project is open in the Viewfinder, then Esc, Esc'],
 ];
 
 const SKIP = new Set(['node_modules', 'dist', '.git', 'test-results', '.astro', 'playwright-report']);

@@ -659,6 +659,28 @@ test.describe('A2 / A10 history over playback: traversals that cross the open', 
       await ctx.close();
     }
   });
+
+  // wv1-typed-hash-history: a typed #print-NN pushes an entry the app did not make; Close must not land on one of them
+  for (const typed of [['#print-02'], ['#print-02', '#print-06']]) {
+    test(`typed ${typed.join(' then ')} while the project is open in the Viewfinder, then Esc, Esc: the frame (/#work-06)`, async ({ browser, browserName }) => {
+      const ctx = await context(browser, browserName, DESK);
+      const page = await ctx.newPage();
+      try {
+        await home(page);
+        await toFrame(page, 5);
+        await page.keyboard.press('Enter');
+        await untilState(page, 'open', 5);
+        for (const h of typed) {
+          await page.evaluate((x) => { location.hash = x; }, h);
+          await expect.poll(async () => (await pb(page))?.count, { message: `${h} shows in playback` }).toBe(`${h.slice(-2)} / 12`);
+        }
+        await page.waitForTimeout(700);
+        await lands6(page);
+      } finally {
+        await ctx.close();
+      }
+    });
+  }
 });
 
 // f27: playback's open leaves the history entry on 'manual' scroll restoration; every cold load starts from 'auto', so a

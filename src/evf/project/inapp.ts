@@ -407,7 +407,13 @@ export function initProject(h: Host) {
     if (r.kind === 'project') {
       const i = projects.findIndex((p) => p.slug === r.slug);
       if (i < 0) { location.reload(); return; }
-      if ((S === 'open' || S === 'opening') && i === h.pos()) { pb?.sync(location.hash); return; }
+      if ((S === 'open' || S === 'opening') && i === h.pos()) {
+        // an entry the app did not make (a typed or in-page #hash): the entries above the open's own are no longer all
+        // ours, so Close replaces in place instead of stepping back onto one of them
+        if (history.state == null) pushed = false;
+        pb?.sync(location.hash);
+        return;
+      }
       // another project's entry while one is open or opening (a stale forward entry that previous/next's replaceState
       // left behind): the open view goes at once, then the frame moves there and opens; the entry behind it is not ours
       let stray = false;
