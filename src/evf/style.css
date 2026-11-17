@@ -346,7 +346,7 @@ ol, ul { list-style: none; }
 .evf[data-mode='play'] .af, .evf[data-mode='info'] .af, .evf[data-mode='info'] .level { display: none; }
 .evf[data-mode='info'] .evf__bottom, .evf[data-mode='info'] .frame__ph { display: none; }
 .evf .meter { visibility: visible; }
-.evf.is-open .meter { visibility: hidden; }
+.evf.is-open .meter, .evf.is-open .calm-nav { visibility: hidden; }
 .evf[data-mode='play'] .cap { visibility: hidden; }
 
 /* The open project (#proj) and its prints moved to style/project.css and style/print.css (W-V1). */

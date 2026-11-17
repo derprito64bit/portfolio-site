@@ -378,3 +378,28 @@ for (const [label, profile] of [['1440', DESK], ['390', PHONE]]) test(`A1 the ti
     await ctx.close();
   }
 });
+
+// wv1-calm-evf-prevnext (#106): under reduced motion the EVF's Previous and Next (inert while a project is open) never
+// show over the open view; Close brings them back.
+const calmNav = (page) => page.evaluate(() => {
+  const c = document.querySelector('[data-calm-nav]');
+  const cs = getComputedStyle(c);
+  return { shown: cs.display !== 'none' && cs.visibility === 'visible', calm: document.documentElement.classList.contains('calm') };
+});
+for (const [label, profile] of [['1440', DESK], ['390', PHONE]]) test(`A13 calm: the EVF's Previous and Next hide while a project is open, and come back on Close at ${label}`, async ({ browser, browserName }) => {
+  const ctx = await context(browser, browserName, profile, { reduced: true });
+  const page = await ctx.newPage();
+  try {
+    await home(page);
+    await toFrame(page, 1);
+    expect(await calmNav(page), 'calm: the EVF shows Previous and Next').toEqual({ shown: true, calm: true });
+    await page.keyboard.press('Enter');
+    await untilState(page, 'open', 1);
+    expect(await calmNav(page), 'open: Previous and Next are hidden').toEqual({ shown: false, calm: true });
+    await page.keyboard.press('Escape');
+    await untilState(page, 'evf', 1);
+    expect(await calmNav(page), 'closed: Previous and Next are back').toEqual({ shown: true, calm: true });
+  } finally {
+    await ctx.close();
+  }
+});
