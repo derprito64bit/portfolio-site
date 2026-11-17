@@ -108,7 +108,7 @@ rule('pack: rows in content order; a gap is filled only by the next print', (S) 
   // 4 + 4 + 4 fill a row; the next 4 starts a new one
   const q = pack(Array.from({ length: 4 }, () => ({ w: 1170, h: 2532 })));
   assert.deepEqual(q.map((x) => x.row), [0, 0, 0, 1]);
-  assert.deepEqual(q.map((x) => x.col), [1, 5, 9, 1]);
+  assert.deepEqual(q.map((x) => x.col), [1, 5, 9, 2], 'the fourth, alone, sits one column in (x1)');
   // a hero is alone in its row even when it would fit
   const h = pack([{ w: 1170, h: 2532 }, { w: 1080, h: 1080, scale: 'hero' }, { w: 1170, h: 2532 }]);
   assert.deepEqual(h.map((x) => x.row), [0, 1, 2]);
@@ -130,7 +130,7 @@ rule('pack: the zigzag drops every second print in a row; spare columns go betwe
   assert.deepEqual(three.map((x) => x.drop), [false, true, false]);
   assert.deepEqual(three.map((x) => x.justify), ['start', 'center', 'end']);
   const lone = pack([{ w: 1080, h: 1080 }, { w: 2560, h: 1080 }, { w: 1080, h: 1080 }, { w: 2560, h: 1080 }, { w: 1080, h: 1080 }]);
-  assert.deepEqual(lone.map((x) => x.col), [1, 1, 8, 1, 1]);
+  assert.deepEqual(lone.map((x) => x.col), [2, 1, 7, 1, 2], 'the 5-column lone prints sit one column in (x1)');
   assert.deepEqual(lone.map((x) => x.justify), ['start', 'center', 'end', 'center', 'start']);
   assert.ok(lone.every((x) => !x.drop), 'a lone print never drops');
 });
@@ -197,6 +197,19 @@ rule('pack: neighbours in a row keep at least GAP_COLS between them; rows with r
   pack(room).forEach((p, k) => near(p.f, sizePrint(room[k]).f, `a row with room keeps D-044's f (print ${k + 1})`));
 });
 
+// x1 (wv1-lone-print-inset, jury J2): a lone print of 5 columns or fewer sits one column in from the side it is on, so it
+// never hugs the gutter; wider lone prints, heroes and 12-column prints keep their place.
+rule('pack: a lone print of 5 columns or fewer is inset one column from its side', (S) => {
+  const { COLS, pack } = S;
+  const sq = { w: 1080, h: 1080 }, po = { w: 1170, h: 2532 }, la = { w: 1920, h: 1200 }, wi = { w: 2560, h: 1080 };
+  // under 9 prints, so no auto hero; the 12-column prints between them stand alone and keep the lone prints apart
+  const lone = [...pack([sq, wi, po, wi, la, wi, la, wi]), ...pack([po, wi, sq])].filter((x) => x.span < COLS);
+  assert.deepEqual(lone.map((x) => [x.span, x.col, x.justify]), [[5, 2, 'start'], [4, 8, 'end'], [7, 1, 'start'], [7, 6, 'end'], [4, 2, 'start'], [5, 7, 'end']]);
+  for (const x of lone.filter((y) => y.span <= 5)) assert.ok(x.col > 1 && x.col + x.span - 1 < COLS, `a ${x.span}-column lone print at column ${x.col} hugs a gutter`);
+  const h = pack([{ w: 1080, h: 1080, scale: 'hero' }]);
+  assert.equal(h[0].col, 4, 'a 6-column hero stays centred');
+});
+
 // Negative controls: one planted defect per branch class; the rules above must fail on every one.
 const MUTANTS = [
   ['square band loses its upper edge', 'if (r <= 1.25) return', 'if (r < 1.25) return'],
@@ -214,6 +227,8 @@ const MUTANTS = [
   ['full rows touch', 'const fMax = tight ? 1 - (inner * GAP_COLS) / 2 / spans[k] : 1;', 'const fMax = 1;'],
   ['rows with room are capped too', 'const tight = spare < gaps;', 'const tight = true;'],
   ['no gutter constant', 'export const GAP_COLS = 0.25;', 'export const GAP_COLS = 0;'],
+  // fix-pass B5: x1
+  ['lone prints hug the gutter', 'const inset = s.span <= LONE_INSET_SPAN ? 1 : 0;', 'const inset = 0;'],
 ];
 test('negative controls: every mutant of size.ts fails the rules', async () => {
   const src = readFileSync(join(SRC, 'size.ts'), 'utf8');

@@ -9,7 +9,8 @@
 //   with 9 or more prints the first one (scale 'normal') is the hero
 //   frames clamp to 9:21 .. 21:9; a more extreme image is letterboxed inside its frame, never cropped
 //   pack(): rows in content order; a gap is filled only by the next print; every second print in a row drops half its
-//   height (the zigzag); a lone print alternates sides; widthFrac = span / 12 x f of the roll's width
+//   height (the zigzag); a lone print alternates sides, one column in when it spans 5 or fewer; widthFrac = span / 12 x f
+//   of the roll's width
 //   in a full row (no spare column), f gives up GAP_COLS / 2 per inner side so neighbours never touch
 //   phone (under 760 px): one column; landscape and wide 100%, square 72%, portrait 56%, hero 100%, detail x 0.7;
 //   prints alternate left and right
@@ -36,6 +37,8 @@ export const MAX_H_SVH_PHONE = 70;
 export const PHONE_MAX = 759;
 /** The least gap between two prints in a row, in columns: 29 px on a 1384 px roll, 15 px at the 704 px minimum. */
 export const GAP_COLS = 0.25;
+/** A lone print this many columns wide or narrower sits one column in from its side of the roll. */
+export const LONE_INSET_SPAN = 5;
 
 const SLOT: Record<Bucket, number> = { wide: 12, landscape: 7, square: 5, portrait: 4 };
 const PHONE_W: Record<Bucket, number> = { wide: 1, landscape: 1, square: 0.72, portrait: 0.56 };
@@ -176,9 +179,12 @@ export function pack(prints: PrintInput[]): PackedPrint[] {
         col = (COLS - s.span) / 2 + 1;
         justify = 'center';
       } else {
-        // lone prints alternate sides down the roll, so single prints still read as a zigzag
+        // lone prints alternate sides down the roll, so single prints still read as a zigzag; a narrow one sits one
+        // column in from its side, so it never hugs the gutter
+        const inset = s.span <= LONE_INSET_SPAN ? 1 : 0;
+        col = 1 + inset;
         if (lone % 2 === 1) {
-          col = COLS - s.span + 1;
+          col = COLS - s.span + 1 - inset;
           justify = 'end';
         }
         lone++;
