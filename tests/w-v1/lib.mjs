@@ -16,38 +16,6 @@ export const ownBrowser = base0.extend({
     await use(b);
     await b.close();
   },
-  /** `fresh(body)`: body(browser) in a browser of its own. In WebKit only, a crash of the web process (the page's 'crash'
-   *  event) runs the body again in a new browser, at most twice more, and the log and the row's annotations say so. CI's
-   *  WebKit (Linux, WPE) segfaults in its compositor's layer-tree paint during the long scripted scroll sweeps (signal
-   *  11, a core dump): round 2's source does the same under these sweeps, and the reference host never does (#114, the
-   *  round-3 CI probes). An assertion failure, or any failure without a crash, fails the row at once. */
-  fresh: async ({ playwright, browserName, launchOptions, channel }, use, testInfo) => {
-    const tries = browserName === 'webkit' ? 3 : 1;
-    await use(async (body) => {
-      if (tries > 1) testInfo.setTimeout(testInfo.timeout * tries);
-      for (let k = 1; ; k++) {
-        const b = await playwright[browserName].launch({ ...launchOptions, ...(channel ? { channel } : {}), headless: true });
-        let crashed = false;
-        const make = b.newContext.bind(b);
-        b.newContext = async (...a) => {
-          const c = await make(...a);
-          c.on('page', (p) => p.on('crash', () => { crashed = true; }));
-          return c;
-        };
-        try {
-          await body(b);
-          return;
-        } catch (e) {
-          await new Promise((r) => setTimeout(r, 250)); // the crash event and the failed call arrive together
-          if (!crashed || k >= tries) throw e;
-          testInfo.annotations.push({ type: 'webkit-crash', description: `attempt ${k}: the web process crashed; the row ran again in a fresh browser` });
-          console.warn(`[w-v1] ${testInfo.title}: WebKit's web process crashed (attempt ${k} of ${tries}); the row runs again in a fresh browser`);
-        } finally {
-          await b.close().catch(() => {});
-        }
-      }
-    });
-  },
 });
 export const DESK = { viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1, hasTouch: false, isMobile: false };
 export const PHONE = { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true };

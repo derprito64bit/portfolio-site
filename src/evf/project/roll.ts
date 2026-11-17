@@ -143,18 +143,35 @@ export function initRoll(o: RollOptions): RollControl | null {
     o.counter.hidden = n < 0;
   }
 
+  /** The dim's saturation (print.css holds the end states) moves by tween, never by a CSS filter transition: WPE (Linux
+   *  WebKit) segfaults in its compositor when accelerated filter transitions on the roll's images start and stop as the
+   *  focus moves (#114's round-3 CI probes: none with the transitions or the filters off). Inline while it runs, from
+   *  where an interrupted tween left it; then print.css again. */
+  function sat(p: HTMLElement | undefined, from: number, to: number, jump: boolean) {
+    const img = p?.querySelector<HTMLElement>('.print__img');
+    if (!img) return;
+    if (jump || reduced()) { gsap.killTweensOf(img); img.style.removeProperty('filter'); return; }
+    const now = /saturate\(([\d.]+)\)/.exec(img.style.filter)?.[1];
+    gsap.fromTo(img, { filter: `saturate(${now ?? from})` }, { filter: `saturate(${to})`, duration: D.step, ease: E.out, overwrite: true, clearProps: 'filter' });
+  }
+
   function setFocus(n: number, jump = false) {
     const dim = dimOn() && n >= 0;
+    const was = roll.hasAttribute('data-dim');
     roll.toggleAttribute('data-dim', dim);
     af.classList.toggle('on', dim);
+    // the dim comes on (or goes) for every print but the focused one
+    if (dim !== was) prints.forEach((p, i) => { if (i !== n) sat(p, dim || i === cur ? 1 : 0.4, dim ? 0.4 : 1, jump); });
     if (n === cur) { if (dim) place(n, true); return; }
-    if (cur >= 0) prints[cur]?.removeAttribute('data-focus');
-    const first = cur < 0;
+    const prev = cur;
+    if (prev >= 0) prints[prev]?.removeAttribute('data-focus');
+    const first = prev < 0;
     cur = n;
     count(n);
     if (n < 0) { delete roll.dataset.focus; return; }
     prints[n].setAttribute('data-focus', '');
     roll.dataset.focus = String(n + 1);
+    if (dim && was) { sat(prints[prev], 1, 0.4, jump); sat(prints[n], 0.4, 1, jump); }
     if (dim) place(n, jump || first);
   }
 

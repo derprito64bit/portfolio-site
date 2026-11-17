@@ -57,6 +57,9 @@ export const PLANTS = [
   ['af-in-grid', 'A7', 'src/evf/project/roll.ts', 'host?.append(af);', 'grid?.append(af);', 'roll.spec.mjs', 'overflow 0 at 1440'],
   ['no-clamp', 'A7', 'src/evf/project/roll.ts', 'const l = Math.max(box.x, BR), r = Math.min(box.x + box.w, maxR);', 'const l = box.x, r = box.x + box.w;', 'roll.spec.mjs', 'overflow 0 at 1440'],
   ['no-hover', 'A9', 'src/evf/project/roll.ts', "if (grid) on(grid, 'pointermove'", "if (!grid) on(grid, 'pointermove'", 'roll.spec.mjs', 'hover to focus'],
+  // round 3, CI: the dim's saturation by CSS filter transition again (WPE's compositor crash), and a wrong end state
+  ['filter-transition', 'A9', 'src/evf/style/print.css', '.roll[data-dim] .print { transition: opacity var(--step) var(--e-out); }', '.roll[data-dim] .print { transition: opacity var(--step) var(--e-out); }\n.roll[data-dim] .print__img { transition: filter var(--step) var(--e-out); }', 'roll.spec.mjs', 'the print nearest the centre'],
+  ['sat-0.5', 'A9', 'src/evf/style/print.css', '.roll[data-dim] .print:not([data-focus]) .print__img { filter: saturate(0.4); }', '.roll[data-dim] .print:not([data-focus]) .print__img { filter: saturate(0.5); }', 'roll.spec.mjs', 'the print nearest the centre'],
 ];
 
 const SKIP = new Set(['node_modules', 'dist', '.git', 'test-results', '.astro', 'playwright-report']);

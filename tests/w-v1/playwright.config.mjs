@@ -12,7 +12,7 @@ const CI = Boolean(process.env.CI);
 export default defineConfig({
   testDir: '.',
   testMatch: '**/roll.spec.mjs',
-  grep: /brackets on|centre line leads|hover to focus/,
+  grep: /brackets on|centre line leads|hover to focus|the print nearest the centre/,
   repeatEach: 3,
   globalSetup: './global-setup.mjs',
   workers: 1,
