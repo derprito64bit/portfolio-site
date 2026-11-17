@@ -216,7 +216,9 @@ test('A2 with GL at 1440: one focal-length readout on every frame of the open\'s
   const ctx = await context(browser, browserName, DESK, { gl: true });
   const page = await ctx.newPage();
   try {
-    await home(page);
+    // the boot gets the GL budget too: CI's software GL (SwiftShader) takes over 20 s to leave the preloader at 1440 x 900
+    // (23 s on the reference host's CPU with SwiftShader forced; the G1 rows boot inside 20 s)
+    await home(page, '/?vf-test', GL_MS);
     test.skip(!(await page.evaluate(() => Boolean(window.__vfEngine))), 'no WebGL in this browser here: the row guards on the reference host');
     await page.keyboard.press('Enter');
     await untilState(page, 'evf', 0, GL_MS);

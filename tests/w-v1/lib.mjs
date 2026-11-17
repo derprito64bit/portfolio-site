@@ -46,10 +46,11 @@ export const vf = (page) => page.evaluate(() => ({ state: window.__vf.state(), p
 export const untilState = (page, state, pos = null, timeout = STEP_MS) => page.waitForFunction(
   ([s, p]) => window.__vf && window.__vf.state() === s && (p === null || window.__vf.pos() === p), [state, pos], { timeout, polling: 50 });
 
-/** / with the test API, past the preloader, at the intro. */
-export async function home(page, path = '/?vf-test') {
+/** / with the test API, past the preloader, at the intro. A GL row passes its GL budget as `timeout` (software GL boots
+ *  slowly at a desk viewport). */
+export async function home(page, path = '/?vf-test', timeout = STEP_MS) {
   await page.goto(`${base()}${path}`, { waitUntil: 'load' });
-  await page.waitForFunction(() => window.__vf && !document.documentElement.classList.contains('is-loading') && window.__vf.state() !== 'loading', null, { timeout: STEP_MS, polling: 50 });
+  await page.waitForFunction(() => window.__vf && !document.documentElement.classList.contains('is-loading') && window.__vf.state() !== 'loading', null, { timeout, polling: 50 });
 }
 
 /** From the intro: raise, then ArrowRight to frame `to` (0-based), one key per frame. */
