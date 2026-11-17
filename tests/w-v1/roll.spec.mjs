@@ -775,3 +775,84 @@ test.describe('A7 the cold page while its module loads (fix-pass B1)', () => {
     }
   });
 });
+
+test.describe('A9 keyboard focus (fix-pass B1)', () => {
+  // f08: a print that takes keyboard focus (a Tab stop, the open view's Tab trap, Esc from playback) never took the AF
+  // focus: its ring was drawn dimmed while the brackets and the counter stayed on the centre-line print
+  for (const place of ['cold', 'open']) test(`keyboard to focus: a Tab stop on a print takes the brackets, full brightness and the counter; Enter opens that print (${place})`, async ({ own: browser, browserName }) => {
+    const ctx = await context(browser, browserName, DESK);
+    const page = await ctx.newPage();
+    const focusOf = () => page.evaluate(() => document.querySelector('.roll').dataset.focus);
+    const pad = (n) => String(n).padStart(2, '0');
+    /** Print 5 on the centre line, the view still (as the hover row settles it). */
+    const settle = async () => {
+      await centrePrint(page, 5);
+      await page.waitForFunction(() => document.querySelector('.roll')?.dataset.focus === '5', null, { timeout: 3000 });
+      await page.waitForFunction(() => document.fonts.status === 'loaded', null, { timeout: 5000 }).catch(() => {});
+      await page.waitForTimeout(700);
+      for (let k = 0, prev = -1; k < 20; k++) {
+        const y = await page.evaluate(() => (document.querySelector('.proj:not([hidden]) .proj__col') ?? document.scrollingElement).scrollTop);
+        if (y === prev) break;
+        prev = y;
+        await page.waitForTimeout(150);
+      }
+    };
+    /** Print n's state: AF focus, its frame's and image's dim, the brackets on it, the counter. */
+    const stateOf = (n) => page.evaluate((k) => {
+      const p = document.querySelector(`.print[data-print="${k}"]`), a = document.querySelector('.roll__af');
+      const r = p.getBoundingClientRect(), q = a.getBoundingClientRect();
+      return { focused: p.hasAttribute('data-focus'), frame: getComputedStyle(p.querySelector('.print__frame')).opacity, img: getComputedStyle(p.querySelector('.print__img')).filter, af: Math.max(Math.abs(r.left - q.left), Math.abs(r.top - q.top)), counter: document.querySelector('[data-print-count]').textContent };
+    }, n);
+    try {
+      if (place === 'cold') await cold(page, 'project-06');
+      else { await home(page); await toFrame(page, 5); await page.keyboard.press('Enter'); await untilState(page, 'open', 5); }
+      // keyboard modality, then print 5 on the centre line again
+      await page.keyboard.press('Tab');
+      await page.keyboard.press('Shift+Tab');
+      await settle();
+      // Part A, no scroll: a script focus on another print in view (as the Tab trap and the Esc return focus a print)
+      const other = await page.evaluate(() => {
+        for (const p of document.querySelectorAll('.print')) {
+          if (p.dataset.print === '5') continue;
+          const r = p.querySelector('.print__frame').getBoundingClientRect();
+          const top = Math.max(r.top, 120), bottom = Math.min(r.bottom, innerHeight - 10);
+          if (bottom - top > 60) return { n: p.dataset.print };
+        }
+        return null;
+      });
+      expect(other, `${place}: a second print in view`).not.toBeNull();
+      await page.evaluate((n) => document.querySelector(`.print[data-print="${n}"] .print__a`).focus({ preventScroll: true }), other.n);
+      expect(await page.evaluate((n) => document.querySelector(`.print[data-print="${n}"] .print__a`).matches(':focus-visible'), other.n), `${place}: the script focus after a key is :focus-visible in ${browserName}`).toBe(true);
+      await expect.poll(focusOf, { message: `${place}: keyboard focus moves the AF focus to print ${other.n}`, timeout: 1000 }).toBe(other.n);
+      await page.waitForTimeout(400);
+      const a = await stateOf(other.n);
+      expect([a.focused, a.frame], `${place}: the focused print at full brightness`).toEqual([true, '1']);
+      expect(a.img, `${place}: not desaturated`).not.toBe('saturate(0.4)');
+      expect(a.af, `${place}: the brackets frame it`).toBeLessThanOrEqual(2);
+      expect(a.counter).toBe(`${pad(other.n)} / 12`);
+      // Part B: the real Tab and its scroll into view (an invariant: the HUD names the print the Tab reached). WebKit's
+      // Tab skips links (Safari's default) where no trap moves focus (the cold page): there the next print's link is
+      // focused by script, which scrolls it into view as a Tab stop does
+      let n = null;
+      for (let k = 0; k < 10 && !n; k++) {
+        await page.keyboard.press('Tab');
+        const at = await page.evaluate(() => document.activeElement?.closest('.print')?.dataset.print ?? null);
+        if (at && at !== other.n) n = at;
+      }
+      if (!n && browserName === 'webkit' && place === 'cold') {
+        n = String(Number(other.n) + 1);
+        await page.evaluate((k) => document.querySelector(`.print[data-print="${k}"] .print__a`).focus(), n);
+      }
+      expect(n, `${place}: Tab reaches another print`).not.toBeNull();
+      await page.waitForTimeout(600);
+      const b = await stateOf(n);
+      expect(await focusOf(), `${place}: the AF focus is the Tab stop's print`).toBe(n);
+      expect(b.af, `${place}: the brackets frame print ${n}`).toBeLessThanOrEqual(2);
+      expect(b.counter).toBe(`${pad(n)} / 12`);
+      await page.keyboard.press('Enter');
+      await expect.poll(() => page.evaluate(() => location.hash), { message: `${place}: Enter opens the print the HUD names`, timeout: 3000 }).toBe(`#print-${pad(n)}`);
+    } finally {
+      await ctx.close();
+    }
+  });
+});

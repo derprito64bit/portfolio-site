@@ -204,8 +204,17 @@ export function initRoll(o: RollOptions): RollControl | null {
     });
     return best;
   }
-  const onScroll = () => setFocus(nearest());
+  /** A print that took keyboard focus holds the AF focus while it keeps it and is at least half in view (nearest()'s
+   *  end rule); a wheel, a hover on another print or the print leaving lets the centre line lead again. */
+  let keyed = -1;
+  const mostlyIn = (i: number) => { const r = rects[i]; if (!r) return false; const v = view(), top = v.top - gridTop, bottom = top + v.h; return Math.min(r.y + r.h, bottom) - Math.max(r.y, top) >= r.h * 0.5; };
+  const pick = () => {
+    if (keyed >= 0 && !(prints[keyed]?.contains(document.activeElement) && mostlyIn(keyed))) keyed = -1;
+    return keyed >= 0 ? keyed : nearest();
+  };
+  const onScroll = () => setFocus(pick());
   on(o.scroller, 'scroll', onScroll, { passive: true });
+  on(o.scroller, 'wheel', () => { keyed = -1; }, { passive: true });
   // hover to focus (the Viewfinder's promise): a fine pointer moving onto a print takes the brackets and full brightness
   // there; the next scroll goes back to the centre line. A move at the same point (a browser's after-scroll hover
   // update) is not the pointer's, so it never pulls focus off the centre line.
@@ -216,9 +225,20 @@ export function initRoll(o: RollOptions): RollControl | null {
     px = e.clientX; py = e.clientY;
     const p = (e.target as Element).closest('.print');
     const i = p ? prints.indexOf(p as HTMLElement) : -1;
-    if (i >= 0 && i !== cur) setFocus(i);
+    if (i >= 0 && i !== cur) { keyed = -1; setFocus(i); }
   });
-  const refresh = () => { cache(); setFocus(nearest(), true); };
+  // keyboard to focus: a print that takes focus (a Tab stop, the open view's Tab trap, Esc back from playback) takes the
+  // brackets and full brightness as a hover does; a keyboard one (:focus-visible) holds them through its scroll into view
+  if (grid) on(grid, 'focusin', (ev) => {
+    if (!dimOn()) return;
+    const t = ev.target as Element;
+    const p = t.closest('.print');
+    const i = p ? prints.indexOf(p as HTMLElement) : -1;
+    if (i < 0) return;
+    keyed = t.matches(':focus-visible') ? i : -1;
+    if (i !== cur) setFocus(i);
+  });
+  const refresh = () => { cache(); setFocus(pick(), true); };
   let pending: gsap.core.Tween | null = null;
   const later = () => { pending?.kill(); pending = gsap.delayedCall(0.05, refresh); };
   const ro = new ResizeObserver(later);
