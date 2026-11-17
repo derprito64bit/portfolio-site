@@ -23,6 +23,8 @@
   background: linear-gradient(var(--black) 0%, rgba(5, 5, 5, 0.86) 58%, rgba(5, 5, 5, 0));
 }
 .pj-page .pj-bar { position: fixed; z-index: 4; }
+/* the fixed bar never covers a stop reached by keyboard; symmetric, so a block: center scrollIntoView (playback.ts) still centres */
+html.pj-page { scroll-padding-block: var(--top); }
 .proj__back, .pj-back {
   display: inline-flex; gap: 10px; align-items: center; min-height: 44px; padding: 0 14px 0 12px; margin: 0 auto 0 -12px;
   color: var(--ink); background: var(--black); text-decoration: none; transition: color var(--snap);
