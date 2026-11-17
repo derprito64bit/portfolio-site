@@ -827,3 +827,35 @@ test('A10 / A11 a clip opens in playback with controls only when it has a file',
   }
 });
 
+// ruling 2 on #114 (ruling-one-clip-tab): on a one-clip roll (project-02) Prev and Next were both disabled, so the clip
+// was the last Tab stop, and Tab from it fell to BODY (for under a frame) until keepFocus put it back on Close. The clip
+// is given a file so it has its controls (a clip with none is no Tab stop). Every focusout that leaves the dialog, and
+// focus sampled every frame, are logged.
+test('A10 a one-clip roll (project-02): Tab and Shift+Tab from the clip never leave playback, not for a frame', async ({ browser, browserName }) => {
+  const ctx = await context(browser, browserName, DESK);
+  const page = await ctx.newPage();
+  await page.route(/\/b3-clip\.mp4$/, (r) => r.fulfill({ status: 404, body: '' }));
+  try {
+    await cold(page, 'project-02');
+    await page.evaluate(() => { document.querySelector('#print-01 video').dataset.src = '/media/b3-clip.mp4'; });
+    await page.locator('#print-01 [data-print-open]').click();
+    await expect.poll(async () => (await pb(page))?.open).toBe(true);
+    await expect.poll(async () => (await pb(page)).media).toBe('VIDEO');
+    await page.evaluate(() => {
+      window.__out = [];
+      const d = document.querySelector('dialog.pb');
+      d.addEventListener('focusout', (e) => { if (!d.contains(e.relatedTarget)) window.__out.push(`focusout ${e.target.tagName} -> ${e.relatedTarget?.tagName ?? 'nothing'}`); });
+      const f = () => { const a = document.activeElement; if (!a || a === d || !d.contains(a)) window.__out.push(`frame: ${a?.tagName}`); requestAnimationFrame(f); };
+      requestAnimationFrame(f);
+    });
+    const onClip = async () => (await page.evaluate(() => { document.querySelector('.pb__frame video').focus(); return document.activeElement?.tagName; })) === 'VIDEO';
+    expect(await onClip(), 'the clip takes focus').toBe(true);
+    for (const key of ['Tab', 'Tab', 'Tab', 'Tab', 'Tab', 'Tab']) { await page.keyboard.press(key); await page.waitForTimeout(80); }
+    await onClip();
+    for (const key of ['Shift+Tab', 'Shift+Tab', 'Shift+Tab', 'Shift+Tab', 'Shift+Tab', 'Shift+Tab']) { await page.keyboard.press(key); await page.waitForTimeout(80); }
+    await page.waitForTimeout(100);
+    expect(await page.evaluate(() => window.__out), 'focus never leaves playback').toEqual([]);
+  } finally {
+    await ctx.close();
+  }
+});

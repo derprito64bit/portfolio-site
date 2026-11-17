@@ -77,6 +77,7 @@ export const PLANTS = [
   ['no-short-phone', 'A10', 'src/evf/style/print.css', '.pb__frame { width: min(100%, calc((100svh - 120px) * var(--ar))); }', '', 'playback.spec.mjs', 'a phone on its side'],
   ['no-short-foot', 'A10', 'src/evf/style/print.css', '.pb__foot { grid-template-columns: auto minmax(0, 1fr); gap: 12px; }', '', 'playback.spec.mjs', 'a phone on its side'],
   ['pb-clip-empty-controls', 'A10', 'src/evf/project/playback.ts', 'v.controls = !!src;', 'v.controls = true;', 'playback.spec.mjs', 'controls only when it has a file'],
+  ['pb-one-clip-tab', 'A10', 'src/evf/project/playback.ts', "prev.setAttribute('aria-disabled', String(n === 0));\n    next.setAttribute('aria-disabled', String(n === total - 1));", "prev.toggleAttribute('disabled', n === 0);\n    next.toggleAttribute('disabled', n === total - 1);", 'playback.spec.mjs', 'one-clip roll'],
 ];
 
 const SKIP = new Set(['node_modules', 'dist', '.git', 'test-results', '.astro', 'playwright-report']);
