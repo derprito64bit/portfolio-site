@@ -151,7 +151,8 @@ rule('widthFrac = span / 12 x f; frameWidth = min(widthFrac x roll, 80 svh x asp
   near(phoneFrac(sizePrint({ w: 1080, h: 1080, scale: 'detail' })), 0.72 * 0.7, 'detail on a phone');
   const sides = pack(Array.from({ length: 3 }, () => ({ w: 1170, h: 2532 })));
   assert.deepEqual(sides.map((x) => x.phoneSide), ['left', 'right', 'left']);
-  assert.match(sizesAttr(p), /^\(max-width: 759px\) calc\(\(100vw - 32px\) \* 1\), \(min-width: 1736px\) \d+px, calc\(\(100vw - 56px\) \* 0\.\d+\)$/);
+  // f28: each entry is min(the width, the height cap x the frame aspect)
+  assert.match(sizesAttr(p), /^\(max-width: 759px\) min\(calc\(\(100vw - 32px\) \* 1\), calc\(70vh \* 1\.6\)\), \(min-width: 1736px\) min\(\d+px, calc\(80vh \* 1\.6\)\), min\(calc\(\(100vw - 56px\) \* 0\.\d+\), calc\(80vh \* 1\.6\)\)$/);
 });
 
 rule('ladder: 480, 800, 1280, 1920, never upscaled; class tokens by rung, first print, extreme and poster', (S) => {
@@ -210,6 +211,33 @@ rule('pack: a lone print of 5 columns or fewer is inset one column from its side
   assert.equal(h[0].col, 4, 'a 6-column hero stays centred');
 });
 
+// f28: sizes says what the frame is, height cap included, so a strict-density engine never takes a wider rung. The
+// list is split at top-level commas only (min() has commas of its own), and an entry's length is evaluated at a viewport.
+const entries = (sizes) => { const out = []; let d = 0, s = 0; [...sizes].forEach((c, i) => { if (c === '(') d++; else if (c === ')') d--; else if (c === ',' && d === 0) { out.push(sizes.slice(s, i).trim()); s = i + 1; } }); out.push(sizes.slice(s).trim()); return out; };
+const lengthAt = (entry, vw, vh) => {
+  const len = entry.replace(/^\((max|min)-width: \d+px\)\s*/, '');
+  const js = len.replace(/calc\(/g, '(').replace(/\bmin\(/g, 'Math.min(').replace(/100vw/g, `${vw}`).replace(/(\d+(?:\.\d+)?)vh/g, `($1 * ${vh / 100})`).replace(/(\d)px/g, '$1');
+  assert.match(js, /^[\d\s.+\-*/(),Mathmin]+$/, `a plain arithmetic length: ${js}`);
+  return Function(`return ${js};`)();
+};
+rule('sizesAttr: every entry carries the height cap; the desktop and phone entries evaluate to the frame width', (S) => {
+  const { frameWidth, pack, sizesAttr } = S;
+  const [hero] = pack([{ w: 1920, h: 1200, scale: 'hero' }]);
+  const hs = sizesAttr(hero);
+  assert.ok(hs.includes('min(calc((100vw - 56px) * 1), calc(80vh * 1.6))'), hs);
+  assert.ok(hs.includes('calc(70vh * 1.6)'), hs);
+  const e = entries(hs);
+  assert.equal(e.length, 3, `three entries: ${hs}`);
+  near(lengthAt(e[2], 1440, 900), frameWidth(hero, 1384, 900, false), 'the hero at 1440 x 900 (1152 px, held by 80 svh)');
+  near(lengthAt(e[2], 1440, 540), frameWidth(hero, 1384, 540, false), 'the hero at 1440 x 540 (691 px)');
+  const [tall] = pack([{ w: 1170, h: 2532 }]);
+  near(lengthAt(entries(sizesAttr(tall))[0], 390, 844), frameWidth(tall, 358, 844, true), 'a tall print on a phone, 390 x 844');
+  near(lengthAt(entries(sizesAttr(hero))[0], 390, 400), frameWidth(hero, 358, 400, true), 'a wide print on a short phone view, held by 70 svh', 1e-3);
+  for (const p of [hero, tall]) for (const [vw, vh] of [[1440, 900], [1440, 540], [1280, 1600]]) {
+    assert.ok(lengthAt(entries(sizesAttr(p))[2], vw, vh) >= frameWidth(p, vw - 56, vh, false) - 1e-9, `never under-asks at ${vw} x ${vh}`);
+  }
+});
+
 // Negative controls: one planted defect per branch class; the rules above must fail on every one.
 const MUTANTS = [
   ['square band loses its upper edge', 'if (r <= 1.25) return', 'if (r < 1.25) return'],
@@ -229,6 +257,8 @@ const MUTANTS = [
   ['no gutter constant', 'export const GAP_COLS = 0.25;', 'export const GAP_COLS = 0;'],
   // fix-pass B5: x1
   ['lone prints hug the gutter', 'const inset = s.span <= LONE_INSET_SPAN ? 1 : 0;', 'const inset = 0;'],
+  // fix-pass B5: f28
+  ['sizes without the height cap', 'const cap = (h: number, w: string) => `min(${w}, calc(${h}vh * ${ar}))`;', 'const cap = (h: number, w: string) => w;'],
 ];
 test('negative controls: every mutant of size.ts fails the rules', async () => {
   const src = readFileSync(join(SRC, 'size.ts'), 'utf8');

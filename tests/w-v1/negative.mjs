@@ -71,6 +71,8 @@ export const PLANTS = [
   // fix-pass B5
   // f12: playback's video never gets the clip's captions track
   ['b5-no-track', 'A10', 'src/evf/project/playback.ts', "const cc = p.querySelector('video')?.dataset.captions; if (cc)", "const cc = ''; if (cc)", 'playback.spec.mjs', 'A10 f12'],
+  // f28: sizes without the height cap (the hero print takes 1920 for a 691 or 1152 px frame)
+  ['b5-sizes-no-cap', 'A7', 'src/lib/prints/size.ts', 'const cap = (h: number, w: string) => `min(${w}, calc(${h}vh * ${ar}))`;', 'const cap = (h: number, w: string) => w;', 'roll.spec.mjs', 'A7 f28'],
 ];
 
 const SKIP = new Set(['node_modules', 'dist', '.git', 'test-results', '.astro', 'playwright-report']);

@@ -14,7 +14,8 @@
 //   in a full row (no spare column), f gives up GAP_COLS / 2 per inner side so neighbours never touch
 //   phone (under 760 px): one column; landscape and wide 100%, square 72%, portrait 56%, hero 100%, detail x 0.7;
 //   prints alternate left and right
-// Height caps (80 svh, phone 70 svh) are CSS: width = min(widthFrac x roll width, maxH x frame aspect).
+// Height caps (80 svh, phone 70 svh) are CSS: width = min(widthFrac x roll width, maxH x frame aspect); sizesAttr says
+// the same, so the browser picks a rung for the frame it will draw.
 
 export type Bucket = 'portrait' | 'square' | 'landscape' | 'wide';
 export type Scale = 'hero' | 'normal' | 'detail';
@@ -235,13 +236,17 @@ export function frameWidth(p: Pick<PackedPrint, 'widthFrac' | 'ar' | 'phoneFrac'
 export const ROLL = { gutter: 28, gutterPhone: 16, max: 1680 } as const;
 
 /**
- * The sizes attribute: the print's width at each breakpoint, from the roll width (calc only, which every engine reads in
- * sizes; the height cap is left out, so sizes never under-asks).
+ * The sizes attribute: the print's frame width at each breakpoint, as frameWidth and the CSS have it: min(the width from
+ * the roll, the height cap x the frame aspect). vh, not svh: equal on a desktop, never smaller on a phone, so sizes can
+ * only over-ask; the aspect is rounded up for the same reason. The list has commas inside min(): split it at top-level
+ * commas only.
  */
-export function sizesAttr(p: Pick<PackedPrint, 'widthFrac' | 'phoneFrac'>) {
-  const phone = `calc((100vw - ${ROLL.gutterPhone * 2}px) * ${round(p.phoneFrac)})`;
-  const wide = `${Math.ceil(p.widthFrac * ROLL.max)}px`;
-  const desk = `calc((100vw - ${ROLL.gutter * 2}px) * ${round(p.widthFrac)})`;
+export function sizesAttr(p: Pick<PackedPrint, 'widthFrac' | 'phoneFrac' | 'ar'>) {
+  const ar = Math.ceil(p.ar * 1000) / 1000;
+  const cap = (h: number, w: string) => `min(${w}, calc(${h}vh * ${ar}))`;
+  const phone = cap(MAX_H_SVH_PHONE, `calc((100vw - ${ROLL.gutterPhone * 2}px) * ${round(p.phoneFrac)})`);
+  const wide = cap(MAX_H_SVH, `${Math.ceil(p.widthFrac * ROLL.max)}px`);
+  const desk = cap(MAX_H_SVH, `calc((100vw - ${ROLL.gutter * 2}px) * ${round(p.widthFrac)})`);
   return `(max-width: ${PHONE_MAX}px) ${phone}, (min-width: ${ROLL.max + ROLL.gutter * 2}px) ${wide}, ${desk}`;
 }
 
