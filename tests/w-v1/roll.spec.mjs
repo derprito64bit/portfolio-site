@@ -522,3 +522,38 @@ test.describe('A11 loop clips', () => {
     }
   });
 });
+
+// fix-pass B2
+// f30: in forced colours the fixed bar keeps an opaque backing (the article no longer prints through it) and the play mark
+// stays a triangle (a CSS border triangle's transparent borders would be forced to a solid block).
+test('forced colours: the bar is backed and the play mark is a triangle', async ({ own: browser, browserName }) => {
+  test.skip(browserName !== 'chromium', 'forced-colors emulation is Chromium only');
+  const ctx = await context(browser, browserName, DESK);
+  const page = await ctx.newPage();
+  try {
+    await page.emulateMedia({ forcedColors: 'active' });
+    await cold(page, 'project-02');
+    const s = await page.evaluate(() => {
+      const alpha = (c) => { const p = (/rgba?\(([^)]+)\)/.exec(c)?.[1] || '').split(/[\s,/]+/).filter(Boolean); return p.length > 3 ? Number(p[3]) : 1; };
+      const bar = getComputedStyle(document.querySelector('.pj-bar'));
+      const play = document.querySelector('.print__play');
+      const a = getComputedStyle(play, '::after');
+      const sel = [...document.styleSheets].flatMap((sh) => { try { return [...sh.cssRules]; } catch { return []; } })
+        .filter((r) => r instanceof CSSMediaRule && r.conditionText.includes('forced-colors')).flatMap((r) => [...r.cssRules].map((x) => x.selectorText || ''));
+      return {
+        fc: matchMedia('(forced-colors: active)').matches, barA: alpha(bar.backgroundColor), barImg: bar.backgroundImage,
+        playFca: getComputedStyle(play).forcedColorAdjust, afterFca: a.forcedColorAdjust,
+        borders: [alpha(a.borderTopColor), alpha(a.borderBottomColor), alpha(a.borderLeftColor)], sel,
+      };
+    });
+    expect(s.fc, 'forced colours are on (the row is not vacuous)').toBe(true);
+    expect(s.barA, 'the bar has an opaque backing').toBe(1);
+    expect(s.barImg, 'and no gradient over it').toBe('none');
+    expect(s.afterFca, "the play mark's triangle keeps its own colours").toBe('none');
+    expect(s.playFca, 'the play box itself still follows the palette').toBe('auto');
+    expect(s.borders, 'the triangle: top and bottom borders clear, the left one drawn').toEqual([0, 0, 1]);
+    expect(s.sel.some((x) => x.includes('.pj-bar')) && s.sel.some((x) => x.includes('.print__play::after')), `a forced-colors block covers both (${s.sel.join(' | ')})`).toBe(true);
+  } finally {
+    await ctx.close();
+  }
+});

@@ -72,6 +72,8 @@ export const PLANTS = [
   ['meta-nowrap', 'A1', 'src/evf/style/project.css', '.pj__meta .ph { white-space: normal; max-width: 100%; }', '', 'open.spec.mjs', 'A1 meta cells hold'],
   ['nojs-gap', 'A1', 'src/evf/style/project.css', '.pj-page:not(.pj-js) .pj__head { min-height: 0; padding-top: 8vh; padding-bottom: 48px; }', '.pj-page:not(.pj-js) .pj__head { min-height: 0; padding-bottom: 48px; }', 'playback.spec.mjs', 'no JS: /work/project-01/ is whole at 390'],
   ['bar-covers-focus', 'A2', 'src/evf/style/project.css', 'html.pj-page { scroll-padding-block: var(--top); }', '', 'keys.spec.mjs', 'focus ring: a print reached by keyboard'],
+  ['fc-bar-clear', 'A2', 'src/evf/style/project.css', '.proj__bar, .pj-bar { background-color: Canvas; background-image: none; border-bottom: 1px solid CanvasText; }', '', 'roll.spec.mjs', 'forced colours'],
+  ['fc-play-block', 'A5', 'src/evf/style/print.css', '.print__play::after { forced-color-adjust: none; border-color: transparent; border-left-color: CanvasText; }', '', 'roll.spec.mjs', 'forced colours'],
 ];
 
 const SKIP = new Set(['node_modules', 'dist', '.git', 'test-results', '.astro', 'playwright-report']);

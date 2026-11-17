@@ -123,3 +123,8 @@
   .pb__ro { gap: 12px; }
   .pb__frame { width: min(100%, calc((100svh - var(--top) - 190px) * var(--ar))); }
 }
+
+/* ---------------- forced colours: the play mark stays a triangle (its clear borders are not forced to a block) ---------------- */
+@media (forced-colors: active) {
+  .print__play::after { forced-color-adjust: none; border-color: transparent; border-left-color: CanvasText; }
+}

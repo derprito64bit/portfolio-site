@@ -87,3 +87,8 @@ html.pj-page { scroll-padding-block: var(--top); }
 
 /* ---------------- no JS on /work/<slug>/: the header is a plain page header (no frame gap, on a phone too) ---------------- */
 .pj-page:not(.pj-js) .pj__head { min-height: 0; padding-top: 8vh; padding-bottom: 48px; }
+
+/* ---------------- forced colours: the gradient goes, so the bar takes an opaque Canvas (after the phone block) ---------------- */
+@media (forced-colors: active) {
+  .proj__bar, .pj-bar { background-color: Canvas; background-image: none; border-bottom: 1px solid CanvasText; }
+}
