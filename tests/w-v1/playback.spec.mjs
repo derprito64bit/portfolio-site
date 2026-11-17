@@ -221,12 +221,17 @@ for (const [label, profile] of [['1440', DESK], ['390', PHONE]]) {
       await pages(page, 'ArrowRight', '#print-02');
       await shut();
 
-      // by Enter on a focused Next or Prev: focus moves to the other one as its own is disabled
+      // by Enter on a focused Next or Prev: at an end the button is off (aria-disabled) but keeps focus, so Enter again
+      // stays put (fix-pass B3, ruling 1 on #114: focus once moved to the other button, and a second Enter paged back)
       await openAt(11, 'key');
       await page.locator('dialog.pb [data-pb-next]').focus();
       await page.keyboard.press('Enter');
       await expect.poll(async () => (await pb(page)).hash).toBe('#print-12');
-      expect(await where(page), 'Enter on Next to the end: focus on Prev').toBe('in:BUTTON[prev]');
+      expect(await where(page), 'Enter on Next to the end: focus stays on Next').toBe('in:BUTTON[next]');
+      expect(await page.locator('dialog.pb [data-pb-next]').getAttribute('aria-disabled'), 'Next is off at the end').toBe('true');
+      await page.keyboard.press('Enter');
+      await page.waitForTimeout(300);
+      expect([(await pb(page)).hash, await where(page)], 'Enter again on Next at the end: no page, focus on Next').toEqual(['#print-12', 'in:BUTTON[next]']);
       await pages(page, 'ArrowLeft', '#print-11');
       await pages(page, 'ArrowRight', '#print-12');
       await tabsStay(page);
@@ -235,7 +240,10 @@ for (const [label, profile] of [['1440', DESK], ['390', PHONE]]) {
       await page.locator('dialog.pb [data-pb-prev]').focus();
       await page.keyboard.press('Enter');
       await expect.poll(async () => (await pb(page)).hash).toBe('#print-01');
-      expect(await where(page), 'Enter on Prev to the start: focus on Next').toBe('in:BUTTON[next]');
+      expect(await where(page), 'Enter on Prev to the start: focus stays on Prev').toBe('in:BUTTON[prev]');
+      await page.keyboard.press('Enter');
+      await page.waitForTimeout(300);
+      expect([(await pb(page)).hash, await where(page)], 'Enter again on Prev at the start: no page, focus on Prev').toEqual(['#print-01', 'in:BUTTON[prev]']);
       await pages(page, 'ArrowRight', '#print-02');
       await tabsStay(page);
     } finally {
@@ -818,3 +826,4 @@ test('A10 / A11 a clip opens in playback with controls only when it has a file',
     await ctx.close();
   }
 });
+

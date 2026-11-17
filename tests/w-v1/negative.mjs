@@ -65,7 +65,7 @@ export const PLANTS = [
   // wv1-pb-arrows-focus (judge r3): each plant takes back one part of the fix (4f2deb5's own build fails all these rows)
   ['pb-keys-dialog', 'A10', 'src/evf/project/playback.ts', 'if (cur < 0 || !dlg || e.defaultPrevented) return;', 'if (cur < 0 || !dlg || e.defaultPrevented || !dlg.contains(e.target as Node)) return;', 'playback.spec.mjs', 'cold #print-NN load'],
   ['pb-focus-lost', 'A10', 'src/evf/project/playback.ts', "d.addEventListener('focusout', (e) => { if (cur >= 0 &&", "d.addEventListener('focusout', (e) => { if (false &&", 'playback.spec.mjs', 'cold #print-NN load|typed #print-NN hashes'],
-  ['pb-end-handoff', 'A10', 'src/evf/project/playback.ts', '(otherOff ? parts.close : other).focus({ preventScroll: true });', 'void other; void otherOff;', 'playback.spec.mjs', 'to either end'],
+  ['pb-end-handoff', 'A10', 'src/evf/project/playback.ts', "next.setAttribute('aria-disabled', String(n === total - 1));", 'next.toggleAttribute(\'disabled\', n === total - 1);', 'playback.spec.mjs', 'to either end'],
   ['pb-tab-out', 'A10', 'src/evf/project/playback.ts', "if (e.key === 'Tab') { tab(e, dlg); return; }", "if (e.key === 'Tab') return;", 'playback.spec.mjs', 'to either end'],
   ['pb-clip-arrows', 'A10', 'src/evf/project/playback.ts', "if ((e.target as Element | null)?.closest?.('video, input, select, textarea')) return;", '', 'playback.spec.mjs', 'cold #print-NN load'],
   // fix-pass B3

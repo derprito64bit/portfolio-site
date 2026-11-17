@@ -148,17 +148,11 @@ export function initPlayback(o: PlaybackOptions): PlaybackControl {
       el('span', '', {}, [p.dataset.kind ?? type ?? 'image']),
     );
     cap.replaceChildren(...[...(p.querySelector('.print__cap')?.childNodes ?? [])].map((x) => x.cloneNode(true)));
-    // a focused Prev or Next about to be disabled at an end hands focus to the other one (or Close) first: focus on a
-    // disabled control falls to BODY
-    const atStart = n === 0, atEnd = n === total - 1;
-    const a = document.activeElement;
-    if ((a === prev && atStart) || (a === next && atEnd)) {
-      const other = a === prev ? next : prev;
-      const otherOff = a === prev ? atEnd : atStart;
-      (otherOff ? parts.close : other).focus({ preventScroll: true });
-    }
-    prev.toggleAttribute('disabled', atStart);
-    next.toggleAttribute('disabled', atEnd);
+    // Prev or Next at an end is off but keeps focus and its Tab stop (aria-disabled, never disabled): focus on a disabled
+    // control falls to BODY, and handing it to the other button made a second Enter page back (ruling 1 on #114); with
+    // both off (a one-print roll) a clip is never the last stop, so Tab from it stays inside (ruling 2)
+    prev.setAttribute('aria-disabled', String(n === 0));
+    next.setAttribute('aria-disabled', String(n === total - 1));
     dlg?.setAttribute('aria-label', `Playback, print ${label}`);
   }
 

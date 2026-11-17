@@ -84,7 +84,7 @@
 .pb__bar { display: flex; align-items: center; gap: 22px; padding: 0 var(--g); }
 .pb__k { color: var(--ink-2); margin-right: auto; font-weight: 400; }
 .pb__count { font-size: 17px; }
-.pb__nav button[disabled] { color: var(--ink-4); cursor: default; }
+.pb__nav button[aria-disabled='true'], .pb__nav button[aria-disabled='true']:hover { color: var(--ink-4); cursor: default; }
 .pb__close, .pb__nav button {
   display: inline-flex; align-items: center; justify-content: center; gap: 10px; min-width: 44px; min-height: 44px; padding: 0 12px;
   color: var(--ink); transition: color var(--snap);
