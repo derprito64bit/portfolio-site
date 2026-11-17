@@ -2,7 +2,8 @@
 // fit (0.6 s, vf.out; back 0.33 s, vf.in), with its caption and readouts (index, w x h, type); arrows, the buttons and a
 // swipe page through the roll. It pushes #print-NN; Back, Esc and Close all close it and return focus to the print. A
 // load or popstate onto #print-NN opens it without the Flip. Reduced motion: a crossfade. Nodes are built or cloned,
-// never parsed from strings (D-055).
+// never parsed from strings (D-055). The arrows and Tab are read on the document, wherever focus sits, and focus is
+// kept inside the dialog while a print is shown (wv1-pb-arrows-focus).
 import { gsap, Flip, D, E } from '../motion';
 import { hashHistory, printHash, type HashHistory } from '../router';
 
@@ -67,11 +68,12 @@ export function initPlayback(o: PlaybackOptions): PlaybackControl {
     next.addEventListener('click', () => page(1));
     d.addEventListener('keydown', (e) => {
       // Esc is playback's only while a print is shown: one during the 0.33 s exit goes on to the page (the project
-      // closes, or the cold page leaves), so Esc, Esc is never swallowed
+      // closes, or the cold page leaves), so Esc, Esc is never swallowed. The arrows are the document's (onKey).
       if (e.key === 'Escape') { if (cur < 0) return; e.preventDefault(); e.stopPropagation(); api.close(); }
-      else if (e.key === 'ArrowRight') { e.preventDefault(); e.stopPropagation(); page(1); }
-      else if (e.key === 'ArrowLeft') { e.preventDefault(); e.stopPropagation(); page(-1); }
     });
+    // focus that falls out of the dialog to nothing comes back on the next tick: a load's or a typed #print-NN's
+    // fragment scroll clears it to BODY just after the open (its target, a figure, takes no focus)
+    d.addEventListener('focusout', (e) => { if (cur >= 0 && !d.contains(e.relatedTarget as Node | null)) gsap.delayedCall(0, keepFocus); });
     // a close request that is not Esc (a phone's back gesture): close our way
     d.addEventListener('cancel', (e) => { e.preventDefault(); api.close(); });
     // the page behind never scrolls while playback is up; a swipe pages
@@ -104,6 +106,8 @@ export function initPlayback(o: PlaybackOptions): PlaybackControl {
     frame.toggleAttribute('data-letterbox', box);
     frame.toggleAttribute('data-failed', failed);
     if (lq && !box && !failed) frame.style.setProperty('--lqip', lq); else frame.style.removeProperty('--lqip');
+    // a focused clip that pages away (a swipe) hands focus to Close before it goes
+    if (frame.contains(document.activeElement)) parts.close.focus({ preventScroll: true });
     frame.replaceChildren();
     const type = p.dataset.type;
     const pic = p.querySelector('picture');
@@ -134,8 +138,17 @@ export function initPlayback(o: PlaybackOptions): PlaybackControl {
       el('span', '', {}, [p.dataset.kind ?? type ?? 'image']),
     );
     cap.replaceChildren(...[...(p.querySelector('.print__cap')?.childNodes ?? [])].map((x) => x.cloneNode(true)));
-    prev.toggleAttribute('disabled', n === 0);
-    next.toggleAttribute('disabled', n === total - 1);
+    // a focused Prev or Next about to be disabled at an end hands focus to the other one (or Close) first: focus on a
+    // disabled control falls to BODY
+    const atStart = n === 0, atEnd = n === total - 1;
+    const a = document.activeElement;
+    if ((a === prev && atStart) || (a === next && atEnd)) {
+      const other = a === prev ? next : prev;
+      const otherOff = a === prev ? atEnd : atStart;
+      (otherOff ? parts.close : other).focus({ preventScroll: true });
+    }
+    prev.toggleAttribute('disabled', atStart);
+    next.toggleAttribute('disabled', atEnd);
     dlg?.setAttribute('aria-label', `Playback, print ${label}`);
   }
 
@@ -276,6 +289,38 @@ export function initPlayback(o: PlaybackOptions): PlaybackControl {
       dlg = null;
     },
   };
+
+  /** Focus back on Close if it has fallen out of the dialog while a print is shown. */
+  function keepFocus() {
+    if (cur >= 0 && dlg?.open && !dlg.contains(document.activeElement)) parts.close.focus({ preventScroll: true });
+  }
+  /** Tab never leaves the dialog: from outside it (BODY) or the dialog itself it enters at the first stop (Shift: the
+   *  last), and it wraps at both ends. A clip's own controls sit between Close and Prev and keep their native Tab. */
+  function tab(e: KeyboardEvent, d: HTMLDialogElement) {
+    const { close, frame, prev, next } = parts;
+    const clip = frame.querySelector('video');
+    const f = [close, clip, prev, next].filter((x): x is HTMLElement => !!x && !x.hasAttribute('disabled'));
+    const a = document.activeElement;
+    const first = f[0], last = f[f.length - 1];
+    const inside = !!a && a !== d && d.contains(a);
+    const edge = e.shiftKey ? a === first : a === last && a !== clip;
+    if (inside && !edge) return;
+    e.preventDefault();
+    (e.shiftKey ? last : first).focus();
+  }
+  // the arrows and Tab are the document's while playback is up, so they work wherever focus sits (a keydown on the
+  // dialog never fired once focus had fallen to BODY); a focused clip or field keeps its own arrows (a clip seeks)
+  const onKey = (e: KeyboardEvent) => {
+    if (cur < 0 || !dlg || e.defaultPrevented) return;
+    if (e.key === 'Tab') { tab(e, dlg); return; }
+    if ((e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') || e.altKey || e.ctrlKey || e.metaKey) return;
+    if ((e.target as Element | null)?.closest?.('video, input, select, textarea')) return;
+    e.preventDefault();
+    e.stopPropagation();
+    page(e.key === 'ArrowRight' ? 1 : -1);
+  };
+  document.addEventListener('keydown', onKey);
+  cleanups.push(() => document.removeEventListener('keydown', onKey));
 
   // the prints open playback; without JS their links are anchors to themselves
   prints.forEach((p, i) => {

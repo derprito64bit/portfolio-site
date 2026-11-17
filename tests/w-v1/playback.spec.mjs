@@ -91,6 +91,156 @@ test('A10: a deep link to #print-NN opens playback at once, without the Flip', a
   }
 });
 
+// wv1-pb-arrows-focus (judge r3 must-fix; breakers 3.1 and 3.2): focus fell out of playback to BODY, where the arrows
+// (a keydown on the dialog) did nothing and WebKit's Tab stayed put, in three ways: a cold #print-NN load (the load's
+// fragment scroll clears focus about 5 ms after the open), a typed #print-NN hash, and Next or Prev reaching an end (the
+// focused button is disabled). 4f2deb5 fails each row below. Focus is "in" when it sits on the dialog or inside it.
+const where = (page) => page.evaluate(() => {
+  const a = document.activeElement;
+  const d = document.querySelector('dialog.pb');
+  const name = !a ? 'none' : `${a.tagName}${['close', 'prev', 'next'].filter((k) => a.hasAttribute(`data-pb-${k}`)).map((k) => `[${k}]`).join('')}`;
+  return `${d && a && d.contains(a) ? 'in' : 'out'}:${name}`;
+});
+/** n animation frames: a load's or a hash's fragment scroll has run by then. */
+const frames = (page, n = 2) => page.evaluate((k) => new Promise((r) => { const f = () => (--k > 0 ? requestAnimationFrame(f) : r()); requestAnimationFrame(f); }), n);
+/** The key pages at once: the address follows within a second. */
+async function pages(page, key, want) {
+  await page.keyboard.press(key);
+  await expect.poll(async () => (await pb(page)).hash, { message: `${key} pages at once`, timeout: 1000 }).toBe(want);
+}
+/** Tab and Shift+Tab, each past a wrap: focus never leaves playback. */
+async function tabsStay(page) {
+  for (const key of ['Tab', 'Tab', 'Tab', 'Tab', 'Shift+Tab', 'Shift+Tab', 'Shift+Tab', 'Shift+Tab']) {
+    await page.keyboard.press(key);
+    expect(await where(page), `${key}: focus stays in playback`).toMatch(/^in:/);
+  }
+}
+const press = (page, profile, sel) => (profile.hasTouch ? page.locator(sel).tap() : page.locator(sel).click());
+
+for (const [label, profile] of [['1440', DESK], ['390', PHONE]]) {
+  test(`A10 at ${label}: a cold #print-NN load, then a typed #print-NN: focus stays in playback, the arrows page at once, Tab stays inside`, async ({ browser, browserName }) => {
+    const ctx = await context(browser, browserName, profile);
+    const page = await ctx.newPage();
+    try {
+      await cold(page, 'project-06', '#print-03');
+      await expect.poll(async () => (await pb(page))?.open).toBe(true);
+      await frames(page);
+      await expect.poll(() => where(page), { message: 'after the load\'s fragment scroll, focus is in playback' }).toMatch(/^in:/);
+      await pages(page, 'ArrowRight', '#print-04');
+      await pages(page, 'ArrowLeft', '#print-03');
+      await tabsStay(page);
+      await pages(page, 'ArrowRight', '#print-04');
+      // the arrows are read wherever focus sits: a key that lands on BODY pages too (focus never stays there now, so the
+      // key is sent there by hand)
+      await page.evaluate(() => document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true })));
+      await expect.poll(async () => (await pb(page)).hash, { message: 'a key on BODY pages', timeout: 1000 }).toBe('#print-05');
+      // a focused clip keeps its own arrow keys (they seek): no paging from it; Esc still closes
+      await expect.poll(async () => (await pb(page)).media).toBe('VIDEO');
+      await page.locator('dialog.pb video').focus();
+      await page.keyboard.press('ArrowRight');
+      await page.waitForTimeout(200);
+      expect((await pb(page)).hash, 'the clip keeps ArrowRight').toBe('#print-05');
+      await page.keyboard.press('Escape');
+      await expect.poll(async () => (await pb(page)).open).toBe(false);
+      await expect.poll(() => page.evaluate(() => location.hash)).toBe('');
+
+      // a typed #print-NN on the cold page: the same fragment scroll
+      await page.evaluate(() => { location.hash = '#print-07'; });
+      await expect.poll(async () => (await pb(page))?.count).toBe('07 / 12');
+      expect((await pb(page)).open).toBe(true);
+      await frames(page);
+      await expect.poll(() => where(page), { message: 'after a typed hash, focus is in playback' }).toMatch(/^in:/);
+      await pages(page, 'ArrowRight', '#print-08');
+      await tabsStay(page);
+    } finally {
+      await ctx.close();
+    }
+  });
+
+  test(`A10 at ${label}: typed #print-NN hashes while the project is open in the Viewfinder: focus stays in playback, the arrows page at once, Tab stays inside`, async ({ browser, browserName }) => {
+    const ctx = await context(browser, browserName, profile);
+    const page = await ctx.newPage();
+    try {
+      await home(page);
+      await toFrame(page, 5);
+      await page.keyboard.press('Enter');
+      await untilState(page, 'open', 5);
+      await page.evaluate(() => { location.hash = '#print-02'; });
+      await expect.poll(async () => (await pb(page))?.open, { message: 'the typed hash opens playback' }).toBe(true);
+      expect((await pb(page)).count).toBe('02 / 12');
+      await frames(page);
+      await expect.poll(() => where(page), { message: 'after a typed hash, focus is in playback' }).toMatch(/^in:/);
+      await pages(page, 'ArrowRight', '#print-03');
+      // a second typed hash while playback is up
+      await page.evaluate(() => { location.hash = '#print-06'; });
+      await expect.poll(async () => (await pb(page)).count).toBe('06 / 12');
+      await frames(page);
+      await expect.poll(() => where(page), { message: 'after a second typed hash, focus is in playback' }).toMatch(/^in:/);
+      await pages(page, 'ArrowLeft', '#print-05');
+      await pages(page, 'ArrowRight', '#print-06');
+      await tabsStay(page);
+    } finally {
+      await ctx.close();
+    }
+  });
+
+  test(`A10 at ${label}: Next or Prev to either end, by ${profile.hasTouch ? 'tap' : 'click'} and by Enter: focus stays in playback, the arrows page at once, Tab stays inside`, async ({ browser, browserName }) => {
+    const ctx = await context(browser, browserName, profile);
+    const page = await ctx.newPage();
+    const openAt = async (n, by) => {
+      const sel = `#print-${String(n).padStart(2, '0')} [data-print-open]`;
+      await centrePrint(page, n);
+      if (by === 'key') { await page.locator(sel).focus(); await page.keyboard.press('Enter'); } else await press(page, profile, sel);
+      await expect.poll(async () => (await pb(page))?.hash).toBe(`#print-${String(n).padStart(2, '0')}`);
+      expect((await pb(page)).open).toBe(true);
+    };
+    const shut = async () => {
+      await page.keyboard.press('Escape');
+      await expect.poll(async () => (await pb(page)).open).toBe(false);
+      await expect.poll(() => page.evaluate(() => location.hash)).toBe('');
+    };
+    try {
+      await cold(page, 'project-06');
+      // by click or tap: Next to the end, then Prev to the start
+      await openAt(11, 'pointer');
+      await press(page, profile, 'dialog.pb [data-pb-next]');
+      await expect.poll(async () => (await pb(page)).hash).toBe('#print-12');
+      expect(await page.locator('dialog.pb [data-pb-next]').isDisabled(), 'Next is off at the end').toBe(true);
+      expect(await where(page), 'Next to the end: focus is in playback').toMatch(/^in:/);
+      await pages(page, 'ArrowLeft', '#print-11');
+      await pages(page, 'ArrowRight', '#print-12');
+      await tabsStay(page);
+      await shut();
+      await openAt(2, 'pointer');
+      await press(page, profile, 'dialog.pb [data-pb-prev]');
+      await expect.poll(async () => (await pb(page)).hash).toBe('#print-01');
+      expect(await where(page), 'Prev to the start: focus is in playback').toMatch(/^in:/);
+      await pages(page, 'ArrowRight', '#print-02');
+      await shut();
+
+      // by Enter on a focused Next or Prev: focus moves to the other one as its own is disabled
+      await openAt(11, 'key');
+      await page.locator('dialog.pb [data-pb-next]').focus();
+      await page.keyboard.press('Enter');
+      await expect.poll(async () => (await pb(page)).hash).toBe('#print-12');
+      expect(await where(page), 'Enter on Next to the end: focus on Prev').toBe('in:BUTTON[prev]');
+      await pages(page, 'ArrowLeft', '#print-11');
+      await pages(page, 'ArrowRight', '#print-12');
+      await tabsStay(page);
+      await shut();
+      await openAt(2, 'key');
+      await page.locator('dialog.pb [data-pb-prev]').focus();
+      await page.keyboard.press('Enter');
+      await expect.poll(async () => (await pb(page)).hash).toBe('#print-01');
+      expect(await where(page), 'Enter on Prev to the start: focus on Next').toBe('in:BUTTON[next]');
+      await pages(page, 'ArrowRight', '#print-02');
+      await tabsStay(page);
+    } finally {
+      await ctx.close();
+    }
+  });
+}
+
 // wv1-pb-failed-image (queued from judge r2): playback of a print whose image failed shows the same "image unavailable"
 // print at its aspect, with no broken-image glyph and no raw alt text (9f25a82 cloned the failed <picture>).
 test('A10 / A8 a failed image opens in playback as the same "image unavailable" print, at its aspect', async ({ browser, browserName }) => {

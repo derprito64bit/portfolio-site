@@ -62,6 +62,12 @@ export const PLANTS = [
   ['sat-0.5', 'A9', 'src/evf/style/print.css', '.roll[data-dim] .print:not([data-focus]) .print__img { filter: saturate(0.4); }', '.roll[data-dim] .print:not([data-focus]) .print__img { filter: saturate(0.5); }', 'roll.spec.mjs', 'the print nearest the centre'],
   // the Flip's landing, polled rather than read at 700 ms: a Flip that never lands untransformed still fails
   ['flip-short', 'A10', 'src/evf/project/playback.ts', 'gsap.to(frame, { x: 0, y: 0, scaleX: 1, scaleY: 1, duration: D.land, ease: E.out });', 'gsap.to(frame, { x: 0, y: 0, scaleX: 0.9, scaleY: 0.9, duration: D.land, ease: E.out });', 'playback.spec.mjs', 'A10 at 1440'],
+  // wv1-pb-arrows-focus (judge r3): each plant takes back one part of the fix (4f2deb5's own build fails all these rows)
+  ['pb-keys-dialog', 'A10', 'src/evf/project/playback.ts', 'if (cur < 0 || !dlg || e.defaultPrevented) return;', 'if (cur < 0 || !dlg || e.defaultPrevented || !dlg.contains(e.target as Node)) return;', 'playback.spec.mjs', 'cold #print-NN load'],
+  ['pb-focus-lost', 'A10', 'src/evf/project/playback.ts', "d.addEventListener('focusout', (e) => { if (cur >= 0 &&", "d.addEventListener('focusout', (e) => { if (false &&", 'playback.spec.mjs', 'cold #print-NN load|typed #print-NN hashes'],
+  ['pb-end-handoff', 'A10', 'src/evf/project/playback.ts', '(otherOff ? parts.close : other).focus({ preventScroll: true });', 'void other; void otherOff;', 'playback.spec.mjs', 'to either end'],
+  ['pb-tab-out', 'A10', 'src/evf/project/playback.ts', "if (e.key === 'Tab') { tab(e, dlg); return; }", "if (e.key === 'Tab') return;", 'playback.spec.mjs', 'to either end'],
+  ['pb-clip-arrows', 'A10', 'src/evf/project/playback.ts', "if ((e.target as Element | null)?.closest?.('video, input, select, textarea')) return;", '', 'playback.spec.mjs', 'cold #print-NN load'],
 ];
 
 const SKIP = new Set(['node_modules', 'dist', '.git', 'test-results', '.astro', 'playwright-report']);
