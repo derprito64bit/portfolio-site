@@ -351,3 +351,30 @@ for (const w of [760, 768, 900, 1000, 1040]) test(`A1 meta cells hold their plac
     await ctx.close();
   }
 });
+
+for (const [label, profile] of [['1440', DESK], ['390', PHONE]]) test(`A1 the title line under the h1 holds real text: wrapped lines stack, the placeholder chip keeps its 21 px line at ${label}`, async ({ browser, browserName }) => {
+  const ctx = await context(browser, browserName, profile);
+  const page = await ctx.newPage();
+  try {
+    await page.goto(`${base()}/work/project-01/?vf-test`, { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('.pj__ph');
+    const s = await page.evaluate(() => {
+      const p = document.querySelector('.pj__ph');
+      const h0 = p.getBoundingClientRect().height;
+      // a real title in place of the chip (textContent, never innerHTML: D-055), long enough to wrap at 536 and 358 px
+      p.textContent = 'A much longer real project title that has to wrap onto a second line on a phone and across the desktop column too';
+      const range = document.createRange();
+      range.selectNodeContents(p.firstChild);
+      const rects = [...range.getClientRects()].map((r) => ({ top: r.top, bottom: r.bottom }));
+      return { h0, rects, lh: parseFloat(getComputedStyle(p).lineHeight) || 0, h: p.getBoundingClientRect().height, meta: document.querySelector('.pj__meta').getBoundingClientRect().top };
+    });
+    expect(Math.abs(s.h0 - 21), `the placeholder chip's line stays 21 px (${s.h0})`).toBeLessThanOrEqual(1);
+    expect(s.rects.length, 'the title wraps (one rect per line)').toBeGreaterThanOrEqual(2);
+    expect(s.lh, 'the title line has a line height').toBeGreaterThan(0);
+    expect(s.h, `the title has its own height (${s.h} for ${s.rects.length} lines)`).toBeGreaterThanOrEqual(s.rects.length * 16);
+    for (let i = 1; i < s.rects.length; i++) expect(s.rects[i].top - s.rects[i - 1].top, `line ${i + 1} sits below line ${i}, not over it`).toBeGreaterThanOrEqual(16);
+    expect(s.meta, 'the meta rule stays below the title').toBeGreaterThanOrEqual(s.rects.at(-1).bottom);
+  } finally {
+    await ctx.close();
+  }
+});
