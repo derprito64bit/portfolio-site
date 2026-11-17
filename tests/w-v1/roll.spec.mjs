@@ -936,3 +936,41 @@ test('forced colours: the bar is backed and the play mark is a triangle', async 
     await ctx.close();
   }
 });
+
+// fix-pass B5
+// f28: the sizes attribute carries the height cap, min(width, 80vh x aspect), as the frame does, so the browser never
+// takes a rung wider than the frame needs. Project 06's first print is its auto hero (1920 x 1200: widthFrac 1, aspect
+// 1.6). At 1440 x 540, DPR 1, its frame is min(1384, 0.8 x 540 x 1.6) = 691 px and the 800 rung is the one; a sizes
+// without the cap asks for 1384 px, which takes 1280 in Chromium and 1920 in an engine that takes the first candidate
+// at or above the density.
+test.describe('A7 f28 the height cap in sizes', () => {
+  test('1440 x 540: the height-capped hero print loads its 800 rung', async ({ own: browser, browserName }) => {
+    const ctx = await context(browser, browserName, { ...DESK, viewport: { width: 1440, height: 540 } });
+    const page = await ctx.newPage();
+    try {
+      await cold(page, 'project-06');
+      await page.waitForFunction(() => { const i = document.querySelector('img[data-lcp="print-1"]'); return i && i.complete && i.currentSrc; }, null, { timeout: 20000, polling: 50 });
+      const r = await page.evaluate(() => {
+        const i = document.querySelector('img[data-lcp="print-1"]');
+        return { src: i.currentSrc, sizes: i.getAttribute('sizes'), frame: i.closest('.print').querySelector('.print__frame').getBoundingClientRect().width };
+      });
+      expect(Math.abs(r.frame - 0.8 * 540 * 1.6), `the frame is held by 80 svh (${r.frame} px)`).toBeLessThan(2);
+      expect(r.src, `sizes="${r.sizes}"`).toMatch(/-first-800\.(avif|webp)$/);
+    } finally {
+      await ctx.close();
+    }
+  });
+  // at 1440 x 900 the frame is 1152 px: 1280 fits it; without the cap both engines took 1920 (fix-pass B5 red run)
+  test('1440 x 900: the hero print loads its 1280 rung, not 1920', async ({ own: browser, browserName }) => {
+    const ctx = await context(browser, browserName, DESK);
+    const page = await ctx.newPage();
+    try {
+      await cold(page, 'project-06');
+      await page.waitForFunction(() => { const i = document.querySelector('img[data-lcp="print-1"]'); return i && i.complete && i.currentSrc; }, null, { timeout: 20000, polling: 50 });
+      const r = await page.evaluate(() => { const i = document.querySelector('img[data-lcp="print-1"]'); return { src: i.currentSrc, sizes: i.getAttribute('sizes') }; });
+      expect(r.src, `sizes="${r.sizes}"`).toMatch(/-first-1280\.(avif|webp)$/);
+    } finally {
+      await ctx.close();
+    }
+  });
+});

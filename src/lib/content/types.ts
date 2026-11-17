@@ -38,12 +38,20 @@ export interface DerivedImage {
   files: import('../prints/ladder.ts').LadderFile[];
   lqip: string;
 }
+/** A video or a model: the file copied as it is, sized by its poster. */
 export interface DerivedVideo {
-  type: 'video';
+  type: 'video' | 'model';
   hash: string;
   file: string;
   bytes: number;
   poster: string;
+}
+/** A video's WebVTT captions, copied as they are. */
+export interface DerivedCaptions {
+  type: 'captions';
+  hash: string;
+  file: string;
+  bytes: number;
 }
 
 /** A film print as the page renders it (src/components/print): the media entry, its files and its size. */
@@ -60,6 +68,7 @@ export interface PrintView {
   decorative: boolean;
   loop: boolean;
   audio: boolean;
+  /** The site URL of a clip's .vtt (a confirmed clip with audio), or '' when there is none. */
   captions: string;
   placeholder: boolean;
   /** The size the print is laid out at: the file's, else the declared one, else 3:2. */

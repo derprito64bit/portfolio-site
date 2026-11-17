@@ -1041,3 +1041,49 @@ test('A10 a one-clip roll (project-02): Tab and Shift+Tab from the clip never le
     await ctx.close();
   }
 });
+
+// fix-pass B5
+// f12: a clip's captions file reaches playback. The build sets data-captions on the grid's video only for a confirmed
+// clip with audio and a .vtt (prints.ts); fill() turns it into a default captions <track> in the dialog's video, and only
+// there (the grid's muted, aria-hidden preview never gets one). No content has such a clip yet, so the row plants the
+// attribute on print 05 (a loop clip); the planted URL's 404 is harmless here (no console gate in this file). The live
+// frame only: a page's outgoing ghost (a still clone of the old frame) fades out beside it.
+test('A10 f12: a clip with captions plays with one default captions track in playback; other prints have none', async ({ browser, browserName }) => {
+  const ctx = await context(browser, browserName, DESK);
+  const page = await ctx.newPage();
+  const tracks = () => page.evaluate(() => [...document.querySelectorAll('.pb__frame:not(.pb__ghost) video track')].map((t) => ({ kind: t.kind, src: t.getAttribute('src'), def: t.hasAttribute('default'), lang: t.srclang })));
+  const to = async (hash) => expect.poll(async () => (await pb(page))?.hash).toBe(hash);
+  try {
+    await cold(page, 'project-06');
+    await centrePrint(page, 5);
+    await page.evaluate(() => { document.querySelector('#print-05 video').dataset.captions = '/media/fixtures/x.vtt'; });
+    await page.locator('#print-05 [data-print-open]').click();
+    await expect.poll(async () => (await pb(page))?.open).toBe(true);
+    await to('#print-05');
+    expect((await pb(page)).media).toBe('VIDEO');
+    const t = await tracks();
+    expect(t.length, 'one track on the clip with captions').toBe(1);
+    expect(t[0].kind).toBe('captions');
+    expect(t[0].src.endsWith('/media/fixtures/x.vtt'), t[0].src).toBe(true);
+    expect(t[0].def, 'shown by default').toBe(true);
+    expect(t[0].lang.length > 0, 'srclang set').toBe(true);
+    expect(await page.locator('#print-05 video track').count(), 'no track in the grid preview').toBe(0);
+    await page.keyboard.press('ArrowLeft');
+    await to('#print-04');
+    expect(await page.locator('.pb__frame:not(.pb__ghost) track').count(), 'paging to an image drops the track').toBe(0);
+    await page.keyboard.press('ArrowRight');
+    await to('#print-05');
+    expect((await tracks()).length, 'back on the clip: exactly one track').toBe(1);
+    for (const h of ['#print-06', '#print-07', '#print-08', '#print-09']) { await page.keyboard.press('ArrowRight'); await to(h); }
+    expect((await pb(page)).media).toBe('VIDEO');
+    expect(await page.locator('.pb__frame:not(.pb__ghost) track').count(), 'a clip without captions has no track').toBe(0);
+    await page.keyboard.press('Escape');
+    await expect.poll(async () => (await pb(page)).open).toBe(false);
+    await centrePrint(page, 5);
+    await page.locator('#print-05 [data-print-open]').click();
+    await to('#print-05');
+    expect((await tracks()).length, 'reopened: one track, not two').toBe(1);
+  } finally {
+    await ctx.close();
+  }
+});

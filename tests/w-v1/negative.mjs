@@ -110,6 +110,11 @@ export const PLANTS = [
   ['no-short-foot', 'A10', 'src/evf/style/print.css', '.pb__foot { grid-template-columns: auto minmax(0, 1fr); gap: 12px; }', '', 'playback.spec.mjs', 'a phone on its side'],
   ['pb-clip-empty-controls', 'A10', 'src/evf/project/playback.ts', 'v.controls = !!src;', 'v.controls = true;', 'playback.spec.mjs', 'controls only when it has a file'],
   ['pb-one-clip-tab', 'A10', 'src/evf/project/playback.ts', "prev.setAttribute('aria-disabled', String(n === 0));\n    next.setAttribute('aria-disabled', String(n === total - 1));", "prev.toggleAttribute('disabled', n === 0);\n    next.toggleAttribute('disabled', n === total - 1);", 'playback.spec.mjs', 'one-clip roll'],
+  // fix-pass B5
+  // f12: playback's video never gets the clip's captions track
+  ['b5-no-track', 'A10', 'src/evf/project/playback.ts', "const cc = p.querySelector('video')?.dataset.captions; if (cc)", "const cc = ''; if (cc)", 'playback.spec.mjs', 'A10 f12'],
+  // f28: sizes without the height cap (the hero print takes 1920 for a 691 or 1152 px frame)
+  ['b5-sizes-no-cap', 'A7', 'src/lib/prints/size.ts', 'const cap = (h: number, w: string) => `min(${w}, calc(${h}vh * ${ar}))`;', 'const cap = (h: number, w: string) => w;', 'roll.spec.mjs', 'A7 f28'],
 ];
 
 const SKIP = new Set(['node_modules', 'dist', '.git', 'test-results', '.astro', 'playwright-report']);
