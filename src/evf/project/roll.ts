@@ -162,7 +162,8 @@ export function initRoll(o: RollOptions): RollControl | null {
     af.classList.toggle('on', dim);
     // the dim comes on (or goes) for every print but the focused one
     if (dim !== was) prints.forEach((p, i) => { if (i !== n) sat(p, dim || i === cur ? 1 : 0.4, dim ? 0.4 : 1, jump); });
-    if (n === cur) { if (dim) place(n, true); return; }
+    // the same print: only a re-layout re-places the brackets; the scroll events that follow a change leave the glide be
+    if (n === cur) { if (dim && jump) place(n, true); return; }
     const prev = cur;
     if (prev >= 0) prints[prev]?.removeAttribute('data-focus');
     const first = prev < 0;

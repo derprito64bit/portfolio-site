@@ -70,6 +70,7 @@ export const PLANTS = [
   ['pb-clip-arrows', 'A10', 'src/evf/project/playback.ts', "if ((e.target as Element | null)?.closest?.('video, input, select, textarea')) return;", '', 'playback.spec.mjs', 'cold #print-NN load'],
   // fix-pass B1 (the roll and the print surface): each plant puts one fixed defect back
   ['dim-strip', 'A9', 'src/evf/style/print.css', '.roll[data-dim] .print:not([data-focus], .is-failed) .print__frame:not(:has(> .print__box)) { opacity: 0.55; }', '.roll[data-dim] .print:not([data-focus]) { opacity: 0.55; }', 'roll.spec.mjs', 'the dim leaves the strip'],
+  ['scroll-snaps-af', 'A9', 'src/evf/project/roll.ts', 'if (n === cur) { if (dim && jump) place(n, true); return; }', 'if (n === cur) { if (dim) place(n, true); return; }', 'roll.spec.mjs', 'the brackets glide through'],
 ];
 
 const SKIP = new Set(['node_modules', 'dist', '.git', 'test-results', '.astro', 'playwright-report']);
