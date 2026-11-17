@@ -28,6 +28,27 @@ let engine: Engine | null = null;
 let scene: Scene | null = null;
 let S: 'open' | 'closing' = 'open';
 
+// ---------------------------------------------------------------- the frame recedes as the roll comes up
+/** -4 EV as the roll comes up: the frame recedes behind the prints. */
+const dimAt = () => Math.pow(2, -4 * Math.min(1, Math.max(0, window.scrollY / (window.innerHeight * 0.85))));
+let lastDim = -1;
+let again: gsap.core.Tween | null = null;
+// registered before initRoll on purpose: this reads scrollY before the roll's focus writes in the same scroll dispatch
+// (the roll reads first, then writes), so no read here forces a style pass
+window.addEventListener('scroll', () => {
+  if (!engine) return;
+  const d = dimAt();
+  if (Math.abs(d - lastDim) < 0.002) return;
+  lastDim = d;
+  engine.st.dim = d;
+  engine.invalidate(250);
+  // once more as the scroll settles: after a jump scroll a busy WebKit can spend the first window on one stale frame
+  // (or none: a late frame past the window draws nothing), which left the frame at full exposure behind the roll, and a
+  // print's ring over it. The second window opens from a ticker frame, so it always gets one.
+  again?.kill();
+  again = gsap.delayedCall(0.3, () => engine?.invalidate(400));
+}, { passive: true });
+
 // ---------------------------------------------------------------- the roll and playback
 const roll = initRoll({ root: article, scroller: window, calm, counter: document.querySelector<HTMLElement>('[data-print-count]') });
 const pb = initPlayback({ prints: roll?.prints ?? [], calm, onHold: (on) => roll?.hold(on) });
@@ -50,8 +71,6 @@ window.addEventListener('keydown', (e) => {
 });
 
 // ---------------------------------------------------------------- the frame behind the header
-/** -4 EV as the roll comes up: the frame recedes behind the prints. */
-const dimAt = () => Math.pow(2, -4 * Math.min(1, Math.max(0, window.scrollY / (window.innerHeight * 0.85))));
 function frameState() {
   if (!engine || !scene) return;
   Object.assign(engine.st, landedState(scene, subjectOf(scene), openZoom(frameRect('work'))), { dim: dimAt() });
@@ -101,22 +120,6 @@ async function boot() {
     html.classList.add('nogl');
   }
 }
-
-let lastDim = -1;
-let again: gsap.core.Tween | null = null;
-window.addEventListener('scroll', () => {
-  if (!engine) return;
-  const d = dimAt();
-  if (Math.abs(d - lastDim) < 0.002) return;
-  lastDim = d;
-  engine.st.dim = d;
-  engine.invalidate(250);
-  // once more as the scroll settles: after a jump scroll a busy WebKit can spend the first window on one stale frame
-  // (or none: a late frame past the window draws nothing), which left the frame at full exposure behind the roll, and a
-  // print's ring over it. The second window opens from a ticker frame, so it always gets one.
-  again?.kill();
-  again = gsap.delayedCall(0.3, () => engine?.invalidate(400));
-}, { passive: true });
 
 let rz: gsap.core.Tween | null = null;
 window.addEventListener('resize', () => {

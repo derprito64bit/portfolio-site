@@ -5,7 +5,7 @@
 // CLS at 60 Hz on the reference host; this fails on 9f25a82, whose travel wrote the frame's left, top, width and height
 // on every frame.
 import { test, expect } from '@playwright/test';
-import { context, home, untilState } from './lib.mjs';
+import { DESK, base, context, home, scrollTo, untilState } from './lib.mjs';
 
 const G1 = { viewport: { width: 640, height: 400 }, deviceScaleFactor: 1, hasTouch: false, isMobile: false };
 const GL_MS = 60000; // software GL in CI draws a few frames a second
@@ -128,6 +128,64 @@ test('A2 / A13 with GL: a resize or rotate during the open: the open view fills 
     expect(s.rect, 'the GL draws the open view over the new viewport').toEqual([0, 0, 400, 640]);
     expect(s.marks, 'the marks stay hidden while open').toEqual(['hidden', 'hidden', 'hidden', 'hidden']);
     expect(s.frame, 'the frame box is the new work frame (no layout move)').toEqual(s.box);
+  } finally {
+    await ctx.close();
+  }
+});
+
+/** Wraps every window scroll listener (set before the page's modules run) and counts the scrollY reads made inside a
+ *  scroll listener after a DOM write in the same dispatch (raw): each one is a forced style pass. A proxy, not a timing. */
+function scrollProbe() {
+  let inScroll = false, dirty = false, lastEv = null;
+  const st = { reads: 0, raw: 0, listeners: 0 };
+  window.__scrollProbe = st;
+  const mo = new MutationObserver(() => { dirty = true; });
+  mo.observe(document, { attributes: true, childList: true, characterData: true, subtree: true });
+  const add = EventTarget.prototype.addEventListener;
+  window.addEventListener = function (type, fn, opts) {
+    if (type !== 'scroll' || typeof fn !== 'function') return add.call(this, type, fn, opts);
+    st.listeners++;
+    return add.call(this, type, function (ev) {
+      // the first listener of a dispatch starts clean: only writes inside this dispatch count
+      if (ev !== lastEv) { lastEv = ev; dirty = false; mo.takeRecords(); }
+      inScroll = true;
+      try { return fn.call(this, ev); } finally { inScroll = false; }
+    }, opts);
+  };
+  const d = Object.getOwnPropertyDescriptor(window, 'scrollY') ?? Object.getOwnPropertyDescriptor(Window.prototype, 'scrollY');
+  Object.defineProperty(window, 'scrollY', {
+    configurable: true,
+    get() {
+      st.reads++;
+      if (inScroll && (dirty || mo.takeRecords().length)) { dirty = true; st.raw++; }
+      return d.get.call(window);
+    },
+  });
+}
+
+// f29: on a cold page the frame's dim listener runs before the roll's, so it reads scrollY before the roll's focus
+// writes in the same scroll dispatch (the roll's own read comes before its writes too)
+test('A7 cold page with GL: the frame\'s dim reads the scroll before the roll writes (no forced style pass)', async ({ browser, browserName }) => {
+  test.skip(browserName !== 'chromium', 'the GL row runs in Chromium (the reference host\'s GPU)');
+  test.setTimeout(240_000);
+  const ctx = await context(browser, browserName, DESK, { gl: true, init: [`(${scrollProbe})();`] });
+  const page = await ctx.newPage();
+  try {
+    await page.goto(`${base()}/work/project-06/?vf-test`, { waitUntil: 'load' });
+    const gl = await page.waitForFunction(() => Boolean(window.__vfEngine), null, { timeout: 20000 }).then(() => true, () => false);
+    test.skip(!gl, 'no WebGL in this browser here: the row guards on the reference host');
+    const max = await page.evaluate(() => document.documentElement.scrollHeight - innerHeight);
+    const seen = new Set();
+    for (let k = 1; k <= 12; k++) {
+      await scrollTo(page, Math.round((max * k) / 12));
+      await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+      seen.add(await page.evaluate(() => document.querySelector('[data-print-count]')?.textContent ?? ''));
+    }
+    const p = await page.evaluate(() => window.__scrollProbe);
+    test.info().annotations.push({ type: 'scroll probe', description: JSON.stringify({ ...p, focus: [...seen] }) });
+    expect(seen.size, 'the roll changed focus as it scrolled').toBeGreaterThanOrEqual(3);
+    expect(p.reads, 'scrollY was read').toBeGreaterThan(0);
+    expect(p.raw, 'no scrollY read after a DOM write in the same scroll dispatch').toBe(0);
   } finally {
     await ctx.close();
   }

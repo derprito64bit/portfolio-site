@@ -78,6 +78,8 @@ export const PLANTS = [
   ['cold-restore-auto', 'A10', 'src/evf/project/cold.ts', "history.scrollRestoration = 'auto';", '', 'playback.spec.mjs', 'a reload after playback'],
   // WebKit only (run with --project webkit): Chromium restores from the boot write alone
   ['cold-restore-hide', 'A10', 'src/evf/project/cold.ts', "addEventListener('pagehide', autoRestore);", '', 'playback.spec.mjs', 'a reload after playback'],
+  // a reference-host plant (GL in Chromium): with no __vfEngine the row skips and this is MISSED
+  ['cold-scroll-dirty', 'J3', 'src/evf/project/cold.ts', 'if (!engine) return;\n  const d = dimAt();', "if (!engine) return;\n  document.body.dataset.d = '1';\n  const d = dimAt();", 'cls-gl.spec.mjs', 'reads the scroll before the roll writes'],
 ];
 
 const SKIP = new Set(['node_modules', 'dist', '.git', 'test-results', '.astro', 'playwright-report']);
