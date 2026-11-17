@@ -344,5 +344,35 @@ for (const [label, profile] of [['1440', DESK], ['390', PHONE]]) {
         await ctx.close();
       }
     });
+
+    // f23: a failed or late page falls back to location.assign; the 500 row above covers only the failed half (bring()
+    // rejects before the landing), so this holds the in-app fetch past the 0.4 s flat landing
+    test('a page not parsed by the landing falls back to location.assign', async ({ browser, browserName }) => {
+      const ctx = await context(browser, browserName, profile);
+      const page = await ctx.newPage();
+      let held = 0, released = false;
+      // the glob matches the in-app fetch (/work/project-02/), not the fallback document (?vf-test); the guard is defence only
+      await page.route('**/work/project-02/', async (r) => {
+        if (r.request().isNavigationRequest()) return r.continue();
+        held++;
+        await new Promise((res) => setTimeout(res, 4000));
+        released = true;
+        await r.continue().catch(() => {});
+      });
+      try {
+        await home(page);
+        await toFrame(page, 1);
+        const nav = page.waitForRequest((q) => q.isNavigationRequest() && /\/work\/project-02\/\?vf-test/.test(q.url()), { timeout: 3500 });
+        nav.catch(() => {});
+        await page.keyboard.press('Enter');
+        await nav;
+        expect(released, 'navigated while the in-app fetch was still held').toBe(false);
+        expect(held, 'the in-app fetch (open or prefetch) was the held one').toBeGreaterThan(0);
+        await page.waitForFunction(() => window.__vf && window.__vf.state() === 'open', null, { timeout: 10000 });
+        expect(await page.locator('#evf').count(), 'the page itself, not the Viewfinder').toBe(0);
+      } finally {
+        await ctx.close();
+      }
+    });
   });
 }

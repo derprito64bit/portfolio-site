@@ -72,6 +72,7 @@ export const PLANTS = [
   ['resize-opening', 'A13', 'src/evf/project/inapp.ts', "if (S !== 'open' && S !== 'opening') return;", "if (S !== 'open') return;", 'keys.spec.mjs', 'resize or rotate during the open'],
   // a reference-host plant: only the GL row kills it; with no __vfEngine (no WebGL here) the row skips and this is MISSED
   ['owned-opening', 'A13', 'src/evf/main.ts', "const owned = S === 'open' || S === 'opening';", "const owned = S === 'open';", 'cls-gl.spec.mjs', 'resize or rotate during the open'],
+  ['not-parsed-wait', 'A2', 'src/evf/project/inapp.ts', 'if (!ready) { fail(); return; }', 'if (!ready) return;', 'open.spec.mjs', 'not parsed by the landing'],
 ];
 
 const SKIP = new Set(['node_modules', 'dist', '.git', 'test-results', '.astro', 'playwright-report']);
