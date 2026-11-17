@@ -728,3 +728,57 @@ for (const [n, dpr] of [[6, 1], [6, 2], [4, 1]]) {
     }
   });
 }
+
+// f17: a phone on its side (under 760 px wide, 520 px or less tall) matched the phone block as well, whose frame width
+// (100svh - top - 190px) and stacked foot left a portrait print a 121 px sliver over an empty stage.
+const sideways = async (page, why) => {
+  await expect.poll(() => page.evaluate(() => getComputedStyle(document.querySelector('.pb__frame')).transform), { timeout: 3000 }).toMatch(/^(none|matrix\(1, 0, 0, 1, 0, 0\))$/);
+  const s = await page.evaluate(() => {
+    const r = (sel) => document.querySelector(`dialog.pb ${sel}`).getBoundingClientRect();
+    const [f, stage, foot, bar, nav, strip] = ['.pb__frame', '.pb__stage', '.pb__foot', '.pb__bar', '.pb__nav', '.pb__strip'].map(r);
+    const targets = [...document.querySelectorAll('dialog.pb .pb__nav button, dialog.pb .pb__close')].map((b) => { const x = b.getBoundingClientRect(); return Math.min(x.width, x.height); });
+    return { f: { w: f.width, h: f.height, top: f.top, bottom: f.bottom }, stageH: stage.height, footTop: foot.top, barBottom: bar.bottom, navRight: nav.right, navTop: nav.top, stripLeft: strip.left, stripTop: strip.top, stripBottom: strip.bottom, targets };
+  });
+  const at = `${why}: frame ${Math.round(s.f.w)} x ${Math.round(s.f.h)}, stage ${Math.round(s.stageH)}`;
+  // (a) the print has the height
+  expect(s.f.h, `${at}: the frame is at least 180 px tall`).toBeGreaterThanOrEqual(180);
+  expect(s.f.h, `${at}: the frame fills at least 0.8 of the stage`).toBeGreaterThanOrEqual(0.8 * (s.stageH - 16));
+  // (b) clear of the bar and of the foot
+  expect(s.f.top, `${at}: clear of the bar`).toBeGreaterThanOrEqual(s.barBottom - 0.5);
+  expect(s.f.bottom, `${at}: clear of the foot (${Math.round(s.footTop)})`).toBeLessThanOrEqual(s.footTop + 0.5);
+  // (c) the 44 px targets (A12)
+  expect(Math.min(...s.targets), `${at}: Close, Prev and Next keep 44 px targets`).toBeGreaterThanOrEqual(44);
+  // (d) one foot row: the nav beside the strip
+  expect(s.stripLeft >= s.navRight - 0.5 && s.navTop < s.stripBottom, `${at}: the nav sits beside the strip, on one row`).toBe(true);
+};
+test('A10 a phone on its side (667 x 375): playback gives a portrait print the height', async ({ browser, browserName }) => {
+  const ctx = await context(browser, browserName, { ...PHONE, viewport: { width: 667, height: 375 } });
+  const page = await ctx.newPage();
+  try {
+    await cold(page, 'project-06');
+    const n = await page.evaluate(() => Number([...document.querySelectorAll('.print')].find((p) => Number(p.dataset.ar) < 1).dataset.print));
+    const sel = `#print-${String(n).padStart(2, '0')} [data-print-open]`;
+    await centrePrint(page, n);
+    await page.locator(sel).tap();
+    await expect.poll(async () => (await pb(page))?.open).toBe(true);
+    await sideways(page, 'opened at 667 x 375');
+  } finally {
+    await ctx.close();
+  }
+});
+test('A10 a phone on its side, turned while playback is open (390 x 844 to 667 x 375): playback gives a portrait print the height', async ({ browser, browserName }) => {
+  const ctx = await context(browser, browserName, PHONE);
+  const page = await ctx.newPage();
+  try {
+    await cold(page, 'project-06');
+    const n = await page.evaluate(() => Number([...document.querySelectorAll('.print')].find((p) => Number(p.dataset.ar) < 1).dataset.print));
+    await centrePrint(page, n);
+    await page.locator(`#print-${String(n).padStart(2, '0')} [data-print-open]`).tap();
+    await expect.poll(async () => (await pb(page))?.open).toBe(true);
+    await page.setViewportSize({ width: 667, height: 375 });
+    await frames(page);
+    await sideways(page, 'turned to 667 x 375');
+  } finally {
+    await ctx.close();
+  }
+});
