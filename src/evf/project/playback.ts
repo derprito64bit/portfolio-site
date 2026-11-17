@@ -94,7 +94,7 @@ export function initPlayback(o: PlaybackOptions): PlaybackControl {
     return d;
   }
 
-  /** Fills the dialog with print n: a clone of its media (the widest rungs), its readouts and its caption. */
+  /** Fills the dialog with print n: a clone of its media (rungs sized to the frame), its readouts and its caption. */
   function fill(n: number) {
     const p = prints[n];
     const { frame, count, ro, cap, prev, next } = parts;
@@ -106,7 +106,12 @@ export function initPlayback(o: PlaybackOptions): PlaybackControl {
     const failed = p.classList.contains('is-failed');
     frame.toggleAttribute('data-letterbox', box);
     frame.toggleAttribute('data-failed', failed);
-    if (lq && !box && !failed) frame.style.setProperty('--lqip', lq); else frame.style.removeProperty('--lqip');
+    // the roll's own loaded image (else the LQIP) lies under the clone while its rung loads: the Flip never flies an
+    // empty panel (the roll's copy is concealed)
+    const rimg = p.querySelector<HTMLImageElement>('img.print__img');
+    const held = rimg?.complete && rimg.naturalWidth > 0 ? rimg.currentSrc : '';
+    const under = held ? `url("${held.replace(/["\\]/g, (c) => encodeURIComponent(c))}")` : lq;
+    if (under && !failed) frame.style.setProperty('--lqip', under); else frame.style.removeProperty('--lqip');
     // a focused clip that pages away (a swipe) hands focus to Close before it goes
     if (frame.contains(document.activeElement)) parts.close.focus({ preventScroll: true });
     frame.replaceChildren();
@@ -123,8 +128,10 @@ export function initPlayback(o: PlaybackOptions): PlaybackControl {
       frame.append(v);
     } else if (pic) {
       const c = pic.cloneNode(true) as HTMLElement;
+      // the frame's laid-out width (the --ar above is in it; transforms are not): the rung the frame needs
+      const w = frame.offsetWidth;
       c.querySelectorAll('source, img').forEach((x) => {
-        x.setAttribute('sizes', '(max-width: 759px) 100vw, 92vw');
+        x.setAttribute('sizes', w > 0 ? `${w}px` : '(max-width: 759px) 100vw, 92vw');
         for (const a of ['loading', 'fetchpriority', 'data-lcp', 'id', 'class']) x.removeAttribute(a);
       });
       frame.append(c);
@@ -215,12 +222,13 @@ export function initPlayback(o: PlaybackOptions): PlaybackControl {
       leaving?.progress(1);
       dlg ??= build();
       cur = n;
-      fill(n);
       o.onHold?.(true);
       // manual scroll restoration (the pushed entry copies it): stepping back over playback's entry keeps the roll where
       // paging left it, on the print just shown, not the scroll the page had when playback opened
       if (push) { history.scrollRestoration = 'manual'; hist.push(printHash(n + 1)); pushed = true; }
       dlg.showModal();
+      // filled once shown: the frame has its layout width for the clone's sizes (same task, nothing paints between)
+      fill(n);
       parts.close.focus({ preventScroll: true });
       const { frame, bg, bar, foot } = parts;
       gsap.killTweensOf([frame, bg, bar, foot]);

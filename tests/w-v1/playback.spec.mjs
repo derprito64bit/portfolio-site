@@ -669,3 +669,62 @@ for (const [label, profile] of [['1440', DESK], ['390', PHONE]]) {
     }
   });
 }
+
+// f13: a print past the LQIP set (01 to 03 carry one) flew as a flat panel (the roll's copy is concealed for the Flip)
+// while the clone's rung loaded, and the clone asked for a rung sized by a 92vw literal (1920 for a 528 px frame). Every
+// media request after the click is held, so the Flip shows only what the frame already has: the roll's own loaded image
+// under the clone. The rung asked for is read from the held request (Chromium sets currentSrc only once it answers).
+for (const [n, dpr] of [[6, 1], [6, 2], [4, 1]]) {
+  test(`J4 the Flip never flies an empty panel: print ${String(n).padStart(2, '0')}, past the LQIP set, at DPR ${dpr} opens over the roll's own image and asks for the frame's width`, async ({ browser, browserName }) => {
+    const ctx = await context(browser, browserName, { ...DESK, deviceScaleFactor: dpr });
+    const page = await ctx.newPage();
+    const id = `#print-${String(n).padStart(2, '0')}`;
+    let release = () => {};
+    try {
+      await cold(page, 'project-06');
+      const box = n === 4;
+      expect(await page.locator(id).getAttribute('data-letterbox'), `${id} is ${box ? '' : 'not '}a letterbox print`).toBe(box ? '' : null);
+      await centrePrint(page, n);
+      await page.waitForFunction((s) => { const i = document.querySelector(`${s} img.print__img`); return i?.complete && i.naturalWidth > 0; }, id, { timeout: 8000 });
+      const held = await page.evaluate((s) => new URL(document.querySelector(`${s} img.print__img`).currentSrc).pathname, id);
+      const asked = [];
+      const gate = new Promise((r) => { release = r; });
+      await page.route(/\/media\//, async (r) => { asked.push(new URL(r.request().url()).pathname); await gate; await r.continue().catch(() => {}); });
+      // sampled from the click itself (right after playback's own handler), every frame and every 8 ms, for 600 ms
+      await page.evaluate(() => { window.__bgs = new Promise((resolve) => document.addEventListener('click', () => {
+        const out = [];
+        const t0 = performance.now();
+        const read = () => { const f = document.querySelector('dialog.pb .pb__frame'); if (f) out.push(getComputedStyle(f).backgroundImage); };
+        const frame = () => { read(); if (performance.now() - t0 < 600) requestAnimationFrame(frame); };
+        const timer = setInterval(() => { read(); if (performance.now() - t0 >= 600) { clearInterval(timer); resolve(out); } }, 8);
+        read();
+        requestAnimationFrame(frame);
+      }, { once: true })); });
+      await page.locator(`${id} [data-print-open]`).click();
+      const bgs = await page.evaluate(() => window.__bgs);
+      expect(bgs.length, 'sampled').toBeGreaterThan(1);
+      const empty = bgs.filter((b) => !b.includes(held));
+      expect(empty.length, `every sample in the Flip shows the roll's own image ${held} under the clone (${empty.length} of ${bgs.length} without it: ${[...new Set(empty)].join(' ').slice(0, 200)})`).toBe(0);
+      const s = await page.evaluate(() => {
+        const f = document.querySelector('dialog.pb .pb__frame');
+        return { w: f.offsetWidth, sizes: [...f.querySelectorAll('source, img')].map((x) => x.getAttribute('sizes')), fit: getComputedStyle(f).backgroundSize, srcset: f.querySelector('source[type="image/avif"]')?.getAttribute('srcset') ?? '' };
+      });
+      expect(s.sizes.every((v) => v === `${s.w}px`), `the clone's sizes is the frame's width, ${s.w}px (${s.sizes.join(' | ')})`).toBe(true);
+      if (box) expect(s.fit, 'a letterbox print shows the held image whole').toBe('contain');
+      if (browserName === 'chromium') {
+        // the smallest rung at least the frame's device width, else the largest
+        const rungs = s.srcset.split(',').map((x) => Number(/(\d+)w$/.exec(x.trim())?.[1])).filter(Boolean).sort((a, b) => a - b);
+        const want = rungs.find((r) => r >= s.w * dpr) ?? rungs.at(-1);
+        // the held image is asked for again under the clone (a routed page has no cache): it is the clone's rung only
+        // when nothing else is asked for
+        const rungOf = (p) => Number(new RegExp(`/${String(n).padStart(2, '0')}-[a-z]+-(\\d+)\\.avif$`).exec(p)?.[1]);
+        const clone = () => { const own = asked.filter((p) => p !== held); return [...new Set((own.length ? own : asked).map(rungOf).filter(Boolean))]; };
+        await expect.poll(clone, { message: `the clone asks for the ${want} rung (asked: ${asked.join(' ')})`, timeout: 3000 }).toEqual([want]);
+      }
+    } finally {
+      release();
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+      await ctx.close();
+    }
+  });
+}
