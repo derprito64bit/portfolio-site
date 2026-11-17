@@ -141,3 +141,41 @@ test('A2 / A13 a resize or rotate while open: no marks over the page, the cover 
     await ctx.close();
   }
 });
+
+// fix-pass B4
+/** The state at the first resize after __rzState is armed (set to null). */
+const RZ_STATE = `addEventListener('resize', () => { if (window.__rzState === null) window.__rzState = window.__vf && window.__vf.state(); });`;
+
+// f06: a resize that lands inside the 0.4 s open ('opening'): once the open lands, the flat cover fills the new view
+test('A2 / A13 a resize or rotate during the open: the cover fills the new view once it lands', async ({ browser, browserName }) => {
+  const ctx = await context(browser, browserName, DESK, { init: [RZ_STATE] });
+  const page = await ctx.newPage();
+  const read = () => page.evaluate(() => {
+    const f = document.querySelector('[data-frame]').getBoundingClientRect();
+    return {
+      frame: [f.left, f.top, f.width, f.height].map(Math.round),
+      marks: [...document.querySelectorAll('[data-frame] .mk')].map((m) => getComputedStyle(m).visibility),
+      box: ['--fx', '--fy', '--fw', '--fh'].map((k) => Math.round(parseFloat(document.documentElement.style.getPropertyValue(k)))),
+    };
+  });
+  try {
+    await home(page);
+    await toFrame(page, 1);
+    await page.evaluate(() => { window.__rzState = null; });
+    // open() runs in the keydown, so the state is 'opening' when the press returns
+    await page.keyboard.press('Enter');
+    await page.setViewportSize({ width: 390, height: 844 });
+    await untilState(page, 'open', 1);
+    expect(await page.evaluate(() => window.__rzState), 'the resize landed during the open').toBe('opening');
+    await page.waitForTimeout(300);
+    const s = await read();
+    expect(s.frame, 'the flat cover fills the new view').toEqual([0, 0, 390, 844]);
+    expect(s.marks, 'the marks stay hidden while open').toEqual(['hidden', 'hidden', 'hidden', 'hidden']);
+    await page.keyboard.press('Escape');
+    await untilState(page, 'evf', 1);
+    const h = await read();
+    expect(h.frame, 'home: the frame sits in its box').toEqual(h.box);
+  } finally {
+    await ctx.close();
+  }
+});

@@ -305,3 +305,125 @@ test('A12 phone: Back closes on the first tap after scrolling; targets 44 px; sw
     await ctx.close();
   }
 });
+
+// fix-pass B4
+/** A synthetic click on `sel` with modifiers `m`: was it already default-prevented when it reached the window? The window
+ *  then cancels it, so the browser's own action (a new tab or window) never runs in the test. */
+const modClick = (page, sel, m = {}) => page.evaluate(([s, mods]) => {
+  let prevented = null;
+  addEventListener('click', (e) => { prevented = e.defaultPrevented; e.preventDefault(); }, { once: true });
+  document.querySelector(s).dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0, ...mods }));
+  return prevented;
+}, [sel, m]);
+
+for (const [label, profile] of [['1440', DESK], ['390', PHONE]]) {
+  test.describe(`A2 history at ${label}`, () => {
+    // f25: a Forward (or Back) that lands while the camera lowers or raises finishes that move, then acts on the entry
+    test('a popstate mid-lower or mid-raise lands the camera, then opens (A2)', async ({ browser, browserName }) => {
+      const ctx = await context(browser, browserName, profile);
+      const page = await ctx.newPage();
+      try {
+        await home(page);
+        await toFrame(page, 1);
+        await page.keyboard.press('Enter');
+        await untilState(page, 'open', 1);
+        await page.keyboard.press('Escape');
+        await untilState(page, 'evf', 1);
+        const len = await page.evaluate(() => history.length);
+        // the state is read and Forward sent in one evaluate: the popstate lands inside the 0.4 s lower
+        const lowering = await page.evaluate(() => { window.__vf.lower(); const s = window.__vf.state(); history.forward(); return s; });
+        expect(lowering).toBe('lowering');
+        await untilState(page, 'open', 1);
+        expect(new URL(page.url()).pathname, 'Forward mid-lower opens the entry').toBe('/work/project-02/');
+        await page.keyboard.press('Escape');
+        await untilState(page, 'evf', 1);
+        expect(new URL(page.url()).pathname).toBe('/');
+        // from the intro: Forward mid-raise; the raise lands on frame 1 (pos 0), so open at pos 1 proves the jump
+        await page.evaluate(() => window.__vf.lower());
+        await untilState(page, 'intro');
+        const raising = await page.evaluate(() => { window.__vf.raise(); const s = window.__vf.state(); history.forward(); return s; });
+        expect(raising).toBe('raising');
+        await untilState(page, 'open', 1);
+        expect(new URL(page.url()).pathname, 'Forward mid-raise opens the entry').toBe('/work/project-02/');
+        await page.keyboard.press('Escape');
+        await untilState(page, 'evf', 1);
+        expect(new URL(page.url()).pathname).toBe('/');
+        expect(await page.evaluate(() => history.length), 'no entry added').toBe(len);
+      } finally {
+        await ctx.close();
+      }
+    });
+
+    // f23: a failed or late page falls back to location.assign; the 500 row above covers only the failed half (bring()
+    // rejects before the landing), so this holds the in-app fetch past the 0.4 s flat landing
+    test('a page not parsed by the landing falls back to location.assign', async ({ browser, browserName }) => {
+      const ctx = await context(browser, browserName, profile);
+      const page = await ctx.newPage();
+      let held = 0, released = false;
+      // the glob matches the in-app fetch (/work/project-02/), not the fallback document (?vf-test); the guard is defence only
+      await page.route('**/work/project-02/', async (r) => {
+        if (r.request().isNavigationRequest()) return r.continue();
+        held++;
+        await new Promise((res) => setTimeout(res, 4000));
+        released = true;
+        await r.continue().catch(() => {});
+      });
+      try {
+        await home(page);
+        await toFrame(page, 1);
+        const nav = page.waitForRequest((q) => q.isNavigationRequest() && /\/work\/project-02\/\?vf-test/.test(q.url()), { timeout: 3500 });
+        nav.catch(() => {});
+        await page.keyboard.press('Enter');
+        await nav;
+        expect(released, 'navigated while the in-app fetch was still held').toBe(false);
+        expect(held, 'the in-app fetch (open or prefetch) was the held one').toBeGreaterThan(0);
+        await page.waitForFunction(() => window.__vf && window.__vf.state() === 'open', null, { timeout: 10000 });
+        expect(await page.locator('#evf').count(), 'the page itself, not the Viewfinder').toBe(0);
+      } finally {
+        await ctx.close();
+      }
+    });
+
+    // f26: Ctrl, Cmd, Shift or Alt clicks (and other buttons) on previous or next are the browser's (a new tab or
+    // window), not a swap in place; the plain click, last, still swaps
+    test('a modified click on previous or next goes to the browser; a plain click swaps in place', async ({ browser, browserName }) => {
+      const ctx = await context(browser, browserName, profile);
+      const page = await ctx.newPage();
+      try {
+        await home(page);
+        await toFrame(page, 2);
+        await page.keyboard.press('Enter');
+        await untilState(page, 'open', 2);
+        const next = '#proj .pj__nav a[rel="next"]';
+        expect(await modClick(page, next, { ctrlKey: true }), 'a Ctrl click is not taken over').toBe(false);
+        expect(await modClick(page, next, { shiftKey: true }), 'a Shift click is not taken over').toBe(false);
+        await page.waitForTimeout(500);
+        expect(await vf(page)).toEqual({ state: 'open', pos: 2 });
+        expect(await page.evaluate(() => [document.querySelector('#proj-title')?.textContent.trim(), location.pathname])).toEqual(['Project 03', '/work/project-03/']);
+        expect(await modClick(page, next), 'the plain click swaps in place').toBe(true);
+        await page.waitForFunction(() => document.querySelector('#proj-title')?.textContent.trim() === 'Project 04', null, { timeout: 10000 });
+      } finally {
+        await ctx.close();
+      }
+    });
+
+    // f26: on a cold project page, a Ctrl click on Back is the browser's (/#work-NN in a new tab); the page stays
+    test('a modified click on a cold page\'s Back goes to the browser; a plain click leaves for the frame', async ({ browser, browserName }) => {
+      const ctx = await context(browser, browserName, profile);
+      const page = await ctx.newPage();
+      try {
+        await page.goto(`${base()}/work/project-06/?vf-test`, { waitUntil: 'load' });
+        await untilState(page, 'open', 5);
+        expect(await modClick(page, '[data-close]', { ctrlKey: true }), 'a Ctrl click is not taken over').toBe(false);
+        await page.waitForTimeout(500);
+        expect(new URL(page.url()).pathname, 'the page stays').toBe('/work/project-06/');
+        expect(await page.evaluate(() => window.__vf.state())).toBe('open');
+        // last: the plain click leaves (location.replace), so the page is gone after it
+        expect(await modClick(page, '[data-close]'), 'the plain click leaves for the frame').toBe(true);
+        await page.waitForURL(/\/\?vf-test#work-06$/);
+      } finally {
+        await ctx.close();
+      }
+    });
+  });
+}

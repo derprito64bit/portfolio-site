@@ -77,6 +77,21 @@ export const PLANTS = [
   ['phone-no-expose', 'A8', 'src/evf/project/roll.ts', 'if (!frame) return;', 'if (!frame || innerWidth < 760) return;', 'roll.spec.mjs', 'at 390'],
   ['phone-calm-off', 'A13', 'src/evf/project/roll.ts', "const reduced = () => o.calm || matchMedia('(prefers-reduced-motion: reduce)').matches;", "const reduced = () => (o.calm || matchMedia('(prefers-reduced-motion: reduce)').matches) && innerWidth > 759;", 'roll.spec.mjs', 'reduced: opacity only\\) at 390'],
   ['cls-timer', 'A7', 'src/pages/work/[slug].astro', "addEventListener('error', (e) => {", "setTimeout(() => { if (!d.hasAttribute('data-roll')) d.classList.remove('pj-js'); }, 4000); addEventListener('error', (e) => {", 'roll.spec.mjs', 'slow module'],
+  // fix-pass B4
+  ['resize-opening', 'A13', 'src/evf/project/inapp.ts', "if (S !== 'open' && S !== 'opening') return;", "if (S !== 'open') return;", 'keys.spec.mjs', 'resize or rotate during the open'],
+  // a reference-host plant: only the GL row kills it; with no __vfEngine (no WebGL here) the row skips and this is MISSED
+  ['owned-opening', 'A13', 'src/evf/main.ts', "const owned = S === 'open' || S === 'opening';", "const owned = S === 'open';", 'cls-gl.spec.mjs', 'resize or rotate during the open'],
+  ['not-parsed-wait', 'A2', 'src/evf/project/inapp.ts', 'if (!ready) { fail(); return; }', 'if (!ready) return;', 'open.spec.mjs', 'not parsed by the landing'],
+  ['step-mod-click', 'A2', 'src/evf/project/inapp.ts', 'if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;', '', 'open.spec.mjs', 'a modified click on previous or next'],
+  ['cold-back-mod-click', 'A2', 'src/evf/project/cold.ts', 'if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;', '', 'open.spec.mjs', 'a modified click on a cold page'],
+  ['cold-restore-auto', 'A10', 'src/evf/project/cold.ts', "history.scrollRestoration = 'auto';", '', 'playback.spec.mjs', 'a reload after playback'],
+  // WebKit only (run with --project webkit): Chromium restores from the boot write alone
+  ['cold-restore-hide', 'A10', 'src/evf/project/cold.ts', "addEventListener('pagehide', autoRestore);", '', 'playback.spec.mjs', 'a reload after playback'],
+  // a reference-host plant (GL in Chromium): with no __vfEngine the row skips and this is MISSED
+  ['cold-scroll-dirty', 'J3', 'src/evf/project/cold.ts', 'if (!engine) return;\n  const d = dimAt();', "if (!engine) return;\n  document.body.dataset.d = '1';\n  const d = dimAt();", 'cls-gl.spec.mjs', 'reads the scroll before the roll writes'],
+  ['typed-hash-pushed', 'A2', 'src/evf/project/inapp.ts', 'if (history.state == null) pushed = false;', '', 'playback.spec.mjs', 'while the project is open in the Viewfinder, then Esc, Esc'],
+  // a reference-host plant (GL): with no __vfEngine the row skips and this is MISSED
+  ['readout-double', 'A2', 'src/evf/project/inapp.ts', "fl2.style.visibility = 'hidden';", '', 'cls-gl.spec.mjs', 'one focal-length readout'],
 ];
 
 const SKIP = new Set(['node_modules', 'dist', '.git', 'test-results', '.astro', 'playwright-report']);

@@ -565,3 +565,155 @@ test.describe('A13 calm, no WebGL, no JS', () => {
     });
   }
 });
+
+// fix-pass B4
+test.describe('A2 / A10 history over playback: traversals that cross the open', () => {
+  const where6 = (page) => page.evaluate(() => [window.__vf.state(), location.pathname, location.hash]);
+  /** Esc closes playback onto /work/project-06/; a second Esc lands on frame 6 at /#work-06, and it stays there. */
+  const lands6 = async (page) => {
+    await page.keyboard.press('Escape');
+    await expect.poll(async () => (await pb(page)).open, { message: 'the first Esc closes playback' }).toBe(false);
+    await expect.poll(() => where6(page)).toEqual(['open', '/work/project-06/', '']);
+    await page.keyboard.press('Escape');
+    await untilState(page, 'evf', 5);
+    await expect.poll(() => page.evaluate(() => `${location.pathname}${location.hash}`), { message: 'the second Esc lands on the frame' }).toBe('/#work-06');
+    await page.waitForTimeout(400);
+    expect(await page.evaluate(() => window.__vf.state()), 'and stays there: no stale entry reopens a project').toBe('evf');
+  };
+
+  // f07: Next's replaceState leaves 06's #print-01 entry forward of 07's; Forward onto it swaps in app, never reloads
+  test(`Forward onto another project's #print entry after Next: no reload; Esc, Esc: that frame`, async ({ browser, browserName }) => {
+    const ctx = await context(browser, browserName, DESK);
+    const page = await ctx.newPage();
+    try {
+      await home(page);
+      await toFrame(page, 5);
+      await page.keyboard.press('Enter');
+      await untilState(page, 'open', 5);
+      await page.locator('#print-01 [data-print-open]').click();
+      await expect.poll(async () => (await pb(page))?.hash).toBe('#print-01');
+      await page.waitForTimeout(700);
+      await page.keyboard.press('Escape');
+      await expect.poll(() => page.evaluate(() => [document.querySelector('dialog.pb')?.open, location.hash])).toEqual([false, '']);
+      await page.locator('#proj .pj__nav a[rel="next"]').click();
+      await page.waitForFunction(() => document.querySelector('#proj-title')?.textContent.trim() === 'Project 07', null, { timeout: 10000 });
+      await page.evaluate(() => { window.__live = 1; });
+      await page.goForward();
+      // a reload would destroy the context mid-poll: read through it, and let __live tell
+      await expect.poll(() => page.evaluate(() => window.__vf && [window.__vf.state(), window.__vf.pos(), location.pathname, location.hash]).catch(() => null)).toEqual(['open', 5, '/work/project-06/', '#print-01']);
+      expect(await page.evaluate(() => window.__live ?? null), 'the same document: no reload').toBe(1);
+      await expect.poll(async () => (await pb(page))?.open, { message: 'playback follows the entry' }).toBe(true);
+      await lands6(page);
+    } finally {
+      await ctx.close();
+    }
+  });
+
+  /** Frame 6 in the EVF with project 06's /work/ and #print-01 entries forward of it. */
+  const forwardOf6 = async (page) => {
+    await home(page);
+    await toFrame(page, 5);
+    await page.keyboard.press('Enter');
+    await untilState(page, 'open', 5);
+    await page.locator('#print-01 [data-print-open]').click();
+    await expect.poll(async () => (await pb(page))?.hash).toBe('#print-01');
+    await page.goBack();
+    await expect.poll(async () => (await pb(page)).open).toBe(false);
+    await page.goBack();
+    await untilState(page, 'evf', 5);
+  };
+
+  // f05 (a): the second Forward lands inside the 0.4 s open (onPop has started it before this listener runs)
+  test('two Forwards inside the open: playback follows #print-01, then Esc, Esc: the frame', async ({ browser, browserName }) => {
+    const ctx = await context(browser, browserName, DESK);
+    const page = await ctx.newPage();
+    try {
+      await forwardOf6(page);
+      const at = await page.evaluate(() => new Promise((r) => {
+        addEventListener('popstate', () => setTimeout(() => { const s = window.__vf.state(); history.forward(); r(s); }, 30), { once: true });
+        history.forward();
+      }));
+      expect(at, 'the second Forward is sent while the project opens').toBe('opening');
+      await expect.poll(async () => [await page.evaluate(() => window.__vf.state()), (await pb(page))?.open, await page.evaluate(() => location.hash)], { message: 'playback follows #print-01' }).toEqual(['open', true, '#print-01']);
+      await lands6(page);
+    } finally {
+      await ctx.close();
+    }
+  });
+
+  // f05 (b): Esc mid-zoom on a #print entry steps back over both entries, so no stale project entry is left behind
+  test('Esc mid-zoom after history.go(2) onto #print-NN: the frame, and the next project\'s close does not reopen it', async ({ browser, browserName }) => {
+    const ctx = await context(browser, browserName, DESK);
+    const page = await ctx.newPage();
+    try {
+      await forwardOf6(page);
+      const at = await page.evaluate(() => new Promise((r) => {
+        addEventListener('popstate', () => setTimeout(() => { const s = window.__vf.state(); dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); r(s); }, 50), { once: true });
+        history.go(2);
+      }));
+      expect(at, 'Esc is sent while the project opens').toBe('opening');
+      await expect.poll(() => page.evaluate(() => [window.__vf.state(), `${location.pathname}${location.hash}`]), { message: 'Esc mid-zoom lands on the frame' }).toEqual(['evf', '/#work-06']);
+      for (let i = 4; i >= 1; i--) {
+        await page.keyboard.press('ArrowLeft');
+        await untilState(page, 'evf', i);
+      }
+      await page.keyboard.press('Enter');
+      await untilState(page, 'open', 1);
+      await page.keyboard.press('Escape');
+      await expect.poll(() => page.evaluate(() => [window.__vf.state(), window.__vf.pos()]), { message: 'the close lands on frame 2' }).toEqual(['evf', 1]);
+      await expect.poll(() => page.evaluate(() => `${location.pathname}${location.hash}`)).toBe('/#work-02');
+      await page.waitForTimeout(400);
+      expect(await page.evaluate(() => [window.__vf.state(), window.__vf.pos()]), 'project 06 never reopens').toEqual(['evf', 1]);
+    } finally {
+      await ctx.close();
+    }
+  });
+
+  // wv1-typed-hash-history: a typed #print-NN pushes an entry the app did not make; Close must not land on one of them
+  for (const typed of [['#print-02'], ['#print-02', '#print-06']]) {
+    test(`typed ${typed.join(' then ')} while the project is open in the Viewfinder, then Esc, Esc: the frame (/#work-06)`, async ({ browser, browserName }) => {
+      const ctx = await context(browser, browserName, DESK);
+      const page = await ctx.newPage();
+      try {
+        await home(page);
+        await toFrame(page, 5);
+        await page.keyboard.press('Enter');
+        await untilState(page, 'open', 5);
+        for (const h of typed) {
+          await page.evaluate((x) => { location.hash = x; }, h);
+          await expect.poll(async () => (await pb(page))?.count, { message: `${h} shows in playback` }).toBe(`${h.slice(-2)} / 12`);
+        }
+        await page.waitForTimeout(700);
+        await lands6(page);
+      } finally {
+        await ctx.close();
+      }
+    });
+  }
+});
+
+// f27: playback's open leaves the history entry on 'manual' scroll restoration; every cold load starts from 'auto', so a
+// reload (or a Back from another page) puts the visitor back where they were
+test('A10 a reload after playback keeps the roll where the visitor was', async ({ browser, browserName }) => {
+  const ctx = await context(browser, browserName, DESK);
+  const page = await ctx.newPage();
+  try {
+    await cold(page, 'project-06');
+    await centrePrint(page, 6);
+    await page.waitForTimeout(300);
+    await page.locator('#print-06 [data-print-open]').click();
+    await expect.poll(async () => (await pb(page))?.hash).toBe('#print-06');
+    await page.waitForTimeout(700);
+    await page.keyboard.press('Escape');
+    await expect.poll(() => page.evaluate(() => [document.querySelector('dialog.pb')?.open, location.hash])).toEqual([false, '']);
+    const y0 = await page.evaluate(() => scrollY);
+    expect(y0, 'down in the roll').toBeGreaterThan(200);
+    await page.reload({ waitUntil: 'load' });
+    await page.waitForTimeout(400);
+    expect(await page.evaluate(() => history.scrollRestoration), 'the reloaded page restores its scroll').toBe('auto');
+    const y = await page.evaluate(() => scrollY);
+    expect(Math.abs(y - y0), `back where the visitor was (${y} against ${y0})`).toBeLessThanOrEqual(48);
+  } finally {
+    await ctx.close();
+  }
+});

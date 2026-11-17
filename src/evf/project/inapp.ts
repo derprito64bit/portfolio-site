@@ -9,7 +9,7 @@ import type { Engine, Rect } from '../gl/engine';
 import type { Scene } from '../scenes';
 import { projects } from '../data';
 import { frameRect, writeRect, isPhone } from '../layout';
-import { parse, projectUrl, homeUrl, workHash } from '../router';
+import { parse, projectUrl, homeUrl, workHash, hashHistory } from '../router';
 import type { RollControl } from './roll';
 import type { PlaybackControl } from './playback';
 import { apertureOf, landedState, openZoom, subjectOf, zoomCentre, type Pt3 } from './framing';
@@ -72,6 +72,8 @@ export function initProject(h: Host) {
   /** The next popstate is our own history.back(). */
   let ownBack = false;
   let token = 0;
+  /** A resize landed during the open's zoom: the landing re-aims the view (onResize). */
+  let reaim = false;
   let opener: HTMLElement | null = null;
   let prefetchTimer = 0;
   const slugAt = (i: number) => projects[i]?.slug ?? '';
@@ -126,10 +128,12 @@ export function initProject(h: Host) {
     pb?.destroy();
     roll = pb = null;
   }
-  // the article's own links: previous and next swap in place; anything else leaves normally
+  // the article's own links: previous and next swap in place; anything else leaves normally, and a modified or
+  // non-primary click is the browser's (a new tab or window)
   col.addEventListener('click', (e) => {
     const a = (e.target as Element).closest<HTMLAnchorElement>('a[data-step]');
     if (!a || h.state() !== 'open') return;
+    if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
     e.preventDefault();
     step(Number(a.dataset.step) || 1);
   });
@@ -148,6 +152,7 @@ export function initProject(h: Host) {
   // ---------------------------------------------------------------- open
   function open({ fromPop = false, print = null as number | null } = {}) {
     if (h.state() !== 'evf' || h.pos() >= h.works) return;
+    reaim = false;
     h.finishTl();
     const i = h.pos();
     const slug = slugAt(i);
@@ -205,14 +210,17 @@ export function initProject(h: Host) {
       h.setState('open');
       marksOff();
       enhance();
+      // after enhance(): the re-aim recaches the new roll
+      if (reaim) { reaim = false; onResize(); }
       arrive();
       // the column itself (tabindex -1, the scroller): the keys scroll the page at once, Space never presses Back, and
       // Tab goes on into the article (Shift+Tab reaches Back). A focused title inside it lost the page in CI's WebKit
       // over long column scrolls.
       col.focus({ preventScroll: true });
-      // a traversal straight onto .../#print-NN: playback follows the entry (and knows whether it pushed it)
+      // a traversal straight onto .../#print-NN (at the open, or during the zoom): playback follows the entry (and knows
+      // whether it pushed it)
       const here = parse();
-      if (print && pb && here.kind === 'project' && here.print === print) pb.sync(location.hash);
+      if (pb && here.kind === 'project' && here.slug === slug && here.print !== null) pb.sync(location.hash);
     };
     const full = frameRect('open');
     if (!engine || h.calm) {
@@ -240,6 +248,8 @@ export function initProject(h: Host) {
     const fl = { v: 23 };
     const flUp = () => { const v = nearestFl(fl.v); flEl.textContent = String(v); fl2.textContent = `${v}mm`; };
     afEl.classList.add('is-off');
+    // one focal-length readout at a time: the bar's waits for the HUD's to hand over at the landing (below)
+    fl2.style.visibility = 'hidden';
     const t = gsap.timeline({ onComplete: () => h.setTl(null) });
     h.setTl(t);
     t.call(settle, [], D.travel);
@@ -251,20 +261,24 @@ export function initProject(h: Host) {
     st.ndv = isPhone() ? 1 : 0;
     t.to(fl, { v: 56, duration: D.travel, ease: E.lens, onUpdate: flUp }, 0);
     t.to(st, { nd: isPhone() ? 0.9 : 1, duration: D.land, ease: E.out }, D.travel - 0.15);
-    t.call(() => $('.ro--fl').classList.remove('on'), [], D.travel - 0.14);
+    t.call(() => { $('.ro--fl').classList.remove('on'); fl2.style.visibility = ''; }, [], D.travel - 0.14);
   }
 
   // ---------------------------------------------------------------- close
   function close(how: 'input' | 'pop' = 'input') {
+    let extra = false;
     if (h.state() === 'opening') {
       // Back mid-zoom: the open is abandoned (its page may still be loading) and the zoom lands, then leaves
       token++;
       h.finishTl();
       h.setState('open');
+      // opening onto playback's own #print-NN entry (a traversal): that entry is stepped over too
+      const r = parse();
+      extra = r.kind === 'project' && r.print !== null && hashHistory.own();
     }
     if (h.state() !== 'open') return;
     // playback goes with the project; its own entry (if pushed) is stepped over in the same traversal
-    const extra = pb?.isOpen() ? pb.close({ fromPop: true, instant: true }) : false;
+    if (pb?.isOpen()) extra = pb.close({ fromPop: true, instant: true }) || extra;
     if (how === 'input') {
       if (pushed) { ownBack = true; history.go(extra ? -2 : -1); }
       else history.replaceState(null, '', homeUrl(workHash(h.pos() + 1)));
@@ -390,16 +404,30 @@ export function initProject(h: Host) {
     // our own Back lands home; playback's own Back, still on its way (Esc, Esc), lands on the page first: let it pass
     if (ownBack) { if (r.kind === 'project' && r.slug === slugAt(h.pos())) return; ownBack = false; if (r.kind === 'home') { homeHere(); return; } }
     let S = h.state();
+    // a traversal while the camera lowers or raises: that move lands first, then the entry is acted on
+    if (S === 'raising' || S === 'lowering') { h.finishTl(); S = h.state(); }
     if (r.kind === 'project') {
       const i = projects.findIndex((p) => p.slug === r.slug);
       if (i < 0) { location.reload(); return; }
-      if ((S === 'open' || S === 'opening') && i === h.pos()) { pb?.sync(location.hash); return; }
-      if (S === 'open') { location.reload(); return; }
+      if ((S === 'open' || S === 'opening') && i === h.pos()) {
+        // an entry the app did not make (a typed or in-page #hash): the entries above the open's own are no longer all
+        // ours, so Close replaces in place instead of stepping back onto one of them
+        if (history.state == null) pushed = false;
+        pb?.sync(location.hash);
+        return;
+      }
+      // another project's entry while one is open or opening (a stale forward entry that previous/next's replaceState
+      // left behind): the open view goes at once, then the frame moves there and opens; the entry behind it is not ours
+      let stray = false;
+      if (S === 'open' || S === 'opening') { close('pop'); h.finishTl(); S = h.state(); stray = true; }
       // Forward during the close: the close lands first
       if (S === 'closing') { h.finishTl(); S = h.state(); }
       if (S === 'evf' || S === 'intro') {
         h.jump(i);
+        // playback must not claim a #print entry that was pushed for another project's page
+        if (stray && r.print) history.replaceState({ vf: 'project', slug: r.slug }, '', location.href);
         open({ fromPop: true, print: r.print });
+        if (stray) pushed = false;
       }
       return;
     }
@@ -417,10 +445,13 @@ export function initProject(h: Host) {
   }
 
   function onResize() {
-    if (h.state() !== 'open') return;
+    const S = h.state();
+    if (S !== 'open' && S !== 'opening') return;
     const e = h.engine();
     // main.ts has written the new work frame's box: the cover fills the view again from it
     if (!e) { coverFill(true); return; }
+    // mid-zoom (GL): main.ts gave the engine the new full view; the marks go now, the landing re-aims (settle)
+    if (S === 'opening') { marksOff(); reaim = true; return; }
     const s = h.scenes[h.pos()];
     const z = landedState(s, subjectOf(s), e.st.zoom);
     e.st.rect = z.rect;
