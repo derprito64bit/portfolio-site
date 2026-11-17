@@ -603,9 +603,11 @@ test.describe('A9 focus (fix-pass B1)', () => {
   });
 
   // f03: a wheel or trackpad keeps sending scroll events for 100-150 ms after the focus changes; one on an unchanged
-  // focus re-placed the brackets with a jump and killed the glide. The reads are in-page, on both sides of the roll's
-  // own scroll listener (a capture listener runs before it, a later bubble one after), so the row does not depend on
-  // how long an engine's frames are (headless WebKit's ran 60-80 ms here: two frames were most of the glide)
+  // focus re-placed the brackets with a jump and killed the glide. The stream's next event is dispatched in-page, at once,
+  // from a listener that runs after the roll's on the event that changes the focus, and the gap is read on both sides of
+  // it: no frame runs between the change and the reads, so the row does not depend on how long an engine's frames are.
+  // (A real 1 px nudge's event comes a frame or more later: on CI's headless WebKit that was after the 0.24 s glide had
+  // landed, so there was no glide left to keep, and the row failed on a product that glides.)
   test('the brackets glide through the scroll events that follow a focus change (A9 0.24 s, J3)', async ({ own: browser, browserName }) => {
     const ctx = await context(browser, browserName, DESK);
     const page = await ctx.newPage();
@@ -616,27 +618,27 @@ test.describe('A9 focus (fix-pass B1)', () => {
       await page.waitForFunction(() => document.querySelector('.roll[data-dim]')?.dataset.focus === '3', null, { timeout: 3000 });
       await page.waitForTimeout(400);
       const s = await page.evaluate(() => new Promise((done) => {
-        const af = document.querySelector('.roll__af'), p4 = document.querySelector('#print-04');
+        const roll = document.querySelector('.roll'), af = document.querySelector('.roll__af'), p4 = document.querySelector('#print-04');
         const d = () => Math.abs(af.getBoundingClientRect().top - p4.getBoundingClientRect().top);
-        const out = [];
-        let pre = 0;
-        const end = () => { removeEventListener('scroll', before, true); removeEventListener('scroll', after); done(out); };
-        const before = () => { pre = d(); };
+        const start = d(); // the brackets on print 3 (both move with the scroll, so the gap holds through it)
+        // registered after the roll's listener, so on each scroll event it runs once the roll has placed its focus
         const after = () => {
-          out.push({ f: document.querySelector('.roll').dataset.focus, pre, post: d() });
-          if (out.length === 1) window.scrollBy(0, 1); // the change's event started the glide; the stream's next, on the same focus
-          else end();
+          if (roll.dataset.focus !== '4') return; // only the event that changes the focus
+          removeEventListener('scroll', after);
+          const pre = d();
+          window.dispatchEvent(new Event('scroll')); // the stream's next event, at once: the same focus, no frame between
+          done({ f: roll.dataset.focus, start, pre, post: d() });
         };
-        addEventListener('scroll', before, { capture: true, passive: true });
         addEventListener('scroll', after, { passive: true });
-        setTimeout(end, 3000);
+        setTimeout(() => { removeEventListener('scroll', after); done({ f: roll.dataset.focus, start, timeout: true }); }, 3000);
         const r = p4.querySelector('.print__frame').getBoundingClientRect();
         window.scrollBy(0, r.top + r.height / 2 - innerHeight / 2);
       }));
-      expect(s.map((e) => e.f), 'the change, then a 1 px nudge that keeps the focus').toEqual(['4', '4']);
-      expect(s[0].pre, 'the brackets start a print away').toBeGreaterThan(20);
-      expect(s[1].pre, 'the glide is in flight at the next scroll event').toBeGreaterThan(2);
-      expect(Math.abs(s[1].post - s[1].pre), `the next scroll event leaves the glide be (${s[1].pre.toFixed(1)} px to go before it, ${s[1].post.toFixed(1)} after)`).toBeLessThan(0.5);
+      expect(s.timeout, `a scroll event moves the focus to print 4 (focus ${s.f})`).toBeUndefined();
+      expect(s.f, 'the next scroll event keeps the focus').toBe('4');
+      expect(s.start, 'the brackets start a print away').toBeGreaterThan(20);
+      expect(Math.abs(s.pre - s.start), `the change starts a glide, not a jump (${s.start.toFixed(1)} px away, ${s.pre.toFixed(1)} after the change)`).toBeLessThan(0.5);
+      expect(Math.abs(s.post - s.pre), `the next scroll event leaves the glide be (${s.pre.toFixed(1)} px to go before it, ${s.post.toFixed(1)} after)`).toBeLessThan(0.5);
       await expect.poll(gap, { message: 'the glide lands', timeout: 1000, intervals: [50] }).toBeLessThanOrEqual(2);
     } finally {
       await ctx.close();
