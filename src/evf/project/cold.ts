@@ -62,7 +62,7 @@ function leave() {
   location.replace(homeUrl(workHash(n)));
 }
 // a modified or non-primary click is the browser's (/#work-NN in a new tab or window): the page stays
-document.querySelector('[data-close]')?.addEventListener('click', (e) => {
+document.querySelector<HTMLElement>('[data-close]')?.addEventListener('click', (e) => {
   if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
   e.preventDefault(); leave();
 });
