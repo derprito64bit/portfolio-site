@@ -70,12 +70,13 @@ export const PLANTS = [
   ['pb-clip-arrows', 'A10', 'src/evf/project/playback.ts', "if ((e.target as Element | null)?.closest?.('video, input, select, textarea')) return;", '', 'playback.spec.mjs', 'cold #print-NN load'],
   // fix-pass B3
   ['pb-clip-plays-on', 'A10', 'src/evf/project/playback.ts', "parts.frame?.querySelector('video')?.pause();", '', 'playback.spec.mjs', 'paused when playback closes'],
-  ['pb-clip-drag', 'A10', 'src/evf/project/playback.ts', "if ((e.target as Element | null)?.closest?.('video')) { sid = -1; return; } ", '', 'playback.spec.mjs', 'keeps its own arrow keys and drags'],
+  ['pb-clip-drag', 'A10', 'src/evf/project/playback.ts', "if ((e.target as Element | null)?.closest?.('video[controls]')) { sid = -1; return; } ", '', 'playback.spec.mjs', 'keeps its own arrow keys and drags'],
   ['pb-flip-empty', 'J4', 'src/evf/project/playback.ts', "const held = rimg?.complete && rimg.naturalWidth > 0 ? rimg.currentSrc : '';", "const held = '';", 'playback.spec.mjs', 'never flies an empty panel'],
   ['pb-rung-92vw', 'J4', 'src/evf/project/playback.ts', "x.setAttribute('sizes', w > 0 ? `${w}px` : '(max-width: 759px) 100vw, 92vw');", "x.setAttribute('sizes', '(max-width: 759px) 100vw, 92vw');", 'playback.spec.mjs', 'never flies an empty panel'],
   ['pb-fill-hidden', 'J4', 'src/evf/project/playback.ts', 'dlg.showModal();\n      // filled once shown: the frame has its layout width for the clone\'s sizes (same task, nothing paints between)\n      fill(n);', 'fill(n);\n      dlg.showModal();', 'playback.spec.mjs', 'never flies an empty panel'],
   ['no-short-phone', 'A10', 'src/evf/style/print.css', '.pb__frame { width: min(100%, calc((100svh - 120px) * var(--ar))); }', '', 'playback.spec.mjs', 'a phone on its side'],
   ['no-short-foot', 'A10', 'src/evf/style/print.css', '.pb__foot { grid-template-columns: auto minmax(0, 1fr); gap: 12px; }', '', 'playback.spec.mjs', 'a phone on its side'],
+  ['pb-clip-empty-controls', 'A10', 'src/evf/project/playback.ts', 'v.controls = !!src;', 'v.controls = true;', 'playback.spec.mjs', 'controls only when it has a file'],
 ];
 
 const SKIP = new Set(['node_modules', 'dist', '.git', 'test-results', '.astro', 'playwright-report']);

@@ -81,8 +81,8 @@ export function initPlayback(o: PlaybackOptions): PlaybackControl {
     d.addEventListener('wheel', stop, { passive: false });
     d.addEventListener('touchmove', stop, { passive: false });
     let sx = 0, sy = 0, sid = -1;
-    // a drag that starts on a clip is its own (the scrubber): no page
-    d.addEventListener('pointerdown', (e) => { if ((e.target as Element | null)?.closest?.('video')) { sid = -1; return; } sid = e.pointerId; sx = e.clientX; sy = e.clientY; });
+    // a drag that starts on a clip's controls is its own (the scrubber): no page
+    d.addEventListener('pointerdown', (e) => { if ((e.target as Element | null)?.closest?.('video[controls]')) { sid = -1; return; } sid = e.pointerId; sx = e.clientX; sy = e.clientY; });
     d.addEventListener('pointerup', (e) => {
       if (e.pointerId !== sid) return;
       sid = -1;
@@ -121,7 +121,9 @@ export function initPlayback(o: PlaybackOptions): PlaybackControl {
     else if (type === 'video') {
       const img = p.querySelector<HTMLImageElement>('img.print__img');
       const src = p.querySelector('video')?.dataset.src ?? '';
-      const v = el('video', '', { controls: '', playsinline: '', preload: src ? 'metadata' : 'none', 'aria-label': img?.alt || 'Clip' }) as HTMLVideoElement;
+      const v = el('video', '', { playsinline: '', preload: src ? 'metadata' : 'none', 'aria-label': img?.alt || 'Clip' }) as HTMLVideoElement;
+      // controls only with a file: a clip with none is its poster (no empty control bar, no Tab stop; a drag on it pages)
+      v.controls = !!src;
       if (img) v.poster = img.currentSrc || img.src;
       if (src) v.append(el('source', '', { src, type: 'video/mp4' }));
       if (p.hasAttribute('data-loop')) { v.loop = true; v.muted = true; }
@@ -309,7 +311,7 @@ export function initPlayback(o: PlaybackOptions): PlaybackControl {
    *  last), and it wraps at both ends. A clip's own controls sit between Close and Prev and keep their native Tab. */
   function tab(e: KeyboardEvent, d: HTMLDialogElement) {
     const { close, frame, prev, next } = parts;
-    const clip = frame.querySelector('video');
+    const clip = frame.querySelector('video[controls]');
     const f = [close, clip, prev, next].filter((x): x is HTMLElement => !!x && !x.hasAttribute('disabled'));
     const a = document.activeElement;
     const first = f[0], last = f[f.length - 1];

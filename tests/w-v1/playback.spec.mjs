@@ -44,7 +44,7 @@ for (const [label, profile] of [['1440', DESK], ['390', PHONE]]) {
       await page.keyboard.press('ArrowRight');
       await expect.poll(async () => (await pb(page)).ro[2]).toBe('loop clip');
       expect((await pb(page)).media).toBe('VIDEO');
-      expect(await page.evaluate(() => document.querySelector('.pb__frame video').controls), 'controls in playback').toBe(true);
+      expect(await page.evaluate(() => document.querySelector('.pb__frame video').controls), 'a clip with no file has no controls in playback').toBe(false);
       expect(await page.evaluate(() => history.length), 'paging adds no entry').toBe(len + 1);
 
       // Esc: closed, the hash gone, focus on the print shown
@@ -122,7 +122,10 @@ for (const [label, profile] of [['1440', DESK], ['390', PHONE]]) {
     const ctx = await context(browser, browserName, profile);
     const page = await ctx.newPage();
     try {
+      // print 05's clip is given a file (an address that answers 404), so it has its controls: a clip with no file has none
+      await page.route(/\/b3-clip\.mp4$/, (r) => r.fulfill({ status: 404, body: '' }));
       await cold(page, 'project-06', '#print-03');
+      await page.evaluate(() => { document.querySelector('#print-05 video').dataset.src = '/media/b3-clip.mp4'; });
       await expect.poll(async () => (await pb(page))?.open).toBe(true);
       await frames(page);
       await expect.poll(() => where(page), { message: 'after the load\'s fragment scroll, focus is in playback' }).toMatch(/^in:/);
@@ -778,6 +781,39 @@ test('A10 a phone on its side, turned while playback is open (390 x 844 to 667 x
     await page.setViewportSize({ width: 667, height: 375 });
     await frames(page);
     await sideways(page, 'turned to 667 x 375');
+  } finally {
+    await ctx.close();
+  }
+});
+
+// wv1-loop-clip-empty-controls: a clip with no file opened in playback as its poster under an empty native control bar.
+// Controls come only with a file; a clip with none is its poster: no stop for Tab, and a drag on it pages.
+test('A10 / A11 a clip opens in playback with controls only when it has a file', async ({ browser, browserName }) => {
+  const ctx = await context(browser, browserName, DESK);
+  const page = await ctx.newPage();
+  await page.route(/\/b3-clip\.mp4$/, (r) => r.fulfill({ status: 404, body: '' }));
+  const open5 = async () => {
+    await centrePrint(page, 5);
+    await page.locator('#print-05 [data-print-open]').click();
+    await expect.poll(async () => (await pb(page))?.hash).toBe('#print-05');
+    await expect.poll(async () => (await pb(page)).media).toBe('VIDEO');
+  };
+  const clip = () => page.evaluate(() => {
+    const v = document.querySelector('.pb__frame video');
+    v.focus();
+    return { controls: v.controls, poster: !!v.poster, focused: document.activeElement === v };
+  });
+  try {
+    await cold(page, 'project-06');
+    await open5();
+    expect(await clip(), 'no file: the poster, with no controls and no focus').toEqual({ controls: false, poster: true, focused: false });
+    await swipeOn(page, '.pb__frame video');
+    await expect.poll(async () => (await pb(page)).hash, { message: 'a drag on a clip with no file pages', timeout: 1000 }).toBe('#print-06');
+    await page.keyboard.press('Escape');
+    await expect.poll(async () => (await pb(page)).open).toBe(false);
+    await page.evaluate(() => { document.querySelector('#print-05 video').dataset.src = '/media/b3-clip.mp4'; });
+    await open5();
+    expect((await clip()).controls, 'a file: the clip has its controls').toBe(true);
   } finally {
     await ctx.close();
   }
