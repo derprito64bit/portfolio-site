@@ -396,12 +396,18 @@ export function initProject(h: Host) {
       const i = projects.findIndex((p) => p.slug === r.slug);
       if (i < 0) { location.reload(); return; }
       if ((S === 'open' || S === 'opening') && i === h.pos()) { pb?.sync(location.hash); return; }
-      if (S === 'open') { location.reload(); return; }
+      // another project's entry while one is open or opening (a stale forward entry that previous/next's replaceState
+      // left behind): the open view goes at once, then the frame moves there and opens; the entry behind it is not ours
+      let stray = false;
+      if (S === 'open' || S === 'opening') { close('pop'); h.finishTl(); S = h.state(); stray = true; }
       // Forward during the close: the close lands first
       if (S === 'closing') { h.finishTl(); S = h.state(); }
       if (S === 'evf' || S === 'intro') {
         h.jump(i);
+        // playback must not claim a #print entry that was pushed for another project's page
+        if (stray && r.print) history.replaceState({ vf: 'project', slug: r.slug }, '', location.href);
         open({ fromPop: true, print: r.print });
+        if (stray) pushed = false;
       }
       return;
     }

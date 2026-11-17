@@ -556,3 +556,47 @@ test.describe('A13 calm, no WebGL, no JS', () => {
     });
   }
 });
+
+// fix-pass B4
+test.describe('A2 / A10 history over playback: traversals that cross the open', () => {
+  const where6 = (page) => page.evaluate(() => [window.__vf.state(), location.pathname, location.hash]);
+  /** Esc closes playback onto /work/project-06/; a second Esc lands on frame 6 at /#work-06, and it stays there. */
+  const lands6 = async (page) => {
+    await page.keyboard.press('Escape');
+    await expect.poll(async () => (await pb(page)).open, { message: 'the first Esc closes playback' }).toBe(false);
+    await expect.poll(() => where6(page)).toEqual(['open', '/work/project-06/', '']);
+    await page.keyboard.press('Escape');
+    await untilState(page, 'evf', 5);
+    await expect.poll(() => page.evaluate(() => `${location.pathname}${location.hash}`), { message: 'the second Esc lands on the frame' }).toBe('/#work-06');
+    await page.waitForTimeout(400);
+    expect(await page.evaluate(() => window.__vf.state()), 'and stays there: no stale entry reopens a project').toBe('evf');
+  };
+
+  // f07: Next's replaceState leaves 06's #print-01 entry forward of 07's; Forward onto it swaps in app, never reloads
+  test(`Forward onto another project's #print entry after Next: no reload; Esc, Esc: that frame`, async ({ browser, browserName }) => {
+    const ctx = await context(browser, browserName, DESK);
+    const page = await ctx.newPage();
+    try {
+      await home(page);
+      await toFrame(page, 5);
+      await page.keyboard.press('Enter');
+      await untilState(page, 'open', 5);
+      await page.locator('#print-01 [data-print-open]').click();
+      await expect.poll(async () => (await pb(page))?.hash).toBe('#print-01');
+      await page.waitForTimeout(700);
+      await page.keyboard.press('Escape');
+      await expect.poll(() => page.evaluate(() => [document.querySelector('dialog.pb')?.open, location.hash])).toEqual([false, '']);
+      await page.locator('#proj .pj__nav a[rel="next"]').click();
+      await page.waitForFunction(() => document.querySelector('#proj-title')?.textContent.trim() === 'Project 07', null, { timeout: 10000 });
+      await page.evaluate(() => { window.__live = 1; });
+      await page.goForward();
+      // a reload would destroy the context mid-poll: read through it, and let __live tell
+      await expect.poll(() => page.evaluate(() => window.__vf && [window.__vf.state(), window.__vf.pos(), location.pathname, location.hash]).catch(() => null)).toEqual(['open', 5, '/work/project-06/', '#print-01']);
+      expect(await page.evaluate(() => window.__live ?? null), 'the same document: no reload').toBe(1);
+      await expect.poll(async () => (await pb(page))?.open, { message: 'playback follows the entry' }).toBe(true);
+      await lands6(page);
+    } finally {
+      await ctx.close();
+    }
+  });
+});
