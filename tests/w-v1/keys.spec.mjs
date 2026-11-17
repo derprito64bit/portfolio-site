@@ -71,8 +71,8 @@ for (const [label, profile] of [['1440', DESK], ['390', PHONE]]) {
         await page.keyboard.press('Enter');
         await untilState(page, 'open', 5);
         await titled(page, 'Project 06');
-        expect(await focused(page), 'the title (tabindex -1) inside the column holds focus').toBe('h2#proj-title');
-        expect(await page.evaluate(() => getComputedStyle(document.activeElement).outlineStyle), 'no ring on the title').toBe('none');
+        expect(await page.evaluate(() => document.activeElement?.matches('#proj [data-proj-col]')), 'the column (tabindex -1, the scroller) holds focus').toBe(true);
+        expect(await page.evaluate(() => getComputedStyle(document.activeElement).outlineStyle), 'no ring on the column').toBe('none');
         let last = await colTop(page);
         expect(last).toBe(0);
         for (const key of ['PageDown', 'ArrowDown', 'Space', 'End']) {

@@ -47,7 +47,7 @@ export const PLANTS = [
   ['zoom-layout', 'A7', 'src/evf/project/inapp.ts', 'onUpdate: () => { marksAt(R, box); h.reveal(); } }, 0);', 'onUpdate: () => { writeRect(R); marksAt(R, box); h.reveal(); } }, 0);', 'cls-gl.spec.mjs', 'A7 with GL'],
   ['close-layout', 'A7', 'src/evf/project/inapp.ts', 'onUpdate: () => { marksAt(R, rect); h.reveal(); } }, 0.06);', 'onUpdate: () => { writeRect(R); marksAt(R, rect); h.reveal(); } }, 0.06);', 'cls-gl.spec.mjs', 'A7 with GL'],
   ['opener-evf', 'A2', 'src/evf/project/inapp.ts', "a && a !== evf && evf.contains(a) && a.matches('button, a[href]')", 'a && a !== document.body && evf.contains(a)', 'keys.spec.mjs', 'Close returns focus'],
-  ['focus-back', 'A2', 'src/evf/project/inapp.ts', "(($('#proj-title') ?? $('[data-close]', proj)) as HTMLElement)", "($('[data-close]', proj) as HTMLElement)", 'keys.spec.mjs', 'keys scroll the column'],
+  ['focus-back', 'A2', 'src/evf/project/inapp.ts', 'col.focus({ preventScroll: true });', "($('[data-close]', proj) as HTMLElement).focus({ preventScroll: true });", 'keys.spec.mjs', 'keys scroll the column'],
   ['trap-off', 'A2', 'src/evf/project/view.ts', "if (e.key !== 'Tab' || !isOpen()) return;", "if (e.key !== 'Tab' || isOpen()) return;", 'keys.spec.mjs', 'keys scroll the column'],
   ['resize-cover', 'A13', 'src/evf/project/inapp.ts', 'if (!e) { coverFill(true); return; }', 'if (!e) return;', 'keys.spec.mjs', 'resize or rotate while open'],
   ['marks-show', 'A2', 'src/evf/project/inapp.ts', "const marksOff = () => { for (const m of marks()) m.style.visibility = 'hidden'; };", 'const marksOff = () => {};', 'keys.spec.mjs', 'resize or rotate while open'],
