@@ -65,6 +65,8 @@ export async function context(browser, browserName, profile = DESK, { gl = false
     ...p, reducedMotion: reduced ? 'reduce' : 'no-preference', colorScheme: 'dark', serviceWorkers: 'block', javaScriptEnabled: js,
   });
   if (!gl) await ctx.addInitScript(NO_WEBGL_INIT);
+  // probe P11: no filters on the prints (the expose's blur and brightness, the dim's saturate)
+  await ctx.addInitScript(() => addEventListener('DOMContentLoaded', () => { const s = document.createElement('style'); s.textContent = '.print__img, .print__frame { filter: none !important; }'; document.head.append(s); }));
   for (const s of init) await ctx.addInitScript(s);
   return ctx;
 }
