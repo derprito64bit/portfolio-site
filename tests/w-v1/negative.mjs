@@ -92,6 +92,14 @@ export const PLANTS = [
   ['typed-hash-pushed', 'A2', 'src/evf/project/inapp.ts', 'if (history.state == null) pushed = false;', '', 'playback.spec.mjs', 'while the project is open in the Viewfinder, then Esc, Esc'],
   // a reference-host plant (GL): with no __vfEngine the row skips and this is MISSED
   ['readout-double', 'A2', 'src/evf/project/inapp.ts', "fl2.style.visibility = 'hidden';", '', 'cls-gl.spec.mjs', 'one focal-length readout'],
+  // fix-pass B2
+  ['meta-nowrap', 'A1', 'src/evf/style/project.css', '.pj__meta .ph { white-space: normal; max-width: 100%; }', '', 'open.spec.mjs', 'A1 meta cells hold'],
+  ['nojs-gap', 'A1', 'src/evf/style/project.css', '.pj-page:not(.pj-js) .pj__head { min-height: 0; padding-top: 8vh; padding-bottom: 48px; }', '.pj-page:not(.pj-js) .pj__head { min-height: 0; padding-bottom: 48px; }', 'playback.spec.mjs', 'no JS: /work/project-01/ is whole at 390'],
+  ['bar-covers-focus', 'A2', 'src/evf/style/project.css', 'html.pj-page { scroll-padding-block: var(--top); }', '', 'keys.spec.mjs', 'focus ring: a print reached by keyboard'],
+  ['fc-bar-clear', 'A2', 'src/evf/style/project.css', '.proj__bar, .pj-bar { background-color: Canvas; background-image: none; border-bottom: 1px solid CanvasText; }', '', 'roll.spec.mjs', 'forced colours'],
+  ['fc-play-block', 'A5', 'src/evf/style/print.css', '.print__play::after { forced-color-adjust: none; border-color: transparent; border-left-color: CanvasText; }', '', 'roll.spec.mjs', 'forced colours'],
+  ['calm-nav-open', 'A13', 'src/evf/style.css', '.evf.is-open .meter, .evf.is-open .calm-nav { visibility: hidden; }', '.evf.is-open .meter { visibility: hidden; }', 'open.spec.mjs', 'Previous and Next hide while'],
+  ['skip-31px', 'A12', 'src/evf/style.css', 'font-size: 13px; line-height: 32px; letter-spacing: 0.06em;', 'font-size: 13px; letter-spacing: 0.06em;', 'keys.spec.mjs', 'skip link is a 44 px'],
 ];
 
 const SKIP = new Set(['node_modules', 'dist', '.git', 'test-results', '.astro', 'playwright-report']);

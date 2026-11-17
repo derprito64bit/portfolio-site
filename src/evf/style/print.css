@@ -21,6 +21,8 @@
 .print__a { display: block; color: inherit; text-decoration: none; cursor: zoom-in; }
 /* the ring: phosphor between two near-black bands, so it holds 3:1 over the frame behind as over the ground */
 .print__a:focus-visible { outline: 2px solid var(--phos); outline-offset: 4px; box-shadow: 0 0 0 8px var(--black); }
+/* the ring reaches 8 px past the link (4 px offset and 2 px outline, inside the 8 px band): a focus scroll leaves room for it */
+.print__a { scroll-margin-block: 10px; }
 .print__frame {
   position: relative; display: block; aspect-ratio: var(--ar); overflow: hidden;
   background: var(--panel) var(--lqip, none) center / cover no-repeat;
@@ -126,4 +128,9 @@
   .pb__nav { justify-content: space-between; order: 2; }
   .pb__ro { gap: 12px; }
   .pb__frame { width: min(100%, calc((100svh - var(--top) - 190px) * var(--ar))); }
+}
+
+/* ---------------- forced colours: the play mark stays a triangle (its clear borders are not forced to a block) ---------------- */
+@media (forced-colors: active) {
+  .print__play::after { forced-color-adjust: none; border-color: transparent; border-left-color: CanvasText; }
 }

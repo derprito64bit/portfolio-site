@@ -427,3 +427,101 @@ for (const [label, profile] of [['1440', DESK], ['390', PHONE]]) {
     });
   });
 }
+
+// fix-pass B2
+/** The meta cells (Role, Year, Tools, Link) under `root`: each dd's rect and its placeholder chips', fonts settled. */
+const metaCells = (page, root) => page.evaluate(async (r) => {
+  await document.fonts.ready;
+  return {
+    font: document.fonts.check('13px "Chivo Mono Variable"'),
+    cells: [...document.querySelectorAll(`${r} .pj__meta > div`)].map((d) => {
+      const c = d.querySelector('dd').getBoundingClientRect();
+      return { dt: d.querySelector('dt').textContent, l: c.left, r: c.right,
+        ph: [...d.querySelectorAll('dd .ph')].map((p) => { const b = p.getBoundingClientRect(); return { l: b.left, r: b.right, h: b.height }; }) };
+    }),
+  };
+}, root);
+const metaHold = (m, where) => {
+  expect(m.font, `${where}: Chivo Mono has swapped in (the fallback is narrower)`).toBe(true);
+  expect(m.cells.length).toBe(4);
+  for (const c of m.cells) {
+    expect(c.ph.length, `${where} ${c.dt}: a placeholder chip`).toBeGreaterThan(0);
+    for (const p of c.ph) {
+      expect(p.l, `${where} ${c.dt}: the chip starts inside its cell`).toBeGreaterThanOrEqual(c.l - 0.5);
+      expect(p.r, `${where} ${c.dt}: the chip ends inside its cell (${p.r.toFixed(1)} against ${c.r.toFixed(1)})`).toBeLessThanOrEqual(c.r + 0.5);
+      expect(p.h, `${where} ${c.dt}: two lines at most, never a word broken mid-letter`).toBeLessThanOrEqual(39);
+    }
+  }
+  // the rows are Role | Year and Tools | Link: the two cells of a row never intersect
+  for (const [a, b] of [[0, 1], [2, 3]]) expect(m.cells[a].r, `${where}: ${m.cells[a].dt} and ${m.cells[b].dt} side by side`).toBeLessThanOrEqual(m.cells[b].l + 0.5);
+};
+
+for (const w of [760, 768, 900, 1000, 1040]) test(`A1 meta cells hold their placeholders at ${w} x 1024: no chip spills into the next cell (cold and in-app)`, async ({ browser, browserName }) => {
+  const ctx = await context(browser, browserName, { ...DESK, viewport: { width: w, height: 1024 } });
+  const page = await ctx.newPage();
+  try {
+    await page.goto(`${base()}/work/project-01/`, { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('h1')).toHaveText('Project 01');
+    metaHold(await metaCells(page, '.pj-page'), `cold ${w}`);
+    await home(page);
+    await toFrame(page, 0);
+    await page.keyboard.press('Enter');
+    await untilState(page, 'open', 0);
+    await page.waitForSelector('#proj .pj__meta');
+    metaHold(await metaCells(page, '#proj'), `in-app ${w}`);
+  } finally {
+    await ctx.close();
+  }
+});
+
+for (const [label, profile] of [['1440', DESK], ['390', PHONE]]) test(`A1 the title line under the h1 holds real text: wrapped lines stack, the placeholder chip keeps its 21 px line at ${label}`, async ({ browser, browserName }) => {
+  const ctx = await context(browser, browserName, profile);
+  const page = await ctx.newPage();
+  try {
+    await page.goto(`${base()}/work/project-01/?vf-test`, { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('.pj__ph');
+    const s = await page.evaluate(() => {
+      const p = document.querySelector('.pj__ph');
+      const h0 = p.getBoundingClientRect().height;
+      // a real title in place of the chip (textContent, never innerHTML: D-055), long enough to wrap at 536 and 358 px
+      p.textContent = 'A much longer real project title that has to wrap onto a second line on a phone and across the desktop column too';
+      const range = document.createRange();
+      range.selectNodeContents(p.firstChild);
+      const rects = [...range.getClientRects()].map((r) => ({ top: r.top, bottom: r.bottom }));
+      return { h0, rects, lh: parseFloat(getComputedStyle(p).lineHeight) || 0, h: p.getBoundingClientRect().height, meta: document.querySelector('.pj__meta').getBoundingClientRect().top };
+    });
+    expect(Math.abs(s.h0 - 21), `the placeholder chip's line stays 21 px (${s.h0})`).toBeLessThanOrEqual(1);
+    expect(s.rects.length, 'the title wraps (one rect per line)').toBeGreaterThanOrEqual(2);
+    expect(s.lh, 'the title line has a line height').toBeGreaterThan(0);
+    expect(s.h, `the title has its own height (${s.h} for ${s.rects.length} lines)`).toBeGreaterThanOrEqual(s.rects.length * 16);
+    for (let i = 1; i < s.rects.length; i++) expect(s.rects[i].top - s.rects[i - 1].top, `line ${i + 1} sits below line ${i}, not over it`).toBeGreaterThanOrEqual(16);
+    expect(s.meta, 'the meta rule stays below the title').toBeGreaterThanOrEqual(s.rects.at(-1).bottom);
+  } finally {
+    await ctx.close();
+  }
+});
+
+// wv1-calm-evf-prevnext (#106): under reduced motion the EVF's Previous and Next (inert while a project is open) never
+// show over the open view; Close brings them back.
+const calmNav = (page) => page.evaluate(() => {
+  const c = document.querySelector('[data-calm-nav]');
+  const cs = getComputedStyle(c);
+  return { shown: cs.display !== 'none' && cs.visibility === 'visible', calm: document.documentElement.classList.contains('calm') };
+});
+for (const [label, profile] of [['1440', DESK], ['390', PHONE]]) test(`A13 calm: the EVF's Previous and Next hide while a project is open, and come back on Close at ${label}`, async ({ browser, browserName }) => {
+  const ctx = await context(browser, browserName, profile, { reduced: true });
+  const page = await ctx.newPage();
+  try {
+    await home(page);
+    await toFrame(page, 1);
+    expect(await calmNav(page), 'calm: the EVF shows Previous and Next').toEqual({ shown: true, calm: true });
+    await page.keyboard.press('Enter');
+    await untilState(page, 'open', 1);
+    expect(await calmNav(page), 'open: Previous and Next are hidden').toEqual({ shown: false, calm: true });
+    await page.keyboard.press('Escape');
+    await untilState(page, 'evf', 1);
+    expect(await calmNav(page), 'closed: Previous and Next are back').toEqual({ shown: true, calm: true });
+  } finally {
+    await ctx.close();
+  }
+});
