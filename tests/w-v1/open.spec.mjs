@@ -305,3 +305,49 @@ test('A12 phone: Back closes on the first tap after scrolling; targets 44 px; sw
     await ctx.close();
   }
 });
+
+// fix-pass B2
+/** The meta cells (Role, Year, Tools, Link) under `root`: each dd's rect and its placeholder chips', fonts settled. */
+const metaCells = (page, root) => page.evaluate(async (r) => {
+  await document.fonts.ready;
+  return {
+    font: document.fonts.check('13px "Chivo Mono Variable"'),
+    cells: [...document.querySelectorAll(`${r} .pj__meta > div`)].map((d) => {
+      const c = d.querySelector('dd').getBoundingClientRect();
+      return { dt: d.querySelector('dt').textContent, l: c.left, r: c.right,
+        ph: [...d.querySelectorAll('dd .ph')].map((p) => { const b = p.getBoundingClientRect(); return { l: b.left, r: b.right, h: b.height }; }) };
+    }),
+  };
+}, root);
+const metaHold = (m, where) => {
+  expect(m.font, `${where}: Chivo Mono has swapped in (the fallback is narrower)`).toBe(true);
+  expect(m.cells.length).toBe(4);
+  for (const c of m.cells) {
+    expect(c.ph.length, `${where} ${c.dt}: a placeholder chip`).toBeGreaterThan(0);
+    for (const p of c.ph) {
+      expect(p.l, `${where} ${c.dt}: the chip starts inside its cell`).toBeGreaterThanOrEqual(c.l - 0.5);
+      expect(p.r, `${where} ${c.dt}: the chip ends inside its cell (${p.r.toFixed(1)} against ${c.r.toFixed(1)})`).toBeLessThanOrEqual(c.r + 0.5);
+      expect(p.h, `${where} ${c.dt}: two lines at most, never a word broken mid-letter`).toBeLessThanOrEqual(39);
+    }
+  }
+  // the rows are Role | Year and Tools | Link: the two cells of a row never intersect
+  for (const [a, b] of [[0, 1], [2, 3]]) expect(m.cells[a].r, `${where}: ${m.cells[a].dt} and ${m.cells[b].dt} side by side`).toBeLessThanOrEqual(m.cells[b].l + 0.5);
+};
+
+for (const w of [760, 768, 900, 1000, 1040]) test(`A1 meta cells hold their placeholders at ${w} x 1024: no chip spills into the next cell (cold and in-app)`, async ({ browser, browserName }) => {
+  const ctx = await context(browser, browserName, { ...DESK, viewport: { width: w, height: 1024 } });
+  const page = await ctx.newPage();
+  try {
+    await page.goto(`${base()}/work/project-01/`, { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('h1')).toHaveText('Project 01');
+    metaHold(await metaCells(page, '.pj-page'), `cold ${w}`);
+    await home(page);
+    await toFrame(page, 0);
+    await page.keyboard.press('Enter');
+    await untilState(page, 'open', 0);
+    await page.waitForSelector('#proj .pj__meta');
+    metaHold(await metaCells(page, '#proj'), `in-app ${w}`);
+  } finally {
+    await ctx.close();
+  }
+});

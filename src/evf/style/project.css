@@ -48,10 +48,12 @@
 }
 .pj__ph { line-height: 0; }
 .pj .ph { font-size: 13px; line-height: 18px; }
-.pj__meta { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border-top: 1px solid rgba(236, 233, 226, 0.16); margin: 30px 0 28px; }
+.pj__meta { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 8px; border-top: 1px solid rgba(236, 233, 226, 0.16); margin: 30px 0 28px; }
 .pj__meta > div { padding: 12px 0; border-bottom: 1px solid rgba(236, 233, 226, 0.16); min-width: 0; }
 .pj__meta dt { color: var(--ink-2); margin-bottom: 6px; }
 .pj__meta dd { font-size: 15px; overflow-wrap: anywhere; }
+/* a placeholder wraps inside a narrow cell (760 to about 1030 px), never into the next one */
+.pj__meta .ph { white-space: normal; max-width: 100%; }
 .pj__meta a { color: var(--ink); text-underline-offset: 3px; }
 .pj__blurb { font-size: 19px; line-height: 1.45; margin-bottom: 22px; max-width: 34ch; }
 .pj__body p { color: var(--ink-2); margin-bottom: 14px; max-width: 48ch; }
