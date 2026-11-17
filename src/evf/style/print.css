@@ -19,8 +19,7 @@
 }
 .print[data-drop] { margin-top: calc(min(calc(var(--f) * 100% / var(--ar)), 80svh) / 2 + 14px); }
 .print__a { display: block; color: inherit; text-decoration: none; cursor: zoom-in; }
-/* the ring: phosphor between two near-black bands, so it holds 3:1 over the frame behind as over the ground */
-.print__a:focus-visible { outline: 2px solid var(--phos); outline-offset: 4px; box-shadow: 0 0 0 8px var(--black); }
+.print__a:focus-visible { outline: 2px solid var(--phos); outline-offset: 4px; }
 .print__frame {
   position: relative; display: block; aspect-ratio: var(--ar); overflow: hidden;
   background: var(--panel) var(--lqip, none) center / cover no-repeat;
@@ -49,8 +48,8 @@
 /* a typed placeholder box (no file) and a failed image: the same size, its own label */
 .print__box { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; border: 1px dashed rgba(236, 233, 226, 0.25); color: var(--ink-3); }
 .print.is-failed .print__img, .print.is-failed .print__play { visibility: hidden; }
-.print.is-failed .print__frame, .pb__frame[data-failed] { background: var(--panel); border: 1px dashed rgba(236, 233, 226, 0.25); }
-.print.is-failed .print__frame::after, .pb__frame[data-failed]::after {
+.print.is-failed .print__frame { background: var(--panel); border: 1px dashed rgba(236, 233, 226, 0.25); }
+.print.is-failed .print__frame::after {
   content: 'Image unavailable'; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
   font-family: var(--f-mono); font-size: 12px; letter-spacing: 0.07em; text-transform: uppercase; color: var(--ink-2);
 }

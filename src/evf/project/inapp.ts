@@ -5,11 +5,12 @@
 // behind pulled to its neighbour. A popstate onto a /work/ URL that is not open moves the frame there without animation,
 // then opens; one that only drops #print-NN closes playback. The prefetch starts once a frame has been current 300 ms.
 import { gsap, D, E } from '../motion';
-import type { Engine, Rect } from '../gl/engine';
+import type { Engine } from '../gl/engine';
 import type { Scene } from '../scenes';
 import { projects } from '../data';
 import { frameRect, writeRect, isPhone } from '../layout';
 import { parse, projectUrl, homeUrl, workHash } from '../router';
+import { adopt, loadArticle, prefetch, requestCount } from './article';
 import type { RollControl } from './roll';
 import type { PlaybackControl } from './playback';
 import { apertureOf, landedState, openZoom, subjectOf, zoomCentre, type Pt3 } from './framing';
@@ -58,7 +59,6 @@ export const PREFETCH_MS = 300;
 export function initProject(h: Host) {
   const proj = $('#proj');
   const col = $('[data-proj-col]');
-  col.tabIndex = -1;
   const evf = $('#evf');
   const afEl = $('[data-af]');
   const flEl = $('[data-fl]');
@@ -76,42 +76,12 @@ export function initProject(h: Host) {
   let prefetchTimer = 0;
   const slugAt = (i: number) => projects[i]?.slug ?? '';
 
-  // ---------------------------------------------------------------- the frame's box never moves (A7: CLS)
-  // The zoom moves no layout: the frame's box (and the HUD hung off it) stays the work frame's from Open to Close. The
-  // GL draws the travel from the engine's rect and the corner marks follow it by transform, so no frame of the open or
-  // the close is a layout shift, input or not (browser Back). With no WebGL the box is the cover (coverFill).
-  const frameEl = $('[data-frame]');
-  const marks = () => $$('.mk', frameEl);
-  /** The frame's box, as layout.ts last wrote it. */
-  const boxRect = (): Rect => {
-    const s = document.documentElement.style, v = (k: string) => parseFloat(s.getPropertyValue(k)) || 0;
-    return { x: v('--fx'), y: v('--fy'), w: v('--fw'), h: v('--fh') };
-  };
-  /** The marks at rect r's corners, over the box b, by translation alone. */
-  function marksAt(r: Rect, b: Rect) {
-    const l = r.x - b.x, t = r.y - b.y, rr = l + r.w - b.w, bb = t + r.h - b.h;
-    for (const m of marks()) {
-      const c = m.classList;
-      m.style.transform = `translate(${c.contains('mk--tr') || c.contains('mk--br') ? rr : l}px,${c.contains('mk--bl') || c.contains('mk--br') ? bb : t}px)`;
-    }
-  }
-  /** Open: the marks are off the view's corners and stay hidden (a resize while open never draws them over the page). */
-  const marksOff = () => { for (const m of marks()) m.style.visibility = 'hidden'; };
-  const marksHome = () => { for (const m of marks()) { m.style.transform = ''; m.style.visibility = ''; } };
-  /** No WebGL: the tint cover is the frame's own box, so the box fills the view while open: one write at Open (and on a
-   *  resize while open), one at the close's swap. A scaled transform here lost the page in CI's WebKit. */
-  const coverFill = (on: boolean) => writeRect(frameRect(on ? 'open' : 'work'));
-
   // ---------------------------------------------------------------- the roll, playback and the frame behind
-  // their code is a lazy chunk, loaded with the prefetch or at Open, so the home page's first script stays lean; it also
-  // wires the open view's scroll (the frame recedes) and Tab trap (project/view.ts), which only matter once it is in
+  // their code is a lazy chunk, loaded with the prefetch or at Open, so the home page's first script stays lean
   type Enh = typeof import('./enhance');
   let enh: Enh | null = null;
   let enhLoad: Promise<Enh> | null = null;
-  const loadEnh = () => (enhLoad ??= import('./enhance').then((m) => {
-    if (!enh) m.wireView(proj, col, () => h.state() === 'open', h.engine);
-    return (enh = m);
-  }, (e) => { enhLoad = null; throw e; }));
+  const loadEnh = () => (enhLoad ??= import('./enhance').then((m) => (enh = m), (e) => { enhLoad = null; throw e; }));
   function enhance() {
     roll?.destroy();
     pb?.destroy();
@@ -126,6 +96,16 @@ export function initProject(h: Host) {
     pb?.destroy();
     roll = pb = null;
   }
+  /** -4 EV as the roll comes up (the frame recedes behind the prints). */
+  col.addEventListener('scroll', () => {
+    const e = h.engine();
+    if (!e || h.state() !== 'open') return;
+    const d = Math.pow(2, -4 * Math.min(1, Math.max(0, col.scrollTop / (col.clientHeight * 0.85))));
+    if (Math.abs(d - e.st.dim) < 0.002) return;
+    e.st.dim = d;
+    e.invalidate(120);
+  }, { passive: true });
+
   // the article's own links: previous and next swap in place; anything else leaves normally
   col.addEventListener('click', (e) => {
     const a = (e.target as Element).closest<HTMLAnchorElement>('a[data-step]');
@@ -133,12 +113,21 @@ export function initProject(h: Host) {
     e.preventDefault();
     step(Number(a.dataset.step) || 1);
   });
+  // the dialog keeps Tab inside it
+  proj.addEventListener('keydown', (e) => {
+    if (e.key !== 'Tab') return;
+    const f = $$<HTMLElement>('button, a[href]', proj).filter((x) => !x.hasAttribute('disabled') && x.offsetParent !== null);
+    if (!f.length) return;
+    const first = f[0], last = f[f.length - 1];
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  });
+
   /** Fetch, parse and adopt the page for frame i; resolves false if a newer open or close took over. */
   async function bring(i: number, my: number) {
-    const m = await loadEnh();
-    const doc = await m.loadArticle(slugAt(i));
+    const [doc] = await Promise.all([loadArticle(slugAt(i)), loadEnh()]);
     if (my !== token) return false;
-    const { title } = m.adopt(doc, col);
+    const { title } = adopt(doc, col);
     document.title = title;
     col.scrollTop = 0;
     return true;
@@ -154,10 +143,8 @@ export function initProject(h: Host) {
     const my = ++token;
     h.setState('opening');
     h.setSway(false);
-    // Close returns focus to the control that opened (#78): a focused control in the EVF, else Open frame. Enter on the
-    // EVF itself, a click on the frame or a tap at the AF box focus no control, so they come back to Open frame too.
     const a = document.activeElement as HTMLElement | null;
-    opener = a && a !== evf && evf.contains(a) && a.matches('button, a[href]') && !a.closest('[data-go]') ? a : null;
+    opener = a && a !== document.body && evf.contains(a) && !a.closest('[data-go]') ? a : null;
     if (!fromPop) {
       history.pushState({ vf: 'project', slug }, '', projectUrl(slug));
     }
@@ -189,35 +176,26 @@ export function initProject(h: Host) {
       if (h.calm || !engine) { gsap.fromTo(kids, { opacity: 0 }, { opacity: 1, duration: 0.2, ease: 'none', clearProps: 'opacity' }); return; }
       const head = kids.find((k) => k.matches('.pj__head'));
       const details = head ? ([...head.children] as HTMLElement[]) : [];
-      const roll = kids.find((k) => k.matches('.roll'));
-      const rest = kids.filter((k) => k !== head && k !== roll);
+      const rest = kids.filter((k) => k !== head);
       const at = Math.max(0, lead - 0.1); // the first detail 0.1 s before the landing, so it is there as the zoom settles
       if (head) { gsap.set(details, { opacity: 0 }); head.style.opacity = ''; }
       gsap.to(details, { opacity: 1, duration: 0.36, ease: E.out, stagger: 0.1, delay: at, clearProps: 'opacity' });
-      // the roll is the last beat of the same exposure: up in 0.2 s at the landing, so print 1's own expose (-3 EV to
-      // clear) is what shows, not a late block fade
-      if (roll) gsap.fromTo(roll, { opacity: 0 }, { opacity: 1, duration: 0.2, ease: 'none', delay: lead, clearProps: 'opacity' });
       gsap.fromTo(rest, { opacity: 0 }, { opacity: 1, duration: 0.4, ease: E.out, delay: at + details.length * 0.1, clearProps: 'opacity' });
     };
     const settle = () => {
       if (my !== token) return;
       if (!ready) { fail(); return; } // not parsed by the landing: the page itself
       h.setState('open');
-      marksOff();
       enhance();
       arrive();
-      // the column itself (tabindex -1, the scroller): the keys scroll the page at once, Space never presses Back, and
-      // Tab goes on into the article (Shift+Tab reaches Back). A focused title inside it lost the page in CI's WebKit
-      // over long column scrolls.
-      col.focus({ preventScroll: true });
+      ($('[data-close]', proj) as HTMLElement).focus({ preventScroll: true });
       // a traversal straight onto .../#print-NN: playback follows the entry (and knows whether it pushed it)
       const here = parse();
       if (print && pb && here.kind === 'project' && here.print === print) pb.sync(location.hash);
     };
     const full = frameRect('open');
     if (!engine || h.calm) {
-      if (!engine) coverFill(true);
-      marksOff();
+      writeRect(full);
       $$('.evf .pw.on').forEach((e) => e.classList.remove('on'));
       const t = gsap.timeline({ onComplete: () => { h.setTl(null); settle(); } });
       h.setTl(t);
@@ -245,8 +223,7 @@ export function initProject(h: Host) {
     t.call(settle, [], D.travel);
     t.call(arrive, [0.25], D.travel - 0.25);
     t.call(() => { $$('.evf .pw.on').forEach((e) => { if (!e.matches('.ro--fl')) e.classList.remove('on'); }); }, [], 0.08);
-    const box = boxRect(), R = st.rect;
-    t.to(R, { x: full.x, y: full.y, w: full.w, h: full.h, duration: D.travel, ease: E.lens, onUpdate: () => { marksAt(R, box); h.reveal(); } }, 0);
+    t.to(st.rect, { x: full.x, y: full.y, w: full.w, h: full.h, duration: D.travel, ease: E.lens, onUpdate: () => { writeRect(st.rect); h.reveal(); } }, 0);
     t.to(st, { zoom, dolly: 0.08, focus: sub.z, aperture: apertureOf(s.fnum) * 1.6, radius: 0, rim: 0, vig: 0.38, duration: D.travel, ease: E.lens }, 0);
     st.ndv = isPhone() ? 1 : 0;
     t.to(fl, { v: 56, duration: D.travel, ease: E.lens, onUpdate: flUp }, 0);
@@ -280,7 +257,6 @@ export function initProject(h: Host) {
     const done = () => {
       h.setTl(null);
       h.setState('evf');
-      marksHome();
       unenhance();
       proj.hidden = true;
       col.replaceChildren();
@@ -298,8 +274,7 @@ export function initProject(h: Host) {
       h.setTl(t);
       t.to(it, { opacity: 0, duration: 0.2 });
       t.call(() => {
-        coverFill(false);
-        marksHome();
+        writeRect(rect);
         if (engine) {
           const st = engine.st;
           engine.holdPrevious();
@@ -319,12 +294,7 @@ export function initProject(h: Host) {
     h.setTl(t);
     t.to(it, { opacity: 0, y: -8, duration: D.snap, ease: E.in });
     t.to(st, { nd: 0, dim: 1, duration: D.step * k * 2, ease: E.in }, 0);
-    // the box is the work frame's already (main.ts keeps it so on a resize while open): this writes nothing new
-    writeRect(rect);
-    const R = st.rect;
-    marksAt(R, rect);
-    for (const m of marks()) m.style.visibility = '';
-    t.to(R, { x: rect.x, y: rect.y, w: rect.w, h: rect.h, duration: D.travel * k, ease: E.lens, onUpdate: () => { marksAt(R, rect); h.reveal(); } }, 0.06);
+    t.to(st.rect, { x: rect.x, y: rect.y, w: rect.w, h: rect.h, duration: D.travel * k, ease: E.lens, onUpdate: () => { writeRect(st.rect); h.reveal(); } }, 0.06);
     t.to(st, { zoom: 1, dolly: 0, aperture: apertureOf(h.scenes[i].fnum), radius: 5, rim: 1, vig: 0.28, duration: D.travel * k, ease: E.lens }, 0.06);
     t.to(fl, { v: 23, duration: D.travel * k, ease: E.lens, onUpdate: () => { flEl.textContent = String(nearestFl(fl.v)); } }, 0.06);
     t.add(h.hudOn(0.025), 0.3);
@@ -358,11 +328,11 @@ export function initProject(h: Host) {
       } else h.cover(to);
     }
     history.replaceState({ vf: 'project', slug }, '', projectUrl(slug));
-    loadEnh().then((m) => m.loadArticle(slug).then((doc) => ({ m, doc }))).then(async ({ m, doc }) => {
+    Promise.all([loadArticle(slug), loadEnh()]).then(async ([doc]) => {
       await out.then();
       if (my !== token) return;
       unenhance();
-      const { title } = m.adopt(doc, col);
+      const { title } = adopt(doc, col);
       document.title = title;
       col.scrollTop = 0;
       const now = [...col.children] as HTMLElement[];
@@ -387,8 +357,7 @@ export function initProject(h: Host) {
 
   function onPop() {
     const r = parse();
-    // our own Back lands home; playback's own Back, still on its way (Esc, Esc), lands on the page first: let it pass
-    if (ownBack) { if (r.kind === 'project' && r.slug === slugAt(h.pos())) return; ownBack = false; if (r.kind === 'home') { homeHere(); return; } }
+    if (ownBack) { ownBack = false; if (r.kind === 'home') { homeHere(); return; } }
     let S = h.state();
     if (r.kind === 'project') {
       const i = projects.findIndex((p) => p.slug === r.slug);
@@ -413,14 +382,12 @@ export function initProject(h: Host) {
   function framed(i: number) {
     clearTimeout(prefetchTimer);
     if (i < 0 || i >= h.works) return;
-    prefetchTimer = window.setTimeout(() => { if (h.pos() === i && (h.state() === 'evf' || h.state() === 'raising')) { loadEnh().then((m) => m.prefetch(slugAt(i)), () => {}); } }, PREFETCH_MS);
+    prefetchTimer = window.setTimeout(() => { if (h.pos() === i && (h.state() === 'evf' || h.state() === 'raising')) { prefetch(slugAt(i)); loadEnh().catch(() => {}); } }, PREFETCH_MS);
   }
 
   function onResize() {
-    if (h.state() !== 'open') return;
     const e = h.engine();
-    // main.ts has written the new work frame's box: the cover fills the view again from it
-    if (!e) { coverFill(true); return; }
+    if (!e || h.state() !== 'open') return;
     const s = h.scenes[h.pos()];
     const z = landedState(s, subjectOf(s), e.st.zoom);
     e.st.rect = z.rect;
@@ -438,6 +405,7 @@ export function initProject(h: Host) {
     framed,
     onResize,
     playback: () => pb,
+    requests: requestCount,
   };
 }
 

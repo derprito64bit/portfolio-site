@@ -66,9 +66,7 @@ export function initPlayback(o: PlaybackOptions): PlaybackControl {
     prev.addEventListener('click', () => page(-1));
     next.addEventListener('click', () => page(1));
     d.addEventListener('keydown', (e) => {
-      // Esc is playback's only while a print is shown: one during the 0.33 s exit goes on to the page (the project
-      // closes, or the cold page leaves), so Esc, Esc is never swallowed
-      if (e.key === 'Escape') { if (cur < 0) return; e.preventDefault(); e.stopPropagation(); api.close(); }
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); api.close(); }
       else if (e.key === 'ArrowRight') { e.preventDefault(); e.stopPropagation(); page(1); }
       else if (e.key === 'ArrowLeft') { e.preventDefault(); e.stopPropagation(); page(-1); }
     });
@@ -99,16 +97,12 @@ export function initPlayback(o: PlaybackOptions): PlaybackControl {
     frame.style.setProperty('--ar', ar);
     const lq = p.style.getPropertyValue('--lqip');
     const box = p.hasAttribute('data-letterbox');
-    // a print whose image failed is the same "image unavailable" print here, at its aspect (no broken glyph, no alt)
-    const failed = p.classList.contains('is-failed');
     frame.toggleAttribute('data-letterbox', box);
-    frame.toggleAttribute('data-failed', failed);
-    if (lq && !box && !failed) frame.style.setProperty('--lqip', lq); else frame.style.removeProperty('--lqip');
+    if (lq && !box) frame.style.setProperty('--lqip', lq); else frame.style.removeProperty('--lqip');
     frame.replaceChildren();
     const type = p.dataset.type;
     const pic = p.querySelector('picture');
-    if (failed) { /* the label is the frame's own (print.css) */ }
-    else if (type === 'video') {
+    if (type === 'video') {
       const img = p.querySelector<HTMLImageElement>('img.print__img');
       const src = p.querySelector('video')?.dataset.src ?? '';
       const v = el('video', '', { controls: '', playsinline: '', preload: src ? 'metadata' : 'none', 'aria-label': img?.alt || 'Clip' }) as HTMLVideoElement;
@@ -203,9 +197,7 @@ export function initPlayback(o: PlaybackOptions): PlaybackControl {
       cur = n;
       fill(n);
       o.onHold?.(true);
-      // manual scroll restoration (the pushed entry copies it): stepping back over playback's entry keeps the roll where
-      // paging left it, on the print just shown, not the scroll the page had when playback opened
-      if (push) { history.scrollRestoration = 'manual'; hist.push(printHash(n + 1)); pushed = true; }
+      if (push) { hist.push(printHash(n + 1)); pushed = true; }
       dlg.showModal();
       parts.close.focus({ preventScroll: true });
       const { frame, bg, bar, foot } = parts;

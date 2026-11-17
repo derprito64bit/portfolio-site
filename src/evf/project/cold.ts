@@ -81,8 +81,7 @@ async function boot() {
         const tick = () => { if (++ticks < 2) return; gsap.ticker.remove(tick); done(); };
         gsap.ticker.add(tick);
       });
-      // on the lens curve: a slow start, so no first frame steps from black (vf.out cut in at once)
-      if (engine === e) gsap.to(e.st, { exposure: 1, duration: D.land, ease: E.lens, onUpdate: () => e.invalidate(120) });
+      if (engine === e) gsap.to(e.st, { exposure: 1, duration: D.land, ease: E.out, onUpdate: () => e.invalidate(120) });
     }
   } catch (err) {
     console.warn('[viewfinder] WebGL unavailable, using flat frames', err);
@@ -93,19 +92,13 @@ async function boot() {
 }
 
 let lastDim = -1;
-let again: gsap.core.Tween | null = null;
 window.addEventListener('scroll', () => {
   if (!engine) return;
   const d = dimAt();
   if (Math.abs(d - lastDim) < 0.002) return;
   lastDim = d;
   engine.st.dim = d;
-  engine.invalidate(250);
-  // once more as the scroll settles: after a jump scroll a busy WebKit can spend the first window on one stale frame
-  // (or none: a late frame past the window draws nothing), which left the frame at full exposure behind the roll, and a
-  // print's ring over it. The second window opens from a ticker frame, so it always gets one.
-  again?.kill();
-  again = gsap.delayedCall(0.3, () => engine?.invalidate(400));
+  engine.invalidate(120);
 }, { passive: true });
 
 let rz: gsap.core.Tween | null = null;
