@@ -92,7 +92,7 @@
 .pb__bar { display: flex; align-items: center; gap: 22px; padding: 0 var(--g); }
 .pb__k { color: var(--ink-2); margin-right: auto; font-weight: 400; }
 .pb__count { font-size: 17px; }
-.pb__nav button[disabled] { color: var(--ink-4); cursor: default; }
+.pb__nav button[aria-disabled='true'], .pb__nav button[aria-disabled='true']:hover { color: var(--ink-4); cursor: default; }
 .pb__close, .pb__nav button {
   display: inline-flex; align-items: center; justify-content: center; gap: 10px; min-width: 44px; min-height: 44px; padding: 0 12px;
   color: var(--ink); transition: color var(--snap);
@@ -101,7 +101,7 @@
 .pb__close kbd { font-family: var(--f-mono); color: var(--ink-3); }
 .pb__stage { position: relative; display: flex; align-items: center; justify-content: center; padding: 8px var(--g); min-height: 0; }
 .pb__frame { position: relative; aspect-ratio: var(--ar); width: min(100%, calc((100svh - var(--top) - 132px) * var(--ar))); background: var(--panel) var(--lqip, none) center / cover no-repeat; }
-.pb__frame[data-letterbox] { background: #030303; }
+.pb__frame[data-letterbox] { background: #030303 var(--lqip, none) center / contain no-repeat; }
 .pb__frame img, .pb__frame video, .pb__frame picture { display: block; width: 100%; height: 100%; object-fit: contain; }
 .pb__foot { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 18px; padding: 10px var(--g) 18px; }
 .pb__nav { display: flex; gap: 4px; }
@@ -128,6 +128,13 @@
   .pb__nav { justify-content: space-between; order: 2; }
   .pb__ro { gap: 12px; }
   .pb__frame { width: min(100%, calc((100svh - var(--top) - 190px) * var(--ar))); }
+}
+
+/* a phone on its side (under 760 px wide and short): the short-view rule must win over the phone rule */
+@media (max-width: 759px) and (max-height: 520px) {
+  .pb__foot { grid-template-columns: auto minmax(0, 1fr); gap: 12px; }
+  .pb__nav { order: 0; justify-content: flex-start; }
+  .pb__frame { width: min(100%, calc((100svh - 120px) * var(--ar))); }
 }
 
 /* ---------------- forced colours: the play mark stays a triangle (its clear borders are not forced to a block) ---------------- */

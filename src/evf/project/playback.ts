@@ -81,7 +81,8 @@ export function initPlayback(o: PlaybackOptions): PlaybackControl {
     d.addEventListener('wheel', stop, { passive: false });
     d.addEventListener('touchmove', stop, { passive: false });
     let sx = 0, sy = 0, sid = -1;
-    d.addEventListener('pointerdown', (e) => { sid = e.pointerId; sx = e.clientX; sy = e.clientY; });
+    // a drag that starts on a clip's controls is its own (the scrubber): no page
+    d.addEventListener('pointerdown', (e) => { if ((e.target as Element | null)?.closest?.('video[controls]')) { sid = -1; return; } sid = e.pointerId; sx = e.clientX; sy = e.clientY; });
     d.addEventListener('pointerup', (e) => {
       if (e.pointerId !== sid) return;
       sid = -1;
@@ -93,7 +94,7 @@ export function initPlayback(o: PlaybackOptions): PlaybackControl {
     return d;
   }
 
-  /** Fills the dialog with print n: a clone of its media (the widest rungs), its readouts and its caption. */
+  /** Fills the dialog with print n: a clone of its media (rungs sized to the frame), its readouts and its caption. */
   function fill(n: number) {
     const p = prints[n];
     const { frame, count, ro, cap, prev, next } = parts;
@@ -105,7 +106,12 @@ export function initPlayback(o: PlaybackOptions): PlaybackControl {
     const failed = p.classList.contains('is-failed');
     frame.toggleAttribute('data-letterbox', box);
     frame.toggleAttribute('data-failed', failed);
-    if (lq && !box && !failed) frame.style.setProperty('--lqip', lq); else frame.style.removeProperty('--lqip');
+    // the roll's own loaded image (else the LQIP) lies under the clone while its rung loads: the Flip never flies an
+    // empty panel (the roll's copy is concealed)
+    const rimg = p.querySelector<HTMLImageElement>('img.print__img');
+    const held = rimg?.complete && rimg.naturalWidth > 0 ? rimg.currentSrc : '';
+    const under = held ? `url("${held.replace(/["\\]/g, (c) => encodeURIComponent(c))}")` : lq;
+    if (under && !failed) frame.style.setProperty('--lqip', under); else frame.style.removeProperty('--lqip');
     // a focused clip that pages away (a swipe) hands focus to Close before it goes
     if (frame.contains(document.activeElement)) parts.close.focus({ preventScroll: true });
     frame.replaceChildren();
@@ -115,15 +121,19 @@ export function initPlayback(o: PlaybackOptions): PlaybackControl {
     else if (type === 'video') {
       const img = p.querySelector<HTMLImageElement>('img.print__img');
       const src = p.querySelector('video')?.dataset.src ?? '';
-      const v = el('video', '', { controls: '', playsinline: '', preload: src ? 'metadata' : 'none', 'aria-label': img?.alt || 'Clip' }) as HTMLVideoElement;
+      const v = el('video', '', { playsinline: '', preload: src ? 'metadata' : 'none', 'aria-label': img?.alt || 'Clip' }) as HTMLVideoElement;
+      // controls only with a file: a clip with none is its poster (no empty control bar, no Tab stop; a drag on it pages)
+      v.controls = !!src;
       if (img) v.poster = img.currentSrc || img.src;
       if (src) v.append(el('source', '', { src, type: 'video/mp4' }));
       if (p.hasAttribute('data-loop')) { v.loop = true; v.muted = true; }
       frame.append(v);
     } else if (pic) {
       const c = pic.cloneNode(true) as HTMLElement;
+      // the frame's laid-out width (the --ar above is in it; transforms are not): the rung the frame needs
+      const w = frame.offsetWidth;
       c.querySelectorAll('source, img').forEach((x) => {
-        x.setAttribute('sizes', '(max-width: 759px) 100vw, 92vw');
+        x.setAttribute('sizes', w > 0 ? `${w}px` : '(max-width: 759px) 100vw, 92vw');
         for (const a of ['loading', 'fetchpriority', 'data-lcp', 'id', 'class']) x.removeAttribute(a);
       });
       frame.append(c);
@@ -138,17 +148,11 @@ export function initPlayback(o: PlaybackOptions): PlaybackControl {
       el('span', '', {}, [p.dataset.kind ?? type ?? 'image']),
     );
     cap.replaceChildren(...[...(p.querySelector('.print__cap')?.childNodes ?? [])].map((x) => x.cloneNode(true)));
-    // a focused Prev or Next about to be disabled at an end hands focus to the other one (or Close) first: focus on a
-    // disabled control falls to BODY
-    const atStart = n === 0, atEnd = n === total - 1;
-    const a = document.activeElement;
-    if ((a === prev && atStart) || (a === next && atEnd)) {
-      const other = a === prev ? next : prev;
-      const otherOff = a === prev ? atEnd : atStart;
-      (otherOff ? parts.close : other).focus({ preventScroll: true });
-    }
-    prev.toggleAttribute('disabled', atStart);
-    next.toggleAttribute('disabled', atEnd);
+    // Prev or Next at an end is off but keeps focus and its Tab stop (aria-disabled, never disabled): focus on a disabled
+    // control falls to BODY, and handing it to the other button made a second Enter page back (ruling 1 on #114); with
+    // both off (a one-print roll) a clip is never the last stop, so Tab from it stays inside (ruling 2)
+    prev.setAttribute('aria-disabled', String(n === 0));
+    next.setAttribute('aria-disabled', String(n === total - 1));
     dlg?.setAttribute('aria-label', `Playback, print ${label}`);
   }
 
@@ -214,12 +218,13 @@ export function initPlayback(o: PlaybackOptions): PlaybackControl {
       leaving?.progress(1);
       dlg ??= build();
       cur = n;
-      fill(n);
       o.onHold?.(true);
       // manual scroll restoration (the pushed entry copies it): stepping back over playback's entry keeps the roll where
       // paging left it, on the print just shown, not the scroll the page had when playback opened
       if (push) { history.scrollRestoration = 'manual'; hist.push(printHash(n + 1)); pushed = true; }
       dlg.showModal();
+      // filled once shown: the frame has its layout width for the clone's sizes (same task, nothing paints between)
+      fill(n);
       parts.close.focus({ preventScroll: true });
       const { frame, bg, bar, foot } = parts;
       gsap.killTweensOf([frame, bg, bar, foot]);
@@ -242,6 +247,8 @@ export function initPlayback(o: PlaybackOptions): PlaybackControl {
       const n = cur;
       const had = pushed;
       cur = -1;
+      // a clip never plays on in the hidden dialog (WCAG 1.4.2): the sound stops with the close, not after the Flip
+      parts.frame?.querySelector('video')?.pause();
       if (!fromPop) {
         if (pushed) { pushed = false; hist.back(); }
         else if (/^#print-\d+$/.test(location.hash)) hist.replace('');
@@ -298,7 +305,7 @@ export function initPlayback(o: PlaybackOptions): PlaybackControl {
    *  last), and it wraps at both ends. A clip's own controls sit between Close and Prev and keep their native Tab. */
   function tab(e: KeyboardEvent, d: HTMLDialogElement) {
     const { close, frame, prev, next } = parts;
-    const clip = frame.querySelector('video');
+    const clip = frame.querySelector('video[controls]');
     const f = [close, clip, prev, next].filter((x): x is HTMLElement => !!x && !x.hasAttribute('disabled'));
     const a = document.activeElement;
     const first = f[0], last = f[f.length - 1];
