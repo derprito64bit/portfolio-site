@@ -394,7 +394,8 @@ function raise() {
   placeAF(sceneToFrac(subjectOf(scenes[0]), rect));
 
   if (!engine || calm) {
-    const t = gsap.timeline({ onComplete: () => { S = 'evf'; intro.hidden = true; evf.focus(); } });
+    // held in tl like the GL raise, so a popstate mid-raise can land it (finishTl)
+    const t = gsap.timeline({ onComplete: () => { S = 'evf'; tl = null; intro.hidden = true; evf.focus(); } }); tl = t;
     t.to(intro, { opacity: 0, duration: 0.4 });
     t.add(hudOn(), 0.2);
     if (engine) {
@@ -465,8 +466,10 @@ function lower() {
   hudOff();
   if (!engine || calm) {
     back();
-    gsap.fromTo(intro, { opacity: 0 }, { opacity: 1, duration: 0.4, onStart: () => { intro.style.visibility = ''; }, onComplete: done });
-    if (engine) { engine.holdPrevious(); introBackdrop(scenes[Math.min(pos, scenes.length - 1)], INTRO_DIM); engine.st.mix = 0; gsap.to(engine.st, { mix: 1, duration: 0.4, onUpdate: reveal }); }
+    // one timeline (the mix too), so a popstate mid-lower lands all of it (finishTl)
+    tl = gsap.timeline({ onComplete: done });
+    tl.fromTo(intro, { opacity: 0 }, { opacity: 1, duration: 0.4, onStart: () => { intro.style.visibility = ''; } });
+    if (engine) { engine.holdPrevious(); introBackdrop(scenes[Math.min(pos, scenes.length - 1)], INTRO_DIM); engine.st.mix = 0; tl.to(engine.st, { mix: 1, duration: 0.4, onUpdate: reveal }, 0); }
     return;
   }
   const st = engine.st;

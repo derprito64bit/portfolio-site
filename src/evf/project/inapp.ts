@@ -390,6 +390,8 @@ export function initProject(h: Host) {
     // our own Back lands home; playback's own Back, still on its way (Esc, Esc), lands on the page first: let it pass
     if (ownBack) { if (r.kind === 'project' && r.slug === slugAt(h.pos())) return; ownBack = false; if (r.kind === 'home') { homeHere(); return; } }
     let S = h.state();
+    // a traversal while the camera lowers or raises: that move lands first, then the entry is acted on
+    if (S === 'raising' || S === 'lowering') { h.finishTl(); S = h.state(); }
     if (r.kind === 'project') {
       const i = projects.findIndex((p) => p.slug === r.slug);
       if (i < 0) { location.reload(); return; }

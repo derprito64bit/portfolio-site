@@ -305,3 +305,44 @@ test('A12 phone: Back closes on the first tap after scrolling; targets 44 px; sw
     await ctx.close();
   }
 });
+
+// fix-pass B4
+for (const [label, profile] of [['1440', DESK], ['390', PHONE]]) {
+  test.describe(`A2 history at ${label}`, () => {
+    // f25: a Forward (or Back) that lands while the camera lowers or raises finishes that move, then acts on the entry
+    test('a popstate mid-lower or mid-raise lands the camera, then opens (A2)', async ({ browser, browserName }) => {
+      const ctx = await context(browser, browserName, profile);
+      const page = await ctx.newPage();
+      try {
+        await home(page);
+        await toFrame(page, 1);
+        await page.keyboard.press('Enter');
+        await untilState(page, 'open', 1);
+        await page.keyboard.press('Escape');
+        await untilState(page, 'evf', 1);
+        const len = await page.evaluate(() => history.length);
+        // the state is read and Forward sent in one evaluate: the popstate lands inside the 0.4 s lower
+        const lowering = await page.evaluate(() => { window.__vf.lower(); const s = window.__vf.state(); history.forward(); return s; });
+        expect(lowering).toBe('lowering');
+        await untilState(page, 'open', 1);
+        expect(new URL(page.url()).pathname, 'Forward mid-lower opens the entry').toBe('/work/project-02/');
+        await page.keyboard.press('Escape');
+        await untilState(page, 'evf', 1);
+        expect(new URL(page.url()).pathname).toBe('/');
+        // from the intro: Forward mid-raise; the raise lands on frame 1 (pos 0), so open at pos 1 proves the jump
+        await page.evaluate(() => window.__vf.lower());
+        await untilState(page, 'intro');
+        const raising = await page.evaluate(() => { window.__vf.raise(); const s = window.__vf.state(); history.forward(); return s; });
+        expect(raising).toBe('raising');
+        await untilState(page, 'open', 1);
+        expect(new URL(page.url()).pathname, 'Forward mid-raise opens the entry').toBe('/work/project-02/');
+        await page.keyboard.press('Escape');
+        await untilState(page, 'evf', 1);
+        expect(new URL(page.url()).pathname).toBe('/');
+        expect(await page.evaluate(() => history.length), 'no entry added').toBe(len);
+      } finally {
+        await ctx.close();
+      }
+    });
+  });
+}
