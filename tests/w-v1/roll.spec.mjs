@@ -136,10 +136,10 @@ test.describe('A7 layout', () => {
 
   // the AF brackets sit 7 px outside the focused print: on a print flush with the roll's edge they overflowed the roll
   // by 7 px at 1440 (the gate's frames row, 9f25a82); every step of the roll, cold and in the open view
-  // each place a row of its own, in a fresh browser (lib.mjs `fresh`): CI's WebKit (Linux, WPE) segfaults in its
-  // compositor during these long scripted sweeps, cold pages and the open view alike, and round 2's source does too
-  // (#114's round-3 CI probes); a crash runs the row again, an assertion failure never does. Steps and assertions as before.
-  for (const where of ['project-01', 'project-06', 'the open view']) test(`overflow 0 at 1440 with the brackets on: every step through the roll (${where === 'the open view' ? where : `cold ${where}`})`, async ({ fresh, browserName }) => fresh(async (browser) => {
+  // each place a row of its own, in its own browser, so a failure names the place. These long sweeps are what found
+  // WPE's compositor crash on CSS filter transitions (round 2's source too; project/roll.ts now tweens the dim's
+  // saturation): CI's WebKit runs them with no retry, so a crash fails the row.
+  for (const where of ['project-01', 'project-06', 'the open view']) test(`overflow 0 at 1440 with the brackets on: every step through the roll (${where === 'the open view' ? where : `cold ${where}`})`, async ({ own: browser, browserName }) => {
     const ctx = await context(browser, browserName, DESK);
     const page = await ctx.newPage();
     // after each scroll step: every frame for 320 ms, how far the brackets' drawn box (their inline transform and width,
@@ -181,7 +181,7 @@ test.describe('A7 layout', () => {
     } finally {
       await ctx.close();
     }
-  }));
+  });
 
   test('CLS 0.02 or less over the open path (Chromium: the layout-shift entries)', async ({ own: browser, browserName }) => {
     test.skip(browserName !== 'chromium', 'WebKit has no layout-shift entries; the gate traces CLS in Chromium');
@@ -284,7 +284,7 @@ test.describe('A9 focus', () => {
       await page.waitForFunction(() => document.querySelector('.roll')?.dataset.focus === '3', null, { timeout: 3000 });
       await page.waitForTimeout(400);
       // the 0.24 s dim has landed (a slow CI engine was still at 0.550062 after 400 ms)
-      await page.waitForFunction(() => [...document.querySelectorAll('.print:not([data-focus])')].every((p) => getComputedStyle(p).opacity === '0.55'), null, { timeout: 3000 }).catch(() => {});
+      await page.waitForFunction(() => [...document.querySelectorAll('.print:not([data-focus])')].every((p) => getComputedStyle(p).opacity === '0.55' && getComputedStyle(p.querySelector('.print__img')).filter === 'saturate(0.4)'), null, { timeout: 3000 }).catch(() => {});
       const st = await page.evaluate(() => ({
         focus: document.querySelector('.print[data-focus]')?.id,
         dim: document.querySelector('.roll').hasAttribute('data-dim'),
@@ -298,6 +298,13 @@ test.describe('A9 focus', () => {
       expect(st.counter).toBe('03 / 12');
       expect(st.self).toEqual(['1', 'none']);
       for (const [o, f] of st.others) { expect(o).toBe('0.55'); expect(f).toBe('saturate(0.4)'); }
+      // no CSS filter transition anywhere in the roll: WPE's compositor segfaults on them as the focus moves (#114's
+      // round-3 CI probes); roll.ts tweens the dim's saturation instead
+      const filterTransitions = await page.evaluate(() => [...document.querySelectorAll('.roll, .roll *')].flatMap((e) => {
+        const cs = getComputedStyle(e), d = cs.transitionDuration.split(', ').map(parseFloat);
+        return cs.transitionProperty.split(', ').filter((p, i) => /^(filter|all)$/.test(p) && (d[i % d.length] || 0) > 0).map((p) => `${e.className}: ${p}`);
+      }));
+      expect(filterTransitions, 'CSS filter transitions in the roll').toEqual([]);
       expect(st.af.on && st.af.n === 1, 'one bracket element, on').toBe(true);
       expect(Math.max(st.af.dx, st.af.dy, st.af.dw), 'the brackets frame the print').toBeLessThanOrEqual(2);
       expect(st.af.colour, 'phosphor').toBe('rgb(255, 177, 59)');
@@ -320,8 +327,8 @@ test.describe('A9 focus', () => {
     }
   });
 
-  // each place a row of its own, in a fresh browser (WebKit's compositor crash in CI: see the overflow rows above)
-  for (const where of ['cold page', 'the open view', 'cold page at 1440 x 1800']) test(`the centre line leads: a print the line crosses has focus; the last print takes it at the scroll end (12 / 12) (${where})`, async ({ fresh, browserName }) => fresh(async (browser) => {
+  // each place a row of its own, in its own browser (as the overflow rows above)
+  for (const where of ['cold page', 'the open view', 'cold page at 1440 x 1800']) test(`the centre line leads: a print the line crosses has focus; the last print takes it at the scroll end (12 / 12) (${where})`, async ({ own: browser, browserName }) => {
     const ctx = await context(browser, browserName, DESK);
     const page = await ctx.newPage();
     /** Steps the scroller (the window, or the open view's column) through the roll; at each stop, the focused print and
@@ -371,10 +378,10 @@ test.describe('A9 focus', () => {
     } finally {
       await ctx.close();
     }
-  }));
+  });
 
-  // the cold page and the open view each a row of its own, in a fresh browser (as the overflow rows above)
-  for (const place of ['cold', 'open']) test(`hover to focus: a fine pointer on a print takes the brackets and full brightness; the next scroll returns to the centre line (${place})`, async ({ fresh, browserName }) => fresh(async (browser) => {
+  // the cold page and the open view each a row of its own, in its own browser (as the overflow rows above)
+  for (const place of ['cold', 'open']) test(`hover to focus: a fine pointer on a print takes the brackets and full brightness; the next scroll returns to the centre line (${place})`, async ({ own: browser, browserName }) => {
     const ctx = await context(browser, browserName, DESK);
     const page = await ctx.newPage();
     const focusOf = () => page.evaluate(() => document.querySelector('.roll').dataset.focus);
@@ -430,7 +437,7 @@ test.describe('A9 focus', () => {
     } finally {
       await ctx.close();
     }
-  }));
+  });
 
   test('no dim under 4 prints, nor on touch', async ({ own: browser, browserName }) => {
     const ctx = await context(browser, browserName, DESK);
