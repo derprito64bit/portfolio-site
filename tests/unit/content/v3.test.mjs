@@ -6,7 +6,7 @@
 //     the build without originals keeps the committed manifest.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -14,6 +14,7 @@ import { validateContent } from '../../../src/lib/content/validate.js';
 import { printsOf } from '../../../src/lib/content/prints.ts';
 import { main as imagesMain, derive } from '../../../scripts/build/images.mjs';
 import { plan, chartSvg } from '../../../scripts/build/media-fixtures.mjs';
+import { classOf } from '../../../scripts/check/media-caps.mjs';
 
 const ROOT = fileURLToPath(new URL('../../../', import.meta.url));
 const read = (f) => JSON.parse(readFileSync(join(ROOT, 'content', f), 'utf8'));
@@ -302,4 +303,48 @@ test('f12: captions sit under their project, and a confirmed clip names a captio
   has(errorsOf(a), /captions file has no file/);
   a.media.media[`media/${p.slug}/clip.vtt`] = { type: 'captions', file: '/media/x.vtt' };
   assert.deepEqual(errorsOf(a), [], 'with its captions file the clip is valid');
+});
+
+// f15: images.mjs writes each rung within its class cap (budgets-v2 site.media.capBytes, the caps media-caps holds dist
+// to), stepping the quality down only when a file is over; an original that cannot fit even at the floor stops the run
+// and names the file and its class. A 1400 px blurred-noise original (named so no class token sits in its stem): as
+// the first print its rungs are 480 small, 800 first and 1280 first.
+test('images.mjs: every derived file fits its class cap; an unfittable one fails loudly', async () => {
+  const sharp = (await import('sharp')).default;
+  sharp.cache(false);
+  const dir = mkdtempSync(join(tmpdir(), 'wv1-fit-'));
+  try {
+    const src = join(dir, 'src');
+    mkdirSync(join(src, 'p'), { recursive: true });
+    const file = join(src, 'p', 'big.png');
+    await sharp({ create: { width: 1400, height: 933, channels: 3, noise: { type: 'gaussian', mean: 128, sigma: 40 } } }).blur(1.2).png().toFile(file);
+    const projects = [{ slug: 'p', media: [{ type: 'image', src: 'media/p/big.png', placeholder: false }] }];
+    // the 1280 rung at the top and floor qualities, through the same pipeline
+    const r = sharp(file).rotate().resize({ width: 1280, withoutEnlargement: true });
+    const size = async (fmt, q) => (await r.clone()[fmt]({ quality: q, effort: 6 }).toBuffer()).length;
+    const a52 = await size('avif', 52), a22 = await size('avif', 22), w78 = await size('webp', 78), w30 = await size('webp', 30);
+    // above each format's floor size and below the larger top-quality size: one file is over before any fitting
+    const cap = Math.floor(Math.max((a52 + a22) / 2, (w78 + w30) / 2));
+    const caps = { first: cap, small: 1e9, mid: 1e9, large: 1e9, extreme: 1e9, poster: 1e9 };
+    const out = join(dir, 'out');
+    await derive({ projects, mediaSrc: src, outDir: out, caps });
+    const written = readdirSync(join(out, 'p')).sort();
+    for (const f of written) assert.ok(statSync(join(out, 'p', f)).size <= caps[classOf(f)], `${f}: ${statSync(join(out, 'p', f)).size} B is over its ${classOf(f)} cap of ${caps[classOf(f)]} B`);
+    const at = (rung, fmt) => written.find((f) => new RegExp(`-first-${rung}\\.${fmt}$`).test(f));
+    for (const rung of [800, 1280]) for (const fmt of ['avif', 'webp']) assert.ok(statSync(join(out, 'p', at(rung, fmt))).size <= cap, `${rung} ${fmt} within the first cap`);
+    assert.ok(statSync(join(out, 'p', at(1280, 'avif'))).size < a52 || statSync(join(out, 'p', at(1280, 'webp'))).size < w78, 'a step-down happened at 1280');
+    for (const f of written) assert.equal((await sharp(join(out, 'p', f)).metadata()).width, Number(/-(\d+)\.(avif|webp)$/.exec(f)[1]), `${f} decodes at its rung width`);
+    // a cap no quality reaches: the run stops, naming the file and its class
+    await assert.rejects(derive({ projects, mediaSrc: src, outDir: join(dir, 'out2'), caps: { small: 1e9, mid: 1e9, large: 1e9, extreme: 1e9, poster: 1e9, first: 500 } }),
+      /big-[0-9a-f]{10}-first-800\.avif \(first\) is over the 500 B cap/);
+  } finally {
+    try { rmSync(dir, { recursive: true, force: true, maxRetries: 3 }); } catch { /* a temp dir; the OS reaps it */ }
+  }
+});
+
+test("media-caps classOf reads the writer's class tail, not a token in the original's stem", () => {
+  assert.equal(classOf('p/my-poster-shot-ab12cd34ef-mid-800.avif'), 'mid');
+  assert.equal(classOf('p/the-first-light-ab12cd34ef-large-1920.webp'), 'large');
+  assert.equal(classOf('p/big-ab12cd34ef-first-1280.avif'), 'first');
+  assert.equal(classOf('x/y-poster.avif'), 'poster', 'a name without the tail keeps the old token rule');
 });
