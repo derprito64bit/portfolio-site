@@ -5,7 +5,7 @@
 import { defineConfig } from '@playwright/test';
 
 // probe only: the browser's own stderr and exit in the log
-process.env.DEBUG = 'pw:browser';
+// (P5: no pw:browser log)
 
 const CI = Boolean(process.env.CI);
 

@@ -10,10 +10,29 @@ export { consoleGate, flatPathVerdict };
 /** `test` with `own`: a browser of the row's own, launched with the project's options and closed after the row. CI's
  *  one long-lived WebKit was lost late in the run (the page closed mid-row, a different roll row each run; never on the
  *  reference host), so the roll's rows run each in a fresh browser. The assertions are the same. */
+import { execSync } from 'node:child_process';
+const sh = (c) => { try { return execSync(c, { encoding: 'utf8', timeout: 5000 }).trim(); } catch (e) { return `(${c}: ${String(e.message).split('\n')[0]})`; } };
 export const ownBrowser = base0.extend({
-  own: async ({ playwright, browserName, launchOptions, channel }, use) => {
+  own: async ({ playwright, browserName, launchOptions, channel }, use, testInfo) => {
     const b = await playwright[browserName].launch({ ...launchOptions, ...(channel ? { channel } : {}), headless: true });
+    // probe P5: the web process's memory every 2 s, and the kernel's log when a page is lost
+    const t0 = Date.now();
+    let peak = 0;
+    const tick = setInterval(() => {
+      const ps = sh("ps -eo rss=,comm= --sort=-rss | head -4 | tr '\\n' ';'");
+      const mem = sh("free -m | sed -n 2p");
+      const top = Number(ps.trim().split(/\s+/)[0]) || 0;
+      peak = Math.max(peak, top);
+      console.log(`[mem +${((Date.now() - t0) / 1000).toFixed(0)}s] ${ps} | ${mem}`);
+    }, 2000);
+    b.on('disconnected', () => console.log('[probe] browser disconnected'));
+    const hook = (ctx) => ctx.on('page', (p) => { p.on('crash', () => console.log(`[probe] PAGE CRASH at +${((Date.now() - t0) / 1000).toFixed(1)}s ${p.url()}`)); p.on('close', () => console.log(`[probe] page close at +${((Date.now() - t0) / 1000).toFixed(1)}s`)); });
+    const nc = b.newContext.bind(b);
+    b.newContext = async (...a) => { const c = await nc(...a); hook(c); return c; };
     await use(b);
+    clearInterval(tick);
+    console.log(`[probe] ${testInfo.title.slice(0, 40)}: status ${testInfo.status}, peak top rss ${peak} kB`);
+    if (testInfo.status !== 'passed') console.log(`[probe] dmesg:\n${sh('sudo dmesg | tail -25')}\n[probe] nproc ${sh('nproc')} | ${sh('cat /sys/fs/cgroup/memory.max 2>/dev/null')} | ${sh('free -m')}`);
     await b.close();
   },
 });
