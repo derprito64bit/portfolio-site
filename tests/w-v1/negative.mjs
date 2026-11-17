@@ -24,7 +24,7 @@ export const PLANTS = [
   ['no-right-side', 'A7', 'src/evf/style/print.css', ".print[data-side='right'] { align-self: flex-end; }", '', 'roll.spec.mjs', '390 x 844: one column'],
   ['late-expose', 'A8', 'src/evf/project/roll.ts', 'entering.forEach((p, k) => expose(p, (k % 4) * 0.1));', 'entering.forEach((p, k) => expose(p, 1.5 + k));', 'roll.spec.mjs', 'none blank 1.0 s after 50% visible$'],
   ['measure-on-scroll', 'A9', 'src/evf/project/roll.ts', 'const onScroll = () => setFocus(nearest());', 'const onScroll = () => { cache(); setFocus(nearest()); };', 'roll.spec.mjs', 'the print nearest the centre'],
-  ['dim-0.7', 'A9', 'src/evf/style/print.css', '.roll[data-dim] .print:not([data-focus]) { opacity: 0.55; }', '.roll[data-dim] .print:not([data-focus]) { opacity: 0.7; }', 'roll.spec.mjs', 'the print nearest the centre'],
+  ['dim-0.7', 'A9', 'src/evf/style/print.css', '.roll[data-dim] .print:not([data-focus], .is-failed) .print__frame:not(:has(> .print__box)) { opacity: 0.55; }', '.roll[data-dim] .print:not([data-focus], .is-failed) .print__frame:not(:has(> .print__box)) { opacity: 0.7; }', 'roll.spec.mjs', 'the print nearest the centre'],
   ['no-focus-return', 'A10', 'src/evf/project/playback.ts', 'linkOf(n)?.focus({ preventScroll: true });', 'void linkOf;', 'playback.spec.mjs', 'A10 at 1440'],
   ['no-push', 'A10', 'src/evf/project/playback.ts', "if (push) { history.scrollRestoration = 'manual'; hist.push(printHash(n + 1)); pushed = true; }", 'if (false) { pushed = true; }', 'playback.spec.mjs', 'A10 at 1440'],
   ['three-loops', 'A11', 'src/evf/project/roll.ts', 'export const MAX_PLAYING = 2;', 'export const MAX_PLAYING = 3;', 'roll.spec.mjs', 'two at most'],
@@ -58,7 +58,7 @@ export const PLANTS = [
   ['no-clamp', 'A7', 'src/evf/project/roll.ts', 'const l = Math.max(box.x, BR), r = Math.min(box.x + box.w, maxR);', 'const l = box.x, r = box.x + box.w;', 'roll.spec.mjs', 'overflow 0 at 1440'],
   ['no-hover', 'A9', 'src/evf/project/roll.ts', "if (grid) on(grid, 'pointermove'", "if (!grid) on(grid, 'pointermove'", 'roll.spec.mjs', 'hover to focus'],
   // round 3, CI: the dim's saturation by CSS filter transition again (WPE's compositor crash), and a wrong end state
-  ['filter-transition', 'A9', 'src/evf/style/print.css', '.roll[data-dim] .print { transition: opacity var(--step) var(--e-out); }', '.roll[data-dim] .print { transition: opacity var(--step) var(--e-out); }\n.roll[data-dim] .print__img { transition: filter var(--step) var(--e-out); }', 'roll.spec.mjs', 'the print nearest the centre'],
+  ['filter-transition', 'A9', 'src/evf/style/print.css', '.roll[data-dim] .print__frame { transition: opacity var(--step) var(--e-out); }', '.roll[data-dim] .print__frame { transition: opacity var(--step) var(--e-out); }\n.roll[data-dim] .print__img { transition: filter var(--step) var(--e-out); }', 'roll.spec.mjs', 'the print nearest the centre'],
   ['sat-0.5', 'A9', 'src/evf/style/print.css', '.roll[data-dim] .print:not([data-focus]) .print__img { filter: saturate(0.4); }', '.roll[data-dim] .print:not([data-focus]) .print__img { filter: saturate(0.5); }', 'roll.spec.mjs', 'the print nearest the centre'],
   // the Flip's landing, polled rather than read at 700 ms: a Flip that never lands untransformed still fails
   ['flip-short', 'A10', 'src/evf/project/playback.ts', 'gsap.to(frame, { x: 0, y: 0, scaleX: 1, scaleY: 1, duration: D.land, ease: E.out });', 'gsap.to(frame, { x: 0, y: 0, scaleX: 0.9, scaleY: 0.9, duration: D.land, ease: E.out });', 'playback.spec.mjs', 'A10 at 1440'],
@@ -68,6 +68,8 @@ export const PLANTS = [
   ['pb-end-handoff', 'A10', 'src/evf/project/playback.ts', '(otherOff ? parts.close : other).focus({ preventScroll: true });', 'void other; void otherOff;', 'playback.spec.mjs', 'to either end'],
   ['pb-tab-out', 'A10', 'src/evf/project/playback.ts', "if (e.key === 'Tab') { tab(e, dlg); return; }", "if (e.key === 'Tab') return;", 'playback.spec.mjs', 'to either end'],
   ['pb-clip-arrows', 'A10', 'src/evf/project/playback.ts', "if ((e.target as Element | null)?.closest?.('video, input, select, textarea')) return;", '', 'playback.spec.mjs', 'cold #print-NN load'],
+  // fix-pass B1 (the roll and the print surface): each plant puts one fixed defect back
+  ['dim-strip', 'A9', 'src/evf/style/print.css', '.roll[data-dim] .print:not([data-focus], .is-failed) .print__frame:not(:has(> .print__box)) { opacity: 0.55; }', '.roll[data-dim] .print:not([data-focus]) { opacity: 0.55; }', 'roll.spec.mjs', 'the dim leaves the strip'],
 ];
 
 const SKIP = new Set(['node_modules', 'dist', '.git', 'test-results', '.astro', 'playwright-report']);

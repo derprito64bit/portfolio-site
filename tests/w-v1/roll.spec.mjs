@@ -284,13 +284,13 @@ test.describe('A9 focus', () => {
       await page.waitForFunction(() => document.querySelector('.roll')?.dataset.focus === '3', null, { timeout: 3000 });
       await page.waitForTimeout(400);
       // the 0.24 s dim has landed (a slow CI engine was still at 0.550062 after 400 ms)
-      await page.waitForFunction(() => [...document.querySelectorAll('.print:not([data-focus])')].every((p) => getComputedStyle(p).opacity === '0.55' && getComputedStyle(p.querySelector('.print__img')).filter === 'saturate(0.4)'), null, { timeout: 3000 }).catch(() => {});
+      await page.waitForFunction(() => [...document.querySelectorAll('.print:not([data-focus])')].every((p) => getComputedStyle(p.querySelector('.print__frame')).opacity === '0.55' && getComputedStyle(p.querySelector('.print__img')).filter === 'saturate(0.4)'), null, { timeout: 3000 }).catch(() => {});
       const st = await page.evaluate(() => ({
         focus: document.querySelector('.print[data-focus]')?.id,
         dim: document.querySelector('.roll').hasAttribute('data-dim'),
         counter: document.querySelector('[data-print-count]').textContent,
-        others: [...document.querySelectorAll('.print:not([data-focus])')].map((p) => [getComputedStyle(p).opacity, getComputedStyle(p.querySelector('.print__img')).filter]),
-        self: [getComputedStyle(document.querySelector('.print[data-focus]')).opacity, getComputedStyle(document.querySelector('.print[data-focus] .print__img')).filter],
+        others: [...document.querySelectorAll('.print:not([data-focus])')].map((p) => [getComputedStyle(p.querySelector('.print__frame')).opacity, getComputedStyle(p.querySelector('.print__img')).filter]),
+        self: [getComputedStyle(document.querySelector('.print[data-focus] .print__frame')).opacity, getComputedStyle(document.querySelector('.print[data-focus] .print__img')).filter],
         af: (() => { const a = document.querySelector('.roll__af'), f = document.querySelector('#print-03'); const r = a.getBoundingClientRect(), q = f.getBoundingClientRect(); return { on: a.classList.contains('on'), dx: Math.abs(r.left - q.left), dy: Math.abs(r.top - q.top), dw: Math.abs(r.width - q.width), colour: getComputedStyle(a.querySelector('i')).borderTopColor, n: document.querySelectorAll('.roll__af').length }; })(),
       }));
       expect(st.focus).toBe('print-03');
@@ -420,7 +420,7 @@ test.describe('A9 focus', () => {
         const st = await page.evaluate((n) => {
           const p = document.querySelector(`.print[data-print="${n}"]`), a = document.querySelector('.roll__af');
           const r = p.getBoundingClientRect(), q = a.getBoundingClientRect();
-          return { focused: p.hasAttribute('data-focus'), opacity: getComputedStyle(p).opacity, dx: Math.abs(r.left - q.left), dy: Math.abs(r.top - q.top), counter: document.querySelector('[data-print-count]').textContent };
+          return { focused: p.hasAttribute('data-focus'), opacity: getComputedStyle(p.querySelector('.print__frame')).opacity, dx: Math.abs(r.left - q.left), dy: Math.abs(r.top - q.top), counter: document.querySelector('[data-print-count]').textContent };
         }, other.n);
         expect(st.focused && st.opacity === '1', `${where}: the hovered print has focus at full brightness`).toBe(true);
         expect(Math.max(st.dx, st.dy), `${where}: the brackets frame the hovered print`).toBeLessThanOrEqual(2);
@@ -519,6 +519,64 @@ test.describe('A11 loop clips', () => {
       expect(await calls(page)).toEqual([]);
     } finally {
       await ctx.close();
+    }
+  });
+});
+
+// fix-pass B1 (the W-V1 fix pass, batch B1: the roll and the print surface)
+test.describe('A9 focus (fix-pass B1)', () => {
+  /** The opacity each match is composited at: its own times every ancestor's (an expression for page.evaluate). */
+  const composite = (sel) => `[...document.querySelectorAll(${JSON.stringify(sel)})].map((e) => { let v = 1; for (let n = e; n; n = n.parentElement) v *= Number(getComputedStyle(n).opacity); return v; })`;
+
+  // f02: the dim is on the print's media, never on its caption strip: the strip's ink-2 on near-black at 0.55 was about
+  // 2.9:1 (WCAG 1.4.3 asks 4.5:1)
+  test('the dim leaves the strip at full ink: axe colour-contrast 0 in the dim state', async ({ own: browser, browserName }) => {
+    const { AxeBuilder } = await import('@axe-core/playwright');
+    const ctx = await context(browser, browserName, DESK);
+    const page = await ctx.newPage();
+    try {
+      await cold(page, 'project-06');
+      await centrePrint(page, 3);
+      // the dim has landed, wherever it applies (no catch: a dim that never lands fails here)
+      await page.waitForFunction(`document.querySelector('.roll[data-dim]')?.dataset.focus === '3' && ${composite('.print:not([data-focus]) .print__frame')}.every((v) => Math.abs(v - 0.55) < 0.001)`, null, { timeout: 3000 });
+      const strip = await page.evaluate(`({ n: ${composite('.print:not([data-focus]) .print__n')}, cap: ${composite('.print:not([data-focus]) .print__cap')} })`);
+      expect(strip.n.length, 'the dimmed prints').toBe(11);
+      for (const v of [...strip.n, ...strip.cap]) expect(v, 'a dimmed print\'s strip composites at full opacity').toBeCloseTo(1, 5);
+      const axe = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).include('.print').analyze();
+      const cc = axe.violations.filter((v) => v.id === 'color-contrast').flatMap((v) => v.nodes.map((n) => `${n.target.join(' ')}: ${n.failureSummary.split('\n')[1]?.trim()}`));
+      expect(cc, 'colour-contrast in the dim state').toEqual([]);
+      expect(await page.evaluate(() => [...document.querySelectorAll('.print:not([data-focus]) .print__frame')].every((f) => getComputedStyle(f).opacity === '0.55')), 'the dim is on the media').toBe(true);
+    } finally {
+      await ctx.close();
+    }
+    // a failed image and a typed placeholder box never dim: their label is text
+    const fctx = await context(browser, browserName, DESK);
+    const fp = await fctx.newPage();
+    await fp.route(/\/media\/fixtures\/project-06\/04-/, (r) => r.abort());
+    try {
+      await cold(fp, 'project-06');
+      await fp.evaluate(() => {
+        // the test build has no file-less print: print 5 becomes one, as Print.astro renders it
+        const f = document.querySelector('#print-05 .print__frame');
+        f.querySelector('picture')?.remove();
+        const box = document.createElement('span');
+        box.className = 'print__box';
+        const t = document.createElement('span');
+        t.className = 'ph';
+        t.textContent = '[PLACEHOLDER: media file]';
+        box.append(t);
+        f.prepend(box);
+      });
+      await centrePrint(fp, 3);
+      await expect(fp.locator('#print-04')).toHaveClass(/is-failed/, { timeout: 5000 });
+      await fp.waitForFunction(() => document.querySelector('.roll[data-dim]')?.dataset.focus === '3', null, { timeout: 3000 });
+      await fp.waitForTimeout(500);
+      const v = await fp.evaluate(composite('#print-02 .print__frame, #print-04 .print__frame, #print-05 .print__frame'));
+      expect(v[0], 'a print with media still dims').toBeCloseTo(0.55, 3);
+      expect(v[1], 'the failed print\'s frame stays at full ink').toBeCloseTo(1, 5);
+      expect(v[2], 'the placeholder box stays at full ink').toBeCloseTo(1, 5);
+    } finally {
+      await fctx.close();
     }
   });
 });
