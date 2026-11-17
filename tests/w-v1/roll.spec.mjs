@@ -136,10 +136,10 @@ test.describe('A7 layout', () => {
 
   // the AF brackets sit 7 px outside the focused print: on a print flush with the roll's edge they overflowed the roll
   // by 7 px at 1440 (the gate's frames row, 9f25a82); every step of the roll, cold and in the open view
-  // each place in a browser of its own: CI's WebKit (Linux, WPE) loses the web process (a crash with a core dump, not an
-  // assertion) in long column sweeps of the open view once earlier sweeps in the same process have grown its memory;
-  // round 2's source does the same under this sweep (probe P4, #120). The steps and assertions are unchanged.
-  for (const where of ['project-01', 'project-06', 'the open view']) test(`overflow 0 at 1440 with the brackets on: every step through the roll (${where === 'the open view' ? where : `cold ${where}`})`, async ({ own: browser, browserName }) => {
+  // each place a row of its own, in a fresh browser (lib.mjs `fresh`): CI's WebKit (Linux, WPE) segfaults in its
+  // compositor during these long scripted sweeps, cold pages and the open view alike, and round 2's source does too
+  // (#114's round-3 CI probes); a crash runs the row again, an assertion failure never does. Steps and assertions as before.
+  for (const where of ['project-01', 'project-06', 'the open view']) test(`overflow 0 at 1440 with the brackets on: every step through the roll (${where === 'the open view' ? where : `cold ${where}`})`, async ({ fresh, browserName }) => fresh(async (browser) => {
     const ctx = await context(browser, browserName, DESK);
     const page = await ctx.newPage();
     // after each scroll step: every frame for 320 ms, how far the brackets' drawn box (their inline transform and width,
@@ -181,7 +181,7 @@ test.describe('A7 layout', () => {
     } finally {
       await ctx.close();
     }
-  });
+  }));
 
   test('CLS 0.02 or less over the open path (Chromium: the layout-shift entries)', async ({ own: browser, browserName }) => {
     test.skip(browserName !== 'chromium', 'WebKit has no layout-shift entries; the gate traces CLS in Chromium');
@@ -320,9 +320,8 @@ test.describe('A9 focus', () => {
     }
   });
 
-  // each place in a browser of its own (CI's WebKit loses a long-lived web process in the open view's sweeps; see the
-  // overflow rows above)
-  for (const where of ['cold page', 'the open view', 'cold page at 1440 x 1800']) test(`the centre line leads: a print the line crosses has focus; the last print takes it at the scroll end (12 / 12) (${where})`, async ({ own: browser, browserName }) => {
+  // each place a row of its own, in a fresh browser (WebKit's compositor crash in CI: see the overflow rows above)
+  for (const where of ['cold page', 'the open view', 'cold page at 1440 x 1800']) test(`the centre line leads: a print the line crosses has focus; the last print takes it at the scroll end (12 / 12) (${where})`, async ({ fresh, browserName }) => fresh(async (browser) => {
     const ctx = await context(browser, browserName, DESK);
     const page = await ctx.newPage();
     /** Steps the scroller (the window, or the open view's column) through the roll; at each stop, the focused print and
@@ -372,10 +371,10 @@ test.describe('A9 focus', () => {
     } finally {
       await ctx.close();
     }
-  });
+  }));
 
-  // the cold page and the open view each in a browser of its own (as the overflow rows above)
-  for (const place of ['cold', 'open']) test(`hover to focus: a fine pointer on a print takes the brackets and full brightness; the next scroll returns to the centre line (${place})`, async ({ own: browser, browserName }) => {
+  // the cold page and the open view each a row of its own, in a fresh browser (as the overflow rows above)
+  for (const place of ['cold', 'open']) test(`hover to focus: a fine pointer on a print takes the brackets and full brightness; the next scroll returns to the centre line (${place})`, async ({ fresh, browserName }) => fresh(async (browser) => {
     const ctx = await context(browser, browserName, DESK);
     const page = await ctx.newPage();
     const focusOf = () => page.evaluate(() => document.querySelector('.roll').dataset.focus);
@@ -431,7 +430,7 @@ test.describe('A9 focus', () => {
     } finally {
       await ctx.close();
     }
-  });
+  }));
 
   test('no dim under 4 prints, nor on touch', async ({ own: browser, browserName }) => {
     const ctx = await context(browser, browserName, DESK);

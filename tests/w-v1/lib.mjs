@@ -10,39 +10,43 @@ export { consoleGate, flatPathVerdict };
 /** `test` with `own`: a browser of the row's own, launched with the project's options and closed after the row. CI's
  *  one long-lived WebKit was lost late in the run (the page closed mid-row, a different roll row each run; never on the
  *  reference host), so the roll's rows run each in a fresh browser. The assertions are the same. */
-import { execSync } from 'node:child_process';
-const sh = (c) => { try { return execSync(c, { encoding: 'utf8', timeout: 5000 }).trim(); } catch (e) { return `(${c}: ${String(e.message).split('\n')[0]})`; } };
 export const ownBrowser = base0.extend({
-  own: async ({ playwright, browserName, launchOptions, channel }, use, testInfo) => {
+  own: async ({ playwright, browserName, launchOptions, channel }, use) => {
     const b = await playwright[browserName].launch({ ...launchOptions, ...(channel ? { channel } : {}), headless: true });
-    // probe P5: the web process's memory every 2 s, and the kernel's log when a page is lost
-    const t0 = Date.now();
-    let peak = 0;
-    const tick = setInterval(() => {
-      const ps = sh("ps -eo rss=,comm= --sort=-rss | head -4 | tr '\\n' ';'");
-      const mem = sh("free -m | sed -n 2p");
-      const top = Number(ps.trim().split(/\s+/)[0]) || 0;
-      peak = Math.max(peak, top);
-      console.log(`[mem +${((Date.now() - t0) / 1000).toFixed(0)}s] ${ps} | ${mem}`);
-    }, 2000);
-    b.on('disconnected', () => console.log('[probe] browser disconnected'));
-    const hook = (ctx) => ctx.on('page', (p) => { p.on('crash', () => console.log(`[probe] PAGE CRASH at +${((Date.now() - t0) / 1000).toFixed(1)}s ${p.url()}`)); p.on('close', () => console.log(`[probe] page close at +${((Date.now() - t0) / 1000).toFixed(1)}s`)); });
-    const nc = b.newContext.bind(b);
-    b.newContext = async (...a) => { const c = await nc(...a); hook(c); return c; };
     await use(b);
-    clearInterval(tick);
-    console.log(`[probe] ${testInfo.title.slice(0, 40)}: status ${testInfo.status}, peak top rss ${peak} kB`);
-    if (testInfo.status !== 'passed') {
-      console.log(`[probe] dmesg:\n${sh('sudo dmesg 2>&1 | tail -15')}`);
-      console.log(`[probe] core_pattern: ${sh('cat /proc/sys/kernel/core_pattern')}; ulimit -c: ${sh('bash -c "ulimit -c"')}`);
-      console.log(`[probe] /var/crash: ${sh('ls -la /var/crash 2>&1 | tail -5')}`);
-      console.log(`[probe] coredumpctl: ${sh('coredumpctl list --no-pager 2>&1 | tail -3')}`);
-      console.log(`[probe] coredump signal: ${sh('sudo coredumpctl info --no-pager -1 2>&1 | grep -E "Signal:|Timestamp:"')}`);
-      console.log(`[probe] crashing thread:\n${sh('sudo coredumpctl info --no-pager -1 2>&1 | awk \'/Stack trace of thread/{n++} n==1\' | head -40')}`);
-      console.log(`[probe] threads: ${sh('sudo coredumpctl info --no-pager -1 2>&1 | grep -c "Stack trace of thread"')}`);
-      console.log(`[probe] journal:\n${sh('sudo journalctl --no-pager -n 30 2>&1 | grep -iE "segfault|core|crash|WPE|WebKit|signal|abort" | tail -15')}`);
-    }
     await b.close();
+  },
+  /** `fresh(body)`: body(browser) in a browser of its own. In WebKit only, a crash of the web process (the page's 'crash'
+   *  event) runs the body again in a new browser, at most twice more, and the log and the row's annotations say so. CI's
+   *  WebKit (Linux, WPE) segfaults in its compositor's layer-tree paint during the long scripted scroll sweeps (signal
+   *  11, a core dump): round 2's source does the same under these sweeps, and the reference host never does (#114, the
+   *  round-3 CI probes). An assertion failure, or any failure without a crash, fails the row at once. */
+  fresh: async ({ playwright, browserName, launchOptions, channel }, use, testInfo) => {
+    const tries = browserName === 'webkit' ? 3 : 1;
+    await use(async (body) => {
+      if (tries > 1) testInfo.setTimeout(testInfo.timeout * tries);
+      for (let k = 1; ; k++) {
+        const b = await playwright[browserName].launch({ ...launchOptions, ...(channel ? { channel } : {}), headless: true });
+        let crashed = false;
+        const make = b.newContext.bind(b);
+        b.newContext = async (...a) => {
+          const c = await make(...a);
+          c.on('page', (p) => p.on('crash', () => { crashed = true; }));
+          return c;
+        };
+        try {
+          await body(b);
+          return;
+        } catch (e) {
+          await new Promise((r) => setTimeout(r, 250)); // the crash event and the failed call arrive together
+          if (!crashed || k >= tries) throw e;
+          testInfo.annotations.push({ type: 'webkit-crash', description: `attempt ${k}: the web process crashed; the row ran again in a fresh browser` });
+          console.warn(`[w-v1] ${testInfo.title}: WebKit's web process crashed (attempt ${k} of ${tries}); the row runs again in a fresh browser`);
+        } finally {
+          await b.close().catch(() => {});
+        }
+      }
+    });
   },
 });
 export const DESK = { viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1, hasTouch: false, isMobile: false };
