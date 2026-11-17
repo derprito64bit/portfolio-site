@@ -599,4 +599,64 @@ test.describe('A2 / A10 history over playback: traversals that cross the open', 
       await ctx.close();
     }
   });
+
+  /** Frame 6 in the EVF with project 06's /work/ and #print-01 entries forward of it. */
+  const forwardOf6 = async (page) => {
+    await home(page);
+    await toFrame(page, 5);
+    await page.keyboard.press('Enter');
+    await untilState(page, 'open', 5);
+    await page.locator('#print-01 [data-print-open]').click();
+    await expect.poll(async () => (await pb(page))?.hash).toBe('#print-01');
+    await page.goBack();
+    await expect.poll(async () => (await pb(page)).open).toBe(false);
+    await page.goBack();
+    await untilState(page, 'evf', 5);
+  };
+
+  // f05 (a): the second Forward lands inside the 0.4 s open (onPop has started it before this listener runs)
+  test('two Forwards inside the open: playback follows #print-01, then Esc, Esc: the frame', async ({ browser, browserName }) => {
+    const ctx = await context(browser, browserName, DESK);
+    const page = await ctx.newPage();
+    try {
+      await forwardOf6(page);
+      const at = await page.evaluate(() => new Promise((r) => {
+        addEventListener('popstate', () => setTimeout(() => { const s = window.__vf.state(); history.forward(); r(s); }, 30), { once: true });
+        history.forward();
+      }));
+      expect(at, 'the second Forward is sent while the project opens').toBe('opening');
+      await expect.poll(async () => [await page.evaluate(() => window.__vf.state()), (await pb(page))?.open, await page.evaluate(() => location.hash)], { message: 'playback follows #print-01' }).toEqual(['open', true, '#print-01']);
+      await lands6(page);
+    } finally {
+      await ctx.close();
+    }
+  });
+
+  // f05 (b): Esc mid-zoom on a #print entry steps back over both entries, so no stale project entry is left behind
+  test('Esc mid-zoom after history.go(2) onto #print-NN: the frame, and the next project\'s close does not reopen it', async ({ browser, browserName }) => {
+    const ctx = await context(browser, browserName, DESK);
+    const page = await ctx.newPage();
+    try {
+      await forwardOf6(page);
+      const at = await page.evaluate(() => new Promise((r) => {
+        addEventListener('popstate', () => setTimeout(() => { const s = window.__vf.state(); dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); r(s); }, 50), { once: true });
+        history.go(2);
+      }));
+      expect(at, 'Esc is sent while the project opens').toBe('opening');
+      await expect.poll(() => page.evaluate(() => [window.__vf.state(), `${location.pathname}${location.hash}`]), { message: 'Esc mid-zoom lands on the frame' }).toEqual(['evf', '/#work-06']);
+      for (let i = 4; i >= 1; i--) {
+        await page.keyboard.press('ArrowLeft');
+        await untilState(page, 'evf', i);
+      }
+      await page.keyboard.press('Enter');
+      await untilState(page, 'open', 1);
+      await page.keyboard.press('Escape');
+      await expect.poll(() => page.evaluate(() => [window.__vf.state(), window.__vf.pos()]), { message: 'the close lands on frame 2' }).toEqual(['evf', 1]);
+      await expect.poll(() => page.evaluate(() => `${location.pathname}${location.hash}`)).toBe('/#work-02');
+      await page.waitForTimeout(400);
+      expect(await page.evaluate(() => [window.__vf.state(), window.__vf.pos()]), 'project 06 never reopens').toEqual(['evf', 1]);
+    } finally {
+      await ctx.close();
+    }
+  });
 });

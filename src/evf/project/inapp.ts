@@ -9,7 +9,7 @@ import type { Engine, Rect } from '../gl/engine';
 import type { Scene } from '../scenes';
 import { projects } from '../data';
 import { frameRect, writeRect, isPhone } from '../layout';
-import { parse, projectUrl, homeUrl, workHash } from '../router';
+import { parse, projectUrl, homeUrl, workHash, hashHistory } from '../router';
 import type { RollControl } from './roll';
 import type { PlaybackControl } from './playback';
 import { apertureOf, landedState, openZoom, subjectOf, zoomCentre, type Pt3 } from './framing';
@@ -210,9 +210,10 @@ export function initProject(h: Host) {
       // Tab goes on into the article (Shift+Tab reaches Back). A focused title inside it lost the page in CI's WebKit
       // over long column scrolls.
       col.focus({ preventScroll: true });
-      // a traversal straight onto .../#print-NN: playback follows the entry (and knows whether it pushed it)
+      // a traversal straight onto .../#print-NN (at the open, or during the zoom): playback follows the entry (and knows
+      // whether it pushed it)
       const here = parse();
-      if (print && pb && here.kind === 'project' && here.print === print) pb.sync(location.hash);
+      if (pb && here.kind === 'project' && here.slug === slug && here.print !== null) pb.sync(location.hash);
     };
     const full = frameRect('open');
     if (!engine || h.calm) {
@@ -256,15 +257,19 @@ export function initProject(h: Host) {
 
   // ---------------------------------------------------------------- close
   function close(how: 'input' | 'pop' = 'input') {
+    let extra = false;
     if (h.state() === 'opening') {
       // Back mid-zoom: the open is abandoned (its page may still be loading) and the zoom lands, then leaves
       token++;
       h.finishTl();
       h.setState('open');
+      // opening onto playback's own #print-NN entry (a traversal): that entry is stepped over too
+      const r = parse();
+      extra = r.kind === 'project' && r.print !== null && hashHistory.own();
     }
     if (h.state() !== 'open') return;
     // playback goes with the project; its own entry (if pushed) is stepped over in the same traversal
-    const extra = pb?.isOpen() ? pb.close({ fromPop: true, instant: true }) : false;
+    if (pb?.isOpen()) extra = pb.close({ fromPop: true, instant: true }) || extra;
     if (how === 'input') {
       if (pushed) { ownBack = true; history.go(extra ? -2 : -1); }
       else history.replaceState(null, '', homeUrl(workHash(h.pos() + 1)));
