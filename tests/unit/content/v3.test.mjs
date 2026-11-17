@@ -8,7 +8,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { validateContent } from '../../../src/lib/content/validate.js';
 import { printsOf } from '../../../src/lib/content/prints.ts';
@@ -197,7 +197,7 @@ test('negative controls: every D-042 rule, removed, lets its bad input through',
   const badHonour = () => { const a = base(); a.honours.awards[0].project = 'project-99'; return a; };
   const MUTANTS = [
     ['no file', 'if (m.placeholder === false && !hasFile(m.src)) err(', 'if (false) err(', noFile, /without a file/],
-    ['no poster', "if (m.type === 'video' && m.placeholder === false && !m.poster) err(", 'if (false) err(', noPoster, /without a poster/],
+    ['no poster', "if (m.type !== 'image' && m.placeholder === false && !m.poster) err(", 'if (false) err(', noPoster, /without a poster/],
     ['no captions', "if (m.type === 'video' && m.audio && !/\\.vtt$/i.test(m.captions || '')) err(", 'if (false) err(', noCaptions, /captions/],
     ['no honour check', 'if (h.project && !projectSlugs.has(h.project)) err(', 'if (false) err(', badHonour, /unknown project slug/],
   ];
@@ -213,5 +213,45 @@ test('negative controls: every D-042 rule, removed, lets its bad input through',
     }
   } finally {
     try { rmSync(dir, { recursive: true, force: true }); } catch { /* temp */ }
+  }
+});
+
+// fix-pass B5
+// f24: a model is copied like a video and sized by its poster (D-042: a video's size comes from its poster; types are
+// image, video and model). The poster is 16:9, never the 3:2 fallback, so the size assertion means something.
+test('D-042: a confirmed model derives from its .glb and poster, validates, and its print is sized by the poster', async () => {
+  const sharp = (await import('sharp')).default;
+  sharp.cache(false); // Windows: libvips keeps files open while cached, which blocks the cleanup
+  const input = confirmed();
+  const p = input.projects.projects[0];
+  p.media = [{ type: 'model', src: `media/${p.slug}/m.glb`, poster: `media/${p.slug}/m.png`, w: 0, h: 0, alt: 'A model.', caption: '', captions: '', audio: false, decorative: false, scale: 'normal', loop: false, placeholder: false }];
+  const glbKey = `media/${p.slug}/m.glb`;
+  const pngKey = `media/${p.slug}/m.png`;
+  const dir = mkdtempSync(join(tmpdir(), 'wv1-model-'));
+  try {
+    const mediaSrc = join(dir, 'assets');
+    mkdirSync(join(mediaSrc, p.slug), { recursive: true });
+    writeFileSync(join(mediaSrc, p.slug, 'm.glb'), Buffer.from('glTF\x02\x00\x00\x00'));
+    await sharp({ create: { width: 1600, height: 900, channels: 3, background: '#446688' } }).png().toFile(join(mediaSrc, p.slug, 'm.png'));
+    const outDir = join(dir, 'public');
+    const m = await derive({ projects: input.projects.projects, mediaSrc, outDir });
+    const glb = m.media[glbKey];
+    assert.equal(glb?.type, 'model', 'the .glb is in the manifest as a model');
+    assert.match(glb.file, new RegExp(`^/media/${p.slug}/m-[0-9a-f]{10}\.glb$`), 'copied under its own extension');
+    assert.ok(existsSync(join(outDir, p.slug, basename(glb.file))), 'the .glb is written to public/media');
+    assert.equal(glb.poster, pngKey);
+    assert.equal(m.media[pngKey]?.type, 'poster');
+    assert.deepEqual([m.media[pngKey].w, m.media[pngKey].h], [1600, 900], "the poster's real size");
+    assert.deepEqual(validateContent({ ...input, media: m }).errors, [], 'a confirmed model with its files is valid');
+    const pv = printsOf(p.slug, p.media, m, null)[0];
+    assert.deepEqual([pv.w, pv.h], [1600, 900], "sized by its poster, not the 3:2 fallback");
+    assert.notEqual(pv.files, null, "the poster's ladder, not a typed placeholder box");
+    assert.equal(pv.video, '', 'playback stays video-only: no .glb in <video data-src>');
+    assert.equal(pv.type, 'model');
+    const noPoster = { media: { ...m.media } };
+    delete noPoster.media[pngKey];
+    has(validateContent({ ...input, media: noPoster }).errors, /D-042: the poster has no file/);
+  } finally {
+    try { rmSync(dir, { recursive: true, force: true, maxRetries: 3 }); } catch { /* a temp dir; the OS reaps it */ }
   }
 });

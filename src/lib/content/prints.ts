@@ -17,7 +17,7 @@ export const LQIP_PRINTS = 3;
 export function printsOf(slug: string, media: Media[], manifest: MediaManifest, fixtures: FixtureManifest | null): PrintView[] {
   const items = media.map((m, k) => {
     const n = k + 1;
-    const real = m.placeholder ? null : (manifest.media[m.type === 'video' ? m.poster : m.src] as DerivedImage | undefined) ?? null;
+    const real = m.placeholder ? null : (manifest.media[m.type === 'image' ? m.src : m.poster] as DerivedImage | undefined) ?? null;
     const vid = !m.placeholder && m.type === 'video' ? (manifest.media[m.src] as DerivedVideo | undefined) ?? null : null;
     const fx = m.placeholder ? fixtures?.entries[`${slug}/${pad2(n)}`] ?? null : null;
     // the file wins over the declared size (D-042)

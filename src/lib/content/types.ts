@@ -38,8 +38,9 @@ export interface DerivedImage {
   files: import('../prints/ladder.ts').LadderFile[];
   lqip: string;
 }
+/** A video or a model: the file copied as it is, sized by its poster. */
 export interface DerivedVideo {
-  type: 'video';
+  type: 'video' | 'model';
   hash: string;
   file: string;
   bytes: number;
