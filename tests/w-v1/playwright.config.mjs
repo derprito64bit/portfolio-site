@@ -13,7 +13,7 @@ export default defineConfig({
   testDir: '.',
   testMatch: '**/roll.spec.mjs',
   grep: /brackets on|centre line leads|hover to focus/,
-  repeatEach: 2,
+  repeatEach: 3,
   globalSetup: './global-setup.mjs',
   workers: 1,
   fullyParallel: false,

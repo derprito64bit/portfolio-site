@@ -32,7 +32,14 @@ export const ownBrowser = base0.extend({
     await use(b);
     clearInterval(tick);
     console.log(`[probe] ${testInfo.title.slice(0, 40)}: status ${testInfo.status}, peak top rss ${peak} kB`);
-    if (testInfo.status !== 'passed') console.log(`[probe] dmesg:\n${sh('sudo dmesg | tail -25')}\n[probe] nproc ${sh('nproc')} | ${sh('cat /sys/fs/cgroup/memory.max 2>/dev/null')} | ${sh('free -m')}`);
+    if (testInfo.status !== 'passed') {
+      console.log(`[probe] dmesg:\n${sh('sudo dmesg 2>&1 | tail -15')}`);
+      console.log(`[probe] core_pattern: ${sh('cat /proc/sys/kernel/core_pattern')}; ulimit -c: ${sh('bash -c "ulimit -c"')}`);
+      console.log(`[probe] /var/crash: ${sh('ls -la /var/crash 2>&1 | tail -5')}`);
+      console.log(`[probe] coredumpctl: ${sh('coredumpctl list --no-pager 2>&1 | tail -3')}`);
+      console.log(`[probe] coredump info:\n${sh('sudo coredumpctl info --no-pager -1 2>&1 | head -90')}`);
+      console.log(`[probe] journal:\n${sh('sudo journalctl --no-pager -n 30 2>&1 | grep -iE "segfault|core|crash|WPE|WebKit|signal|abort" | tail -15')}`);
+    }
     await b.close();
   },
 });
