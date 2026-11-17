@@ -36,7 +36,7 @@ const count = p.prints.length;
   </script>
   <header class="pj-bar" slot="before">
     <a class="pj-back mono" href={`/#work-${pad2(p.number)}`} data-close><span aria-hidden="true">←</span> Back <span class="num proj__fl" aria-hidden="true">23mm</span></a>
-    <span class="pj-count num" data-print-count aria-hidden="true" hidden={!count}>01 / {pad2(count)}</span>
+    <span class="pj-count num" data-print-count aria-hidden="true" hidden>01 / {pad2(count)}</span>
     <span class="num proj__fl2" aria-hidden="true">56mm</span>
   </header>
   <Article project={p} prev={prev} next={next} total={N} />

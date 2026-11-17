@@ -55,9 +55,14 @@
   font-family: var(--f-mono); font-size: 12px; letter-spacing: 0.07em; text-transform: uppercase; color: var(--ink-2);
 }
 
-/* the expose (A8): before a print enters it sits at -3 EV behind an 8 px blur; project/roll.ts clears it */
-:is(.js, .pj-js) .roll[data-expose] .print:not(.is-exp) .print__frame { filter: brightness(0.125) blur(8px); }
-.calm:is(.js, .pj-js) .roll[data-expose] .print:not(.is-exp) .print__frame { filter: none; opacity: 0; }
+/* the expose (A8): before a print enters it sits at -3 EV behind an 8 px blur; project/roll.ts clears it. A cold
+   /work/<slug>/ page (.pj-js) holds that state from its first paint, before its module runs, so a print never goes lit,
+   dark, lit. The cold calm rule names the server-rendered [data-roll] to outrank the dim below (a print still to expose
+   stays unseen) */
+.js .roll[data-expose] .print:not(.is-exp) .print__frame,
+.pj-js .roll .print:not(.is-exp) .print__frame { filter: brightness(0.125) blur(8px); }
+.calm.js .roll[data-expose] .print:not(.is-exp) .print__frame,
+.calm.pj-js .roll[data-roll] .print:not(.is-exp) .print__frame { filter: none; opacity: 0; }
 
 /* focus (A9): the print nearest the centre keeps full brightness and the AF brackets; the rest dim their media.
    The strip, a placeholder box and the 'Image unavailable' label stay at full ink (WCAG 1.4.3) */

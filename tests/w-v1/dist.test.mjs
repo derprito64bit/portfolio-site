@@ -41,6 +41,8 @@ export function pageProblems(html, p, i, { dist = DIST, total = projects.length 
   need(new RegExp(`<a href="/work/${prev}/" rel="prev"`).test(html) && new RegExp(`<a href="/work/${next}/" rel="next"`).test(html), 'previous and next links');
   need(/<meta name="robots" content="noindex"/.test(html) === p.placeholder, 'noindex exactly when a placeholder');
   need(!/id="(evf|intro)"|<canvas|data-raise|class="frame"/.test(html), 'no EVF markup');
+  // fix-pass B1 (f16): the HUD counter shows only when the roll script names a print (never a static, wrong 01 / NN)
+  need(/<span[^>]*\sdata-print-count[^>]*\shidden[\s>]/.test(html), 'the counter renders hidden');
   const figs = [...html.matchAll(/<figure class="print"([^>]*)>([\s\S]*?)<\/figure>/g)];
   need(figs.length === p.media.length, `${figs.length} figures for ${p.media.length} media`);
   if (!p.media.length) need(/class="roll__empty"><span class="ph">\[PLACEHOLDER: media\]<\/span>/.test(html), 'an empty roll says [PLACEHOLDER: media]');
@@ -150,6 +152,8 @@ test('negative controls: the page checks catch each planted defect', { skip: !bu
     ['EVF markup', (h) => h.replace('<main', '<canvas></canvas><main'), /no EVF markup/],
     ['no noindex', (h) => h.replace('<meta name="robots" content="noindex">', ''), /noindex/],
     ['no strip', (h) => h.replace('<figcaption class="print__strip">', '<figcaption>'), /caption strip/],
+    // fix-pass B1
+    ['counter shown', (h) => h.replace(/(<span[^>]*data-print-count[^>]*?)\shidden(?=[\s>])/, '$1'), /counter renders hidden/],
   ];
   assert.deepEqual(pageProblems(real, p, i), [], 'the real page is clean');
   for (const [name, plant, re] of plants) {

@@ -621,3 +621,99 @@ test.describe('A9 focus (fix-pass B1)', () => {
     }
   });
 });
+
+test.describe('A8 expose (fix-pass B1)', () => {
+  /** The cold page's entry module (and so initRoll, which sets the roll's [data-expose]). */
+  const MODULE = /\/_astro\/_slug_\.astro_astro_type_script_index_0_lang\.[^/]+\.js/;
+  /** A cold page with its module held: the page as it paints before the module runs (the stylesheet in). */
+  const held = async (page, slug) => {
+    const routes = [];
+    await page.route(MODULE, (r) => { routes.push(r); });
+    await page.goto(`${base()}/work/${slug}/?vf-test`, { waitUntil: 'commit' }); // held module scripts hold DOMContentLoaded and load
+    await page.waitForSelector('.print__frame', { state: 'attached' });
+    await page.waitForFunction(() => getComputedStyle(document.querySelector('.pj-bar')).position === 'fixed');
+    return routes;
+  };
+  const release = (routes) => { routes.splice(0).forEach((r) => r.continue().catch(() => {})); };
+
+  // f16: before the module ran there was no underexposed state, so the prints painted lit, dropped to -3 EV when it ran
+  // and exposed again (lit, dark, lit), and the counter showed a static "01 / NN"
+  for (const reduced of [false, true]) test(`the cold page paints its prints underexposed and the counter hidden before its module runs${reduced ? ' (calm)' : ''}`, async ({ own: browser, browserName }) => {
+    const ctx = await context(browser, browserName, DESK, { reduced });
+    const page = await ctx.newPage();
+    let routes = [];
+    try {
+      routes = await held(page, 'project-06');
+      const st = await page.evaluate(() => ({
+        pjjs: document.documentElement.classList.contains('pj-js'), roll: document.documentElement.hasAttribute('data-roll'),
+        frames: [...document.querySelectorAll('.print__frame')].map((f) => { const cs = getComputedStyle(f); return [cs.filter, cs.opacity]; }),
+        counter: document.querySelector('[data-print-count]').hidden,
+      }));
+      expect([st.pjjs, st.roll], 'pj-js on, the module held').toEqual([true, false]);
+      expect(st.frames.length).toBe(12);
+      for (const [filter, opacity] of st.frames) {
+        if (reduced) expect([filter, opacity], 'calm: underexposed is unseen').toEqual(['none', '0']);
+        else expect(filter, 'underexposed: -3 EV behind the blur').toMatch(/brightness\(0\.125\).*blur\(8px\)/);
+      }
+      expect(st.counter, 'the counter waits hidden').toBe(true);
+      release(routes);
+      await page.waitForFunction(() => document.documentElement.hasAttribute('data-roll'), null, { timeout: 10000 });
+      if (reduced) {
+        // the dim (f02) must not show a print still to expose: the cold calm rule outranks it
+        await centrePrint(page, 3);
+        await page.waitForFunction(() => document.querySelector('.roll[data-dim]')?.dataset.focus === '3', null, { timeout: 3000 });
+        const waiting = await page.evaluate(() => [...document.querySelectorAll('.print:not(.is-exp) .print__frame')].map((f) => getComputedStyle(f).opacity));
+        expect(waiting.length, 'prints still to expose').toBeGreaterThan(0);
+        expect(waiting, 'calm, under the dim: a print still to expose stays unseen').toEqual(waiting.map(() => '0'));
+      }
+    } finally {
+      release(routes);
+      await ctx.close();
+    }
+    // a module that fails to load: the page falls back to its prints as they are
+    const fctx = await context(browser, browserName, DESK, { reduced });
+    const fp = await fctx.newPage();
+    try {
+      await fp.route(MODULE, (r) => r.abort());
+      await fp.goto(`${base()}/work/project-06/?vf-test`, { waitUntil: 'domcontentloaded' });
+      await fp.waitForFunction(() => !document.documentElement.classList.contains('pj-js'), null, { timeout: 8000 });
+      const lit = await fp.evaluate(() => [...document.querySelectorAll('.print__frame')].map((f) => { const cs = getComputedStyle(f); return `${cs.filter} ${cs.opacity}`; }));
+      expect(lit, 'a failed module: the prints lit').toEqual(lit.map(() => 'none 1'));
+    } finally {
+      await fctx.close();
+    }
+  });
+
+  // f16: the first print, sampled every frame from its first paint through the module landing: its exposure only rises
+  for (const reduced of [false, true]) test(`the first print never steps from lit to dark as the module lands${reduced ? ' (calm)' : ''}`, async ({ own: browser, browserName }) => {
+    const SAMPLER = `(() => {
+      window.__s = [];
+      const tick = () => {
+        const f = document.querySelector('#print-01 .print__frame');
+        if (f) { const cs = getComputedStyle(f); window.__s.push([cs.filter, cs.opacity]); }
+        requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    })();`;
+    const ctx = await context(browser, browserName, DESK, { reduced, init: [SAMPLER] });
+    const page = await ctx.newPage();
+    let routes = [];
+    try {
+      routes = await held(page, 'project-06');
+      await page.waitForTimeout(1500);
+      release(routes);
+      await page.waitForFunction(() => document.querySelector('#print-01')?.classList.contains('is-exp'), null, { timeout: 10000 });
+      await page.waitForTimeout(1200);
+      // exposure: opacity times brightness ('none' is 1)
+      const s = (await page.evaluate(() => window.__s)).map(([f, o]) => Number(o) * Number(/brightness\(([\d.]+)\)/.exec(f)?.[1] ?? 1));
+      expect(s.length, 'frames sampled').toBeGreaterThan(10);
+      expect(s[0], 'the first paint is underexposed').toBeLessThan(0.2);
+      const drops = s.map((v, i) => (i && v < s[i - 1] - 0.01 ? `${i}: ${s[i - 1].toFixed(3)} -> ${v.toFixed(3)}` : null)).filter(Boolean);
+      expect(drops, 'a step down in exposure').toEqual([]);
+      expect(s.at(-1), 'exposed in the end').toBeGreaterThan(0.99);
+    } finally {
+      release(routes);
+      await ctx.close();
+    }
+  });
+});
