@@ -1,0 +1,84 @@
+/* The open project (W-V1, D-041, D-044). One article, two hosts: #proj on / (the frame becomes the page; the article
+   is adopted into .proj__col, which scrolls) and the /work/<slug>/ page (the document scrolls). The header screen fills
+   the first view over the frame; the roll and the honours slot follow. Tokens come from ../style.css. */
+
+/* ---------------- hosts ---------------- */
+.proj { position: fixed; inset: 0; z-index: 30; pointer-events: none; }
+.proj[hidden] { display: none; }
+.proj__col {
+  position: absolute; inset: var(--top) 0 0 0; overflow-y: auto; overscroll-behavior: contain;
+  padding: 0 var(--g); pointer-events: auto; scrollbar-width: thin; scrollbar-color: var(--ink-4) transparent;
+}
+.proj__col:focus { outline: none; }
+/* the title takes focus at the landing (tabindex -1, not a Tab stop) so the keys scroll the column; no ring on it */
+#proj-title:focus { outline: none; }
+.pj { padding: var(--top) var(--g) 0; }
+.pj-page .gl { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; }
+.pj-page .pj { position: relative; z-index: 2; }
+
+/* the bar: Back (23 mm, the wide end) on the left, the print counter and the focal length on the right */
+.proj__bar, .pj-bar {
+  position: absolute; z-index: 3; left: 0; right: 0; top: 0; height: var(--top); padding: 0 var(--g);
+  display: flex; align-items: center; gap: 22px; pointer-events: auto;
+  background: linear-gradient(var(--black) 0%, rgba(5, 5, 5, 0.86) 58%, rgba(5, 5, 5, 0));
+}
+.pj-page .pj-bar { position: fixed; z-index: 4; }
+.proj__back, .pj-back {
+  display: inline-flex; gap: 10px; align-items: center; min-height: 44px; padding: 0 14px 0 12px; margin: 0 auto 0 -12px;
+  color: var(--ink); background: var(--black); text-decoration: none; transition: color var(--snap);
+}
+.proj__back:hover, .pj-back:hover { color: var(--phos); }
+.proj__fl { font-size: 13px; color: var(--ink-3); text-transform: none; letter-spacing: 0; }
+.proj__fl2 { font-size: 17px; color: var(--ink); }
+.pj-count { display: inline-flex; align-items: baseline; gap: 6px; font-size: 17px; color: var(--ink); white-space: pre; }
+.pj-count small { font-family: var(--f-mono); font-size: 12px; letter-spacing: 0.07em; color: var(--ink-3); text-transform: uppercase; }
+.pj-count[hidden] { display: none; }
+
+/* ---------------- the header screen ---------------- */
+/* it stops short of the fold: the roll's own label and the top edge of print 1 are the first view's last line, so the
+   roll exposes as the last beat of the arrival (J1), and there is one roll label, not a cue above another */
+.pj__head {
+  display: flex; flex-direction: column; justify-content: flex-start;
+  width: min(560px, 44%); min-height: calc(86svh - var(--top)); padding: 8vh 24px 0 0;
+}
+.pj__k { color: var(--ink-2); }
+.pj__t {
+  font-stretch: 125%; font-weight: 300; font-size: clamp(44px, 5.4vw, 84px); line-height: 0.92; letter-spacing: -0.015em;
+  text-transform: uppercase; margin: 12px 0 14px;
+}
+.pj__ph { line-height: 0; }
+.pj .ph { font-size: 13px; line-height: 18px; }
+.pj__meta { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border-top: 1px solid rgba(236, 233, 226, 0.16); margin: 30px 0 28px; }
+.pj__meta > div { padding: 12px 0; border-bottom: 1px solid rgba(236, 233, 226, 0.16); min-width: 0; }
+.pj__meta dt { color: var(--ink-2); margin-bottom: 6px; }
+.pj__meta dd { font-size: 15px; overflow-wrap: anywhere; }
+.pj__meta a { color: var(--ink); text-underline-offset: 3px; }
+.pj__blurb { font-size: 19px; line-height: 1.45; margin-bottom: 22px; max-width: 34ch; }
+.pj__body p { color: var(--ink-2); margin-bottom: 14px; max-width: 48ch; }
+.ph--wrap { display: inline; white-space: normal; line-height: 1.9; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
+
+/* ---------------- after the roll ---------------- */
+.pj__honours:empty { display: none; }
+.pj__nav {
+  display: flex; justify-content: space-between; gap: 16px; max-width: 1680px; margin: 0 auto;
+  border-top: 1px solid rgba(236, 233, 226, 0.16); padding: 8px 0 48px;
+}
+.pj__nav a { display: inline-flex; align-items: center; min-height: 44px; color: var(--ink-2); text-decoration: none; transition: color var(--snap); }
+.pj__nav a:hover { color: var(--phos); }
+
+/* the article arrives after the zoom lands (main.ts and project/inapp.ts stage it) */
+.proj .rv { opacity: 0; }
+
+/* ---------------- phone ---------------- */
+@media (max-width: 759px) {
+  .proj__bar, .pj-bar { background: var(--black); gap: 14px; }
+  .pj__head { width: auto; padding: calc(58svh - var(--top)) 0 0; }
+  .pj__t { font-size: 44px; }
+  .pj__meta { grid-template-columns: 1fr; }
+  .pj .ph { white-space: normal; }
+  .pj__nav a { flex: 1 1 0; }
+  .pj__nav a[rel='next'] { justify-content: flex-end; text-align: right; }
+}
+
+/* ---------------- no JS on /work/<slug>/: the header is a plain page header ---------------- */
+.pj-page:not(.pj-js) .pj__head { min-height: 0; padding-bottom: 48px; }

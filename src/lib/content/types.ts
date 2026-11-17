@@ -9,7 +9,11 @@ export interface Link {
 
 export interface Media {
   type: 'image' | 'model' | 'video';
+  /** The original under MEDIA_SRC: media/<slug>/<file> ('' while a placeholder). */
   src: string;
+  /** Declared source pixels (0 when unknown); the file's real size wins (D-042). */
+  w: number;
+  h: number;
   alt: string;
   caption: string;
   poster: string;
@@ -17,6 +21,57 @@ export interface Media {
   captions: string;
   audio: boolean;
   decorative: boolean;
+  /** D-044: hero, normal or detail. */
+  scale: 'hero' | 'normal' | 'detail';
+  /** Video only: plays muted inline while visible. */
+  loop: boolean;
+  /** A placeholder entry renders a test chart at w x h (D-045). */
+  placeholder: boolean;
+}
+
+/** One derived image in src/lib/content/media.json (scripts/build/images.mjs). */
+export interface DerivedImage {
+  type: 'image' | 'poster';
+  hash: string;
+  w: number;
+  h: number;
+  files: import('../prints/ladder.ts').LadderFile[];
+  lqip: string;
+}
+export interface DerivedVideo {
+  type: 'video';
+  hash: string;
+  file: string;
+  bytes: number;
+  poster: string;
+}
+
+/** A film print as the page renders it (src/components/print): the media entry, its files and its size. */
+export interface PrintView {
+  /** 1-based position in the roll. */
+  n: number;
+  /** "01" */
+  index: string;
+  /** "print-01": the figure's id and the playback hash. */
+  id: string;
+  type: Media['type'];
+  alt: string;
+  caption: string;
+  decorative: boolean;
+  loop: boolean;
+  audio: boolean;
+  captions: string;
+  placeholder: boolean;
+  /** The size the print is laid out at: the file's, else the declared one, else 3:2. */
+  w: number;
+  h: number;
+  /** The image ladder (the poster's for a video), or null for a typed placeholder box (no file). */
+  files: import('../prints/ladder.ts').LadderFile[] | null;
+  lqip: string;
+  /** The video file (site path), or '' (a placeholder clip has none). */
+  video: string;
+  size: import('../prints/size.ts').PackedPrint;
+  sizes: string;
 }
 
 export interface Project {
@@ -81,6 +136,12 @@ export interface ProjectView extends Project {
   href: string;
   /** Any token in the entry means the page ships noindex (W-D027). */
   noindex: boolean;
+  /** "Project 01": the UI label (not a fact). */
+  label: string;
+  /** 1-based position in content order. */
+  number: number;
+  /** The film prints, laid out at build (src/lib/prints/size.ts). */
+  prints: PrintView[];
 }
 
 export interface Content {

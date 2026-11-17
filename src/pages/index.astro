@@ -190,25 +190,14 @@ const dist = [{ l: '∞', z: 0.95 }, ...[3, 1.5, 1, 0.7, 0.5, 0.3].map((m) => ({
       </div>
     </main>
 
-    <!-- Open project: the frame becomes the page. -->
+    <!-- Open project: the frame becomes the page. The column adopts /work/<slug>/'s article (project/article.ts). -->
     <article class="proj" id="proj" role="dialog" aria-modal="true" aria-labelledby="proj-title" hidden>
       <div class="proj__bar">
         <button class="proj__back mono" type="button" data-close><span aria-hidden="true">←</span> Back <span class="num proj__fl" aria-hidden="true">23mm</span></button>
+        <span class="pj-count num" data-print-count aria-hidden="true" hidden></span>
         <span class="num proj__fl2" aria-hidden="true" data-fl2>56mm</span>
       </div>
-      <div class="proj__col" data-proj-col>
-        <p class="proj__k mono" data-proj-k>Project 01 · Frame 01/08</p>
-        <h2 class="proj__t" id="proj-title" data-proj-title>Project 01</h2>
-        <p class="proj__ph"><span class="ph" data-proj-ph></span></p>
-        <dl class="proj__exif" data-proj-exif></dl>
-        <p class="proj__blurb" data-proj-blurb></p>
-        <div class="proj__body" data-proj-body></div>
-        <ul class="proj__media" data-proj-media></ul>
-        <nav class="proj__nav" aria-label="Projects">
-          <button class="mono" type="button" data-proj-prev>← Previous frame</button>
-          <button class="mono" type="button" data-proj-next>Next frame →</button>
-        </nav>
-      </div>
+      <div class="proj__col" data-proj-col></div>
     </article>
 
     <script>

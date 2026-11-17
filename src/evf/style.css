@@ -349,33 +349,7 @@ ol, ul { list-style: none; }
 .evf.is-open .meter { visibility: hidden; }
 .evf[data-mode='play'] .cap { visibility: hidden; }
 
-/* ---------------- open project ---------------- */
-.proj { position: fixed; inset: 0; z-index: 30; pointer-events: none; }
-.proj[hidden] { display: none; }
-.proj__bar { position: absolute; z-index: 3; left: 0; right: 0; top: 0; height: var(--top); padding: 0 var(--g); display: flex; align-items: center; justify-content: space-between; pointer-events: auto; }
-.proj__back { display: flex; gap: 10px; align-items: center; min-height: 44px; padding: 0 14px 0 12px; margin-left: -12px; color: var(--ink); background: var(--black); }
-.proj__back:hover { color: var(--phos); }
-.proj__fl { font-size: 13px; color: var(--ink-3); text-transform: none; letter-spacing: 0; }
-.proj__fl2 { font-size: 17px; color: var(--ink); }
-.proj__col {
-  position: absolute; left: var(--g); top: var(--top); bottom: 0; width: min(560px, 44%);
-  overflow-y: auto; padding: 8vh 24px 80px 0; pointer-events: auto; scrollbar-width: thin; scrollbar-color: var(--ink-4) transparent;
-}
-.proj__k { color: var(--ink-2); }
-.proj__t { font-stretch: 125%; font-weight: 300; font-size: clamp(44px, 5.4vw, 84px); line-height: 0.92; letter-spacing: -0.015em; text-transform: uppercase; margin: 12px 0 14px; }
-.proj__exif { display: grid; grid-template-columns: repeat(2, 1fr); border-top: 1px solid rgba(236, 233, 226, 0.16); margin: 30px 0 28px; }
-.proj__exif > div { padding: 12px 0; border-bottom: 1px solid rgba(236, 233, 226, 0.16); min-width: 0; }
-.proj__exif dt { color: var(--ink-2); margin-bottom: 6px; }
-.proj__exif dd { font-size: 15px; }
-.proj__blurb { font-size: 19px; line-height: 1.45; margin-bottom: 22px; }
-.proj__body p { color: var(--ink-2); margin-bottom: 14px; max-width: 48ch; }
-.proj__media { display: grid; gap: 12px; margin: 26px 0 30px; }
-.proj__media li { border: 1px dashed rgba(236, 233, 226, 0.25); aspect-ratio: 3 / 2; display: flex; flex-direction: column; justify-content: space-between; padding: 12px; background: rgba(5, 5, 5, 0.5); }
-.proj__media li .mono { color: var(--ink-3); }
-.proj__nav { display: flex; justify-content: space-between; border-top: 1px solid rgba(236, 233, 226, 0.16); padding-top: 16px; }
-.proj__nav button { color: var(--ink-2); padding: 6px 0; }
-.proj__nav button:hover { color: var(--phos); }
-.proj .rv { opacity: 0; transform: translateY(14px); }
+/* The open project (#proj) and its prints moved to style/project.css and style/print.css (W-V1). */
 
 /* ---------------- phone ---------------- */
 @media (max-width: 759px) {
@@ -422,10 +396,6 @@ ol, ul { list-style: none; }
   .play__dl > div { min-height: 34px; }
   .info { left: var(--g); right: var(--g); width: auto; top: calc(var(--top) + 8px); padding: 16px 0 0; }
   .info__h { font-size: 34px; line-height: 38px; }
-  .proj__bar { background: var(--black); }
-  .proj__col { left: 0; right: 0; width: auto; top: var(--top); padding: calc(58vh - var(--top)) var(--g) 80px; }
-  .proj__t { font-size: 44px; }
-  .proj__exif { grid-template-columns: 1fr; }
   .play .ph, .proj .ph { white-space: normal; }
   .histo__row .mono { display: none; }
   .histo__row { justify-content: flex-end; }

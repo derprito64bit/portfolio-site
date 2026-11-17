@@ -1,8 +1,7 @@
 ---
 // The page frame for pages that are not the Viewfinder (W-V0a, D-040): the head, the noindex switch and the skip link.
-// The home page (src/pages/index.astro) keeps its own document. Nothing here loads script.
-import '@fontsource-variable/archivo/wdth.css';
-import '@fontsource-variable/chivo-mono/wght.css';
+// The home page (src/pages/index.astro) keeps its own document. Nothing here loads script; a page may add an inline
+// head script (slot "head"), classes on <html> (htmlClass), and chrome before <main> (slot "before", W-V1's bar).
 
 interface Props {
   /** Document title without the site suffix; ' · derprito64bit' is appended. */
@@ -11,14 +10,19 @@ interface Props {
   path: string;
   noindex?: boolean;
   description?: string;
+  /** Classes on <html>. */
+  htmlClass?: string;
+  /** Where the skip link goes, and what it says. */
+  skipTo?: string;
+  skipLabel?: string;
 }
 
-const { title, path, noindex = false, description = 'The portfolio of derprito64bit.' } = Astro.props;
+const { title, path, noindex = false, description = 'The portfolio of derprito64bit.', htmlClass, skipTo = '#main', skipLabel = 'Skip to content' } = Astro.props;
 const SITE = 'https://derprito64bit.github.io';
 const canonical = new URL(path, SITE).href;
 ---
 <!doctype html>
-<html lang="en">
+<html lang="en" class={htmlClass}>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
@@ -33,7 +37,8 @@ const canonical = new URL(path, SITE).href;
     <slot name="head" />
   </head>
   <body>
-    <a class="skip" href="#main">Skip to content</a>
+    <a class="skip" href={skipTo}>{skipLabel}</a>
+    <slot name="before" />
     <main id="main" tabindex="-1">
       <slot />
     </main>

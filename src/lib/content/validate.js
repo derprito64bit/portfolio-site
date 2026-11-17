@@ -24,6 +24,8 @@ export const AWARD_KINDS = ['glass', 'trophy', 'plaque', 'certificate'];
 export const METALS = ['', 'gold', 'silver', 'bronze'];
 export const CREDIT_MODES = ['public-domain', 'original'];
 export const MEDIA_TYPES = { image: /\.(png|jpe?g)$/i, model: /\.glb$/i, video: /\.(mp4|webm)$/i };
+/** Print scales (D-044): hero, normal or detail. */
+export const SCALES = ['hero', 'normal', 'detail'];
 
 const KEBAB = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 const HEX = /^#[0-9A-Fa-f]{6}$/;
@@ -41,8 +43,11 @@ export const CLASSES = {
   },
   Link: { label: 'd', href: 'l' },
   Focus: { x: 'n', y: 'n' },
+  // Content model v3 (D-042): w and h are the declared source pixels (0 = unknown: a 3:2 placeholder); the file's real
+  // size from src/lib/content/media.json wins over them.
   Media: {
-    type: 'x', src: 'a', alt: 'o', caption: 'o', poster: 'a', captions: 'a', audio: 'b', decorative: 'b',
+    type: 'x', src: 'a', w: 'n', h: 'n', alt: 'o', caption: 'o', poster: 'a', captions: 'a', audio: 'b', decorative: 'b',
+    scale: 'x', loop: 'b', placeholder: 'b',
   },
   HonoursFile: { schema: 'n', owner: 'x', awards: '[c:Honour]', medals: '[c:Honour]' },
   Honour: {
@@ -56,11 +61,15 @@ export const CLASSES = {
 };
 
 /**
- * Validate the four content files plus the film-look ids from tokens.
- * @param {{ projects: any, honours: any, profile: any, lookIds: string[] }} input
+ * Validate the four content files plus the film-look ids from tokens. `media` is the generated manifest
+ * (src/lib/content/media.json, scripts/build/images.mjs): with it, a non-placeholder media entry (and a video's poster)
+ * must have its derived files there (D-042); without it only the src itself is required.
+ * @param {{ projects: any, honours: any, profile: any, lookIds: string[], media?: { media: Record<string, any> } }} input
  * @returns {{ errors: string[], warnings: string[] }}
  */
-export function validateContent({ projects, honours, profile, lookIds }) {
+export function validateContent({ projects, honours, profile, lookIds, media = undefined }) {
+  const files = media?.media ?? null;
+  const hasFile = (src) => Boolean(src) && (files === null || Object.hasOwn(files, src));
   const errors = [];
   const warnings = [];
   const err = (file, path, msg) => errors.push(`content/${file} ${path}: ${msg}`);
@@ -191,6 +200,17 @@ export function validateContent({ projects, honours, profile, lookIds }) {
       if (m.type === 'video' && m.audio && !/\.vtt$/i.test(m.captions || '')) err('projects.json', `${mat}.captions`, 'a video with audio:true needs captions (a .vtt path)');
       if (m.type !== 'video' && (m.audio || m.captions)) err('projects.json', mat, 'audio and captions apply to video only');
       if (!m.src && p.placeholder === false) err('projects.json', mat, 'empty src on a confirmed project');
+      // content model v3 (D-042)
+      for (const k of ['w', 'h']) if (typeof m[k] === 'number' && !(Number.isInteger(m[k]) && m[k] >= 0)) err('projects.json', `${mat}.${k}`, 'source pixels: a whole number, 0 when unknown');
+      if ((m.w > 0) !== (m.h > 0)) err('projects.json', mat, 'w and h are declared together (or both 0)');
+      if (m.scale !== undefined && !SCALES.includes(m.scale)) err('projects.json', `${mat}.scale`, `one of ${SCALES.join(', ')}`);
+      if (m.loop && m.type !== 'video') err('projects.json', `${mat}.loop`, 'loop applies to video only');
+      if (m.loop && m.audio) err('projects.json', `${mat}.loop`, 'a loop clip has no audio track (budgets-v2)');
+      if (m.src && !m.src.startsWith(`media/${p.slug}/`)) err('projects.json', `${mat}.src`, `media/${p.slug}/<file> (the original's path under MEDIA_SRC)`);
+      if (m.placeholder === false && !hasFile(m.src)) err('projects.json', mat, 'D-042: a non-placeholder media without a file (run scripts/build/images.mjs with MEDIA_SRC)');
+      if (m.type === 'video' && m.placeholder === false && !m.poster) err('projects.json', `${mat}.poster`, 'D-042: a video without a poster');
+      if (m.type === 'video' && m.placeholder === false && m.poster && !hasFile(m.poster)) err('projects.json', `${mat}.poster`, 'D-042: the poster has no file (run scripts/build/images.mjs)');
+      if (m.placeholder === true && m.src) err('projects.json', mat, 'a placeholder media has no src (it renders a test chart at w x h)');
     });
     if (p.featured) featured++;
     if (p.hero) {

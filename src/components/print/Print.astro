@@ -1,0 +1,81 @@
+---
+// One film print (D-044, W-V1 A1, A5): a figure with the media at its own aspect and a caption strip. The size and the
+// grid place come from src/lib/prints/size.ts as custom properties; the media is an <img> with width, height, srcset and
+// sizes (AVIF first, WebP fallback), a video's poster with a play mark (the clip itself stays unloaded until it plays),
+// or a typed placeholder box when no file exists. The link opens playback (project/playback.ts); without JS it is an
+// anchor to the print itself.
+import type { PrintView } from '../../lib/content/index.ts';
+import { fallback, pad2, srcset } from '../../lib/prints/ladder.ts';
+import Text from '../project/Text.astro';
+
+interface Props {
+  print: PrintView;
+  total: number;
+}
+const { print: p, total } = Astro.props;
+const s = p.size;
+const style = [
+  `--row:${s.row + 1}`, `--col:${s.col}`, `--span:${s.span}`, `--j:${s.justify}`, `--f:${s.f.toFixed(4)}`,
+  `--ar:${s.ar.toFixed(4)}`, `--pf:${s.phoneFrac.toFixed(3)}`, ...(p.lqip ? [`--lqip:url(${p.lqip})`] : []),
+].join(';');
+const first = p.n === 1;
+const kind = p.type === 'video' ? (p.loop ? 'loop clip' : 'clip') : p.type === 'model' ? 'model' : 'image';
+const label = `Print ${p.index} of ${pad2(total)}, ${kind}: open in playback`;
+const alt = p.decorative ? '' : p.alt;
+---
+<figure
+  class="print"
+  id={p.id}
+  style={style}
+  data-print={p.n}
+  data-type={p.type}
+  data-kind={kind}
+  data-bucket={s.bucket}
+  data-w={p.w}
+  data-h={p.h}
+  data-wf={s.widthFrac.toFixed(5)}
+  data-pf={s.phoneFrac.toFixed(3)}
+  data-ar={s.ar.toFixed(5)}
+  data-side={s.phoneSide}
+  data-drop={s.drop ? '' : undefined}
+  data-hero={s.hero ? '' : undefined}
+  data-detail={s.detail ? '' : undefined}
+  data-letterbox={s.letterbox ? '' : undefined}
+  data-loop={p.loop ? '' : undefined}
+  data-ph={p.placeholder ? '' : undefined}
+>
+  <a class="print__a" href={`#${p.id}`} aria-label={label} data-print-open>
+    <span class="print__frame">
+      {p.files ? (
+        <picture>
+          <source type="image/avif" srcset={srcset(p.files, 'avif')} sizes={p.sizes} />
+          <img
+            class="print__img"
+            src={fallback(p.files)}
+            srcset={srcset(p.files, 'webp')}
+            sizes={p.sizes}
+            width={p.w}
+            height={p.h}
+            alt={alt}
+            loading={first ? 'eager' : 'lazy'}
+            decoding="async"
+            fetchpriority={first ? 'high' : undefined}
+            data-lcp={first ? 'print-1' : undefined}
+          />
+        </picture>
+      ) : (
+        <span class="print__box"><span class="ph">[PLACEHOLDER: media file]</span><span class="num">{p.w} × {p.h}</span></span>
+      )}
+      {p.type === 'video' && (
+        <video class="print__vid" preload="none" muted playsinline loop={p.loop} width={p.w} height={p.h} aria-hidden="true" tabindex="-1" data-src={p.video || undefined}>
+          {p.video && <source src={p.video} type="video/mp4" />}
+        </video>
+      )}
+      {p.type === 'video' && <i class="print__play" aria-hidden="true"></i>}
+    </span>
+  </a>
+  <figcaption class="print__strip">
+    <span class="print__n">{p.index}</span>
+    <span class="print__cap">{p.caption ? <Text text={p.caption} /> : ''}</span>
+  </figcaption>
+</figure>

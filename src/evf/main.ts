@@ -1,11 +1,14 @@
 // Viewfinder concept: boot, preloader, intro, the raise, the EVF (work, playback, owner info) and the open project.
 import { gsap, Observer, SplitText, Flip, D, E, CHARS, CHARS_UP } from './motion';
-import type { Engine, Meter, Rect } from './gl/engine';
-import { projects, honours, phInner, isPlaceholder } from './data';
+import type { Engine, Meter } from './gl/engine';
+import { projects, honours } from './data';
 import type { Scene } from './scenes';
 import { frameRect, writeRect, fitName, isPhone, type Mode } from './layout';
 import { drawSnapshot } from './snapshot';
 import { testHooks } from './testhooks';
+import { apertureOf, noiseOf, halfOf, subjectOf, sceneToFrac, fracToScene, zoomCentre, type Pt3 } from './project/framing';
+import { initProject } from './project/inapp';
+import { parse, homeUrl, workHash } from './router';
 
 // ------------------------------------------------------------------ elements
 const $ = <T extends Element = HTMLElement>(s: string, r: ParentNode = document) => r.querySelector(s) as T;
@@ -34,22 +37,16 @@ const capKicker = $('[data-kicker]'), capOf = $('[data-cap-of]'), titleLabel = $
 const ssEl = $('[data-ss]'), fnEl = $('[data-fn]'), isoEl = $('[data-iso]');
 const histCanvas = $<HTMLCanvasElement>('[data-hist]');
 const evEl = $('[data-ev]');
-const flEl = $('[data-fl]');
 const countEl = $('[data-count]'), countOf = $('[data-count-of]');
 const modeIcon = $('[data-mode-icon]'), modeLabel = $('[data-mode-label]');
 const idxBtns = $$<HTMLButtonElement>('[data-go]');
 const idxGrps = $$('[data-grp]');
 const playEl = $('[data-screen="play"]'), infoEl = $('[data-screen="info"]');
 const live = $('[data-live]');
-const proj = $('#proj');
-const projCol = $('[data-proj-col]');
 
 const NW = projects.length, NP = honours.length, N = NW + NP + 1;
 const modeOf = (i: number): Mode => (i < NW ? 'work' : i < NW + NP ? 'play' : 'info');
 const pad = (n: number) => String(n).padStart(2, '0');
-const apertureOf = (f: number) => 1.4 / Math.pow(f, 0.8);
-const noiseOf = (iso: number) => 0.012 + Math.log2(iso / 160) * 0.0055;
-const FLS = [23, 27, 33, 35, 40, 50, 56];
 /** Focus distance readout from a depth (0 near, 1 far); mirrors scenes.ts. */
 function distLabel(z: number) {
   if (z > 0.93) return '∞';
@@ -121,28 +118,7 @@ function drawHist(m: Meter) {
   if (m.clip) { ctx.fillStyle = '#ffb13b'; ctx.fillRect(W - 6, 0, 6, H); }
 }
 
-// ------------------------------------------------------------------ scenes / subject
-function halfOf(r: Rect) { const a = r.w / Math.max(1, r.h); return a >= 1 ? { x: a, y: 1 } : { x: 1, y: 1 / a }; }
-/** The frame's subject: the largest solid shape on the focus plane. */
-function subjectOf(s: Scene) {
-  let best: { x: number; y: number; z: number } | null = null, area = 0;
-  for (let i = 0; i < s.ns; i++) {
-    const o = i * 20, z = s.shapes[o + 6];
-    const a = s.shapes[o + 2] * s.shapes[o + 3];
-    if (Math.abs(z - s.focus) < 0.035 && s.shapes[o + 11] >= 0.9 && s.shapes[o + 19] === 0 && s.shapes[o + 7] !== 3 && a > area) {
-      area = a; best = { x: s.shapes[o], y: s.shapes[o + 1], z };
-    }
-  }
-  return best ?? { x: s.glass[0], y: s.glass[1], z: s.focus };
-}
-function sceneToFrac(q: { x: number; y: number }, r: Rect) {
-  const h = halfOf(r);
-  return { x: Math.max(0.08, Math.min(0.92, (q.x / h.x + 1) / 2)), y: Math.max(0.1, Math.min(0.9, (1 - q.y / h.y) / 2)) };
-}
-function fracToScene(f: { x: number; y: number }, r: Rect) {
-  const h = halfOf(r);
-  return { x: (f.x * 2 - 1) * h.x, y: (1 - f.y * 2) * h.y };
-}
+// ------------------------------------------------------------------ scenes / subject (the helpers live in project/framing.ts)
 
 // ------------------------------------------------------------------ HUD readouts
 function placeAF(f: { x: number; y: number }) {
@@ -210,12 +186,19 @@ function updateReadouts(i: number, animate = true) {
   $('[data-hint]').textContent = m === 'work'
     ? (isPhone() ? 'Swipe to advance · tap to focus · tap again to open' : 'Scroll or drag to advance · hover to focus · ↵ to open')
     : m === 'play' ? 'Playback · scroll or drag for the next honour' : 'Esc or “Lower the camera” to return to the intro';
+  // the router (D-041): frames update the address by replaceState only; the open project's page is prefetched
+  if (location.pathname === '/') history.replaceState(history.state, '', homeUrl(m === 'work' ? workHash(i + 1) : m === 'info' ? '#contact' : ''));
+  project.framed(m === 'work' ? i : -1);
 }
 
 // ------------------------------------------------------------------ preloader
+/** A deep link (D-041): /#work-NN or /#contact lands on that frame after the preloader's short path, with no intro. */
+const deep = parse();
+const landAt = deep.kind !== 'home' ? null : deep.frame ? Math.max(0, Math.min(NW - 1, deep.frame - 1)) : deep.contact ? N - 1 : null;
+
 async function boot() {
   const t0 = performance.now();
-  const MIN = calm ? 0.5 : 1.8;
+  const MIN = calm || landAt !== null ? 0.5 : 1.8;
   let real = 0;
   const disp = { p: 0 };
   let done = false;
@@ -330,6 +313,13 @@ function release() {
   html.classList.remove('is-loading');
   html.classList.add('is-ready');
   raiseBtn.disabled = false;
+  if (landAt !== null) {
+    $$('.ch', nameEl).forEach((c) => c.style.setProperty('--c', '#ece9e2'));
+    lmLabel.textContent = 'Exposure'; lmStep.textContent = `Ready · ${pad(NW)} frames · ${pad(NP)} honours`;
+    setMeter(0);
+    land(landAt);
+    return;
+  }
   if (calm) {
     $$('.ch', nameEl).forEach((c) => c.style.setProperty('--c', '#ece9e2'));
     gsap.fromTo([nameEl, raiseBtn, '.intro__meta'], { opacity: 0 }, { opacity: 1, duration: 0.4 });
@@ -468,6 +458,7 @@ function lower() {
   const done = () => {
     S = 'intro'; tl = null;
     evf.classList.remove('is-on'); evf.inert = true; intro.inert = false; skipLink.hidden = false; setMeter(0);
+    if (location.pathname === '/') history.replaceState(history.state, '', homeUrl());
     intro.style.visibility = ''; raiseBtn.focus({ preventScroll: true });
     armIdle();
   };
@@ -556,9 +547,8 @@ function pull(to: number, dir: number, zoomed = false) {
     st.parx = dir * 0.14 * hx;
     st.aperture = apertureOf(s.fnum) * (zoomed ? 1.8 : 1);
     st.noise = noiseOf(s.iso);
-    if (zoomed) { const z = zoomCentre(s); st.zcx = z.x; st.zcy = z.y; } else placeAF(sceneToFrac(subjectOf(s), st.rect));
+    if (zoomed) { const z = zoomCentre(subjectOf(s), st.zoom); st.zcx = z.x; st.zcy = z.y; } else placeAF(sceneToFrac(subjectOf(s), st.rect));
     updateReadouts(to);
-    if (zoomed) fillProject(to);
   });
   t.to(st, { focus: s.focus, duration: D.land, ease: E.rack, onUpdate: () => { reveal(); syncDist(); } });
   t.to(st, { parx: 0, ca: 0, exposure: 1, duration: D.land, ease: E.out }, '<');
@@ -601,18 +591,10 @@ function switchMode(from: number, to: number) {
   return t;
 }
 
-// ------------------------------------------------------------------ the open project
-function zoomCentre(s: Scene, zoom = 2.3) {
-  const target = isPhone() ? { x: 0.5, y: 0.27 } : { x: 0.68, y: 0.5 };
-  const full = frameRect('open');
-  const T = fracToScene(target, full);
-  const sub = openTarget(s);
-  // the subject S lands on T at the final zoom: T = zc + (S - zc) * zoom
-  return { x: (T.x - sub.x * zoom) / (1 - zoom), y: (T.y - sub.y * zoom) / (1 - zoom) };
-}
+// ------------------------------------------------------------------ the open project (project/inapp.ts)
 let afUsed = false;
 /** What the zoom lands on: the object under the AF box if there is one, else the frame's subject. */
-function openTarget(s: Scene) {
+function openTarget(s: Scene): Pt3 {
   if (afUsed) {
     const q = fracToScene(afFrac, frameRect('work'));
     const h = s.hitAt(q.x, q.y);
@@ -621,99 +603,84 @@ function openTarget(s: Scene) {
   return subjectOf(s);
 }
 
-function fillProject(i: number) {
-  const p = projects[i];
-  $('[data-proj-k]').textContent = `Work · Frame ${pad(i + 1)}/${pad(NW)}`;
-  $('[data-proj-title]').textContent = p.label;
-  $('[data-proj-ph]').textContent = p.title;
-  const rows: [string, string][] = [['Role', p.role], ['Year', p.year], ['Tools', p.tools.length ? p.tools.join(', ') : '[PLACEHOLDER: tools]'], ['Link', p.url || '[PLACEHOLDER: link]']];
-  $('[data-proj-exif]').innerHTML = rows.map(([k, v]) => `<div><dt class="mono">${k}</dt><dd>${isPlaceholder(v) ? `<span class="ph">${v}</span>` : v}</dd></div>`).join('');
-  $('[data-proj-blurb]').innerHTML = `<span class="ph ph--wrap">${p.blurb}</span>`;
-  $('[data-proj-body]').innerHTML = p.body.map((b) => `<p><span class="ph ph--wrap">${b}</span></p>`).join('');
-  const media = p.media.length ? p.media : [{ type: 'image', alt: '[PLACEHOLDER: screenshot or photo]', caption: '' }];
-  $('[data-proj-media]').innerHTML = media.map((m, k) => `<li><span class="mono">Media ${pad(k + 1)} · ${m.type}</span><span class="ph ph--wrap">${m.alt}</span></li>`).join('');
-  $$('.proj__col > *').forEach((e) => e.classList.add('rv'));
-  projCol.scrollTop = 0;
-  void phInner;
+/** Frame i in the EVF with no animation: the deep-link landing from the intro, or a popstate move. */
+function jump(i: number) {
+  if (S === 'intro') { land(i); return; }
+  if (S !== 'evf') return;
+  finishTl();
+  pos = i;
+  const m = modeOf(i);
+  const rect = frameRect(m === 'info' ? 'work' : m);
+  writeRect(rect);
+  updateReadouts(i, false);
+  if (!engine) { coverFor(i); return; }
+  const s = scenes[Math.min(i, scenes.length - 1)];
+  engine.setScene(s);
+  Object.assign(engine.st, { rect, focus: m === 'info' ? 0.02 : s.focus, aperture: apertureOf(s.fnum), noise: noiseOf(s.iso), parx: 0, roll: 0, ca: 0, exposure: m === 'info' ? 0.22 : 1 });
+  placeAF(sceneToFrac(subjectOf(s), rect));
+  syncDist();
+  engine.invalidate(200);
 }
 
-function openProject() {
-  if (S !== 'evf' || modeOf(pos) !== 'work') return;
-  finishTl();
-  S = 'opening';
-  fillProject(pos);
-  const full = frameRect('open');
-  proj.hidden = false;
-  const items = $$('.proj__col > *, .proj__bar');
-  const settle = () => { S = 'open'; ($('[data-proj-title]') as HTMLElement).setAttribute('tabindex', '-1'); ($('[data-close]') as HTMLElement).focus({ preventScroll: true }); };
-  evf.inert = true;
-  evf.classList.add('is-open');
-  if (engine) engine.idleTarget = 0;
-  if (!engine || calm) {
-    hudOff();
-    writeRect(full);
-    if (engine) { const st = engine.st; engine.holdPrevious(); st.rect = full; st.nd = 1; st.ndv = isPhone() ? 1 : 0; st.radius = 0; st.rim = 0; st.mix = 0; tl = gsap.timeline({ onComplete: () => { tl = null; settle(); } }); tl.to(st, { mix: 1, duration: 0.4, onUpdate: reveal }); }
-    else { writeRect(full); tl = gsap.timeline({ onComplete: () => { tl = null; settle(); } }); }
-    tl.fromTo(items, { opacity: 0, y: 0 }, { opacity: 1, duration: 0.4 }, 0);
-    return;
-  }
-  const st = engine.st;
-  const s = scenes[pos];
-  const zoom = isPhone() ? 1.45 : Math.max(1.3, (56 / 23) / (full.w / st.rect.w));
-  const zc = zoomCentre(s, zoom);
-  gsap.to(st, { peak: 0, duration: D.snap, overwrite: 'auto', onUpdate: reveal });
-  st.zcx = zc.x; st.zcy = zc.y;
-  evf.classList.add('is-open');
-  const subZ = openTarget(s).z;
-  const fl = { v: 23 };
-  const flUp = () => {
-    const v = FLS.reduce((a, b) => (Math.abs(b - fl.v) < Math.abs(a - fl.v) ? b : a));
-    flEl.textContent = String(v);
-    $('[data-fl2]').textContent = `${v}mm`;
-  };
-  afEl.classList.add('is-off');
-  gsap.set(items, { opacity: 0, y: 14 });
-  tl = gsap.timeline({ onComplete: () => { tl = null; } });
-  tl.call(settle, [], D.travel);
-  tl.call(() => { $$('.evf .pw.on').forEach((e) => { if (!e.matches('.ro--fl')) e.classList.remove('on'); }); }, [], 0.08);
-  tl.to(st.rect, { x: full.x, y: full.y, w: full.w, h: full.h, duration: D.travel, ease: E.lens, onUpdate: () => { writeRect(st.rect); reveal(); } }, 0);
-  tl.to(st, { zoom, dolly: 0.08, focus: subZ, aperture: apertureOf(s.fnum) * 1.6, radius: 0, rim: 0, vig: 0.38, duration: D.travel, ease: E.lens }, 0);
-  st.ndv = isPhone() ? 1 : 0;
-  tl.to(fl, { v: 56, duration: D.travel, ease: E.lens, onUpdate: flUp }, 0);
-  tl.to(st, { nd: isPhone() ? 0.9 : 1, duration: D.land, ease: E.out }, D.travel - 0.15);
-  tl.to(items, { opacity: 1, y: 0, duration: D.land, ease: E.out, stagger: 0.1 }, D.travel - 0.1);
-  tl.call(() => $('.ro--fl').classList.remove('on'), [], D.travel - 0.14);
+/** The deep-link landing (D-041): the EVF comes up on frame i with no intro and no raise. */
+function land(i: number) {
+  if (S !== 'intro') return;
+  stopRoam(); clearTimeout(idleTimer);
+  S = 'evf';
+  pos = i;
+  intro.hidden = true;
+  intro.inert = true;
+  skipLink.hidden = true;
+  const m = modeOf(i);
+  const rect = frameRect(m === 'info' ? 'work' : m);
+  writeRect(rect);
+  evf.classList.add('is-on');
+  evf.inert = false;
+  flipMeterTo(meterEvf, 0);
+  flipMarks(true, 0);
+  updateReadouts(i, false);
+  hudOn(0);
+  const s = scenes[Math.min(i, scenes.length - 1)];
+  if (engine) {
+    const st = engine.st;
+    engine.setScene(s);
+    // the rect first: placeAF reads the engine's rect, which is still the intro's full screen until here
+    Object.assign(st, { rect, alpha: 1, exposure: calm ? (m === 'info' ? 0.22 : 1) : 0, focus: m === 'info' ? 0.02 : s.focus, aperture: apertureOf(s.fnum), zoom: 1, dolly: 0, mix: 1, nd: 0, noise: noiseOf(s.iso), radius: 5, dim: 1, poolAmt: 0, rim: 1, vig: 0.28, zebra: 0, ca: 0, eyeOn: false, parx: 0, roll: 0 });
+    if (!calm) gsap.to(st, { exposure: m === 'info' ? 0.22 : 1, duration: D.land, ease: E.out, onUpdate: reveal });
+    engine.invalidate(300);
+    engine.wantMeter();
+  } else coverFor(i);
+  placeAF(sceneToFrac(subjectOf(s), rect));
+  syncDist();
+  lockAF(true);
+  afEl.classList.remove('is-off');
+  evf.focus({ preventScroll: true });
+  armIdle();
 }
 
-function closeProject() {
-  if (S !== 'open') return;
-  finishTl();
-  S = 'closing';
-  const rect = frameRect('work');
-  const items = $$('.proj__col > *, .proj__bar');
-  const done = () => { S = 'evf'; tl = null; proj.hidden = true; evf.inert = false; evf.classList.remove('is-open'); ($('[data-open]') as HTMLElement).focus({ preventScroll: true }); afEl.classList.remove('is-off'); };
-  if (!engine || calm) {
-    tl = gsap.timeline({ onComplete: done });
-    tl.to(items, { opacity: 0, duration: 0.2 });
-    tl.call(() => {
-      writeRect(rect);
-      if (engine) { const st = engine.st; engine.holdPrevious(); st.rect = rect; st.nd = 0; st.radius = 5; st.rim = 1; st.mix = 0; gsap.to(st, { mix: 1, duration: 0.3, onUpdate: reveal }); }
-    });
-    tl.add(hudOn());
-    return;
-  }
-  const st = engine.st;
-  const fl = { v: 56 };
-  const k = 0.55;
-  tl = gsap.timeline({ onComplete: done });
-  tl.to(items, { opacity: 0, y: -8, duration: D.snap, ease: E.in });
-  tl.to(st, { nd: 0, duration: D.step * k * 2, ease: E.in }, 0);
-  tl.to(st.rect, { x: rect.x, y: rect.y, w: rect.w, h: rect.h, duration: D.travel * k, ease: E.lens, onUpdate: () => { writeRect(st.rect); reveal(); } }, 0.06);
-  tl.to(st, { zoom: 1, dolly: 0, aperture: apertureOf(scenes[pos].fnum), radius: 5, rim: 1, vig: 0.28, duration: D.travel * k, ease: E.lens }, 0.06);
-  tl.to(fl, { v: 23, duration: D.travel * k, ease: E.lens, onUpdate: () => { flEl.textContent = String(FLS.reduce((a, b) => (Math.abs(b - fl.v) < Math.abs(a - fl.v) ? b : a))); } }, 0.06);
-  tl.add(hudOn(0.025), 0.3);
-  tl.call(() => { placeAF(sceneToFrac(subjectOf(scenes[pos]), rect)); lockAF(true); engine!.wantMeter(); });
-}
+const project = initProject({
+  calm,
+  state: () => S,
+  setState: (s) => { S = s; },
+  pos: () => pos,
+  setPos: (i) => { pos = i; },
+  works: NW,
+  engine: () => engine,
+  scenes,
+  setTl: (t) => { tl = t; },
+  finishTl,
+  hudOn,
+  reveal,
+  pull,
+  updateReadouts,
+  afHome: () => { placeAF(sceneToFrac(subjectOf(scenes[pos]), frameRect('work'))); lockAF(true); engine?.wantMeter(); },
+  target: openTarget,
+  jump,
+  cover: (i) => { if (!engine) coverFor(i); },
+  // D-053: no hand-held sway while a project is opening, open or closing; back on close
+  setSway: (on) => { if (engine) engine.sway = on && !calm; },
+});
+window.addEventListener('popstate', () => project.onPop());
 
 // ------------------------------------------------------------------ film simulation dial
 function setSim(i: number, focusIt = false) {
@@ -863,11 +830,11 @@ const endDrag = (e: PointerEvent) => {
       const f = { x: (e.clientX - st.rect.x) / st.rect.w, y: (e.clientY - st.rect.y) / st.rect.h };
       // a second tap close to the AF box opens; a first tap focuses there
       const near = Math.abs(f.x - afFrac.x) < 0.12 && Math.abs(f.y - afFrac.y) < 0.12 && afUsed;
-      if (near) openProject();
+      if (near) project.open();
       else { focusAt(f); gsap.fromTo(st, { peak: 1 }, { peak: 0, duration: 0.9, delay: 0.25, onUpdate: reveal }); }
       return;
     }
-    openProject();
+    project.open();
     return;
   }
   // released after the cut: the new frame springs home and the focus rack settles with one overshoot
@@ -926,41 +893,15 @@ window.addEventListener('keydown', (e) => {
     return;
   }
   if (S === 'raising' && tl && (k === 'Enter' || k === 'Escape' || k === ' ')) { tl.timeScale(4); return; }
-  if (S === 'open') {
-    if (k === 'Escape') { e.preventDefault(); closeProject(); }
-    else if (k === 'ArrowRight') { e.preventDefault(); goOpen(1); }
-    else if (k === 'ArrowLeft') { e.preventDefault(); goOpen(-1); }
-    return;
-  }
+  if (S === 'open' || S === 'opening' || S === 'closing') { project.onKey(e); return; }
   if (S !== 'evf') return;
   if (['ArrowRight', 'ArrowDown', 'PageDown'].includes(k) || (k === ' ' && !onControl)) { e.preventDefault(); go(pos + 1, 1); }
   else if (['ArrowLeft', 'ArrowUp', 'PageUp'].includes(k)) { e.preventDefault(); go(pos - 1, -1); }
   else if (k === 'Home') { e.preventDefault(); go(0, -1); }
   else if (k === 'End') { e.preventDefault(); go(N - 1, 1); }
-  else if (k === 'Enter' && !onControl && modeOf(pos) === 'work') { e.preventDefault(); openProject(); }
+  else if (k === 'Enter' && !onControl && modeOf(pos) === 'work') { e.preventDefault(); project.open(); }
   else if (k === 'Escape' && modeOf(pos) === 'info') { e.preventDefault(); lower(); }
 });
-
-function goOpen(dir: number) {
-  const to = pos + dir;
-  if (to < 0 || to >= NW || !engine) return;
-  finishTl();
-  pos = to;
-  if (calm) { fillProject(to); gsap.set('.proj__col > *', { opacity: 1, y: 0 }); crossfadeOpen(to); return; }
-  const items = $$('.proj__col > *');
-  tl = gsap.timeline({ onComplete: () => { tl = null; } });
-  tl.to(items, { opacity: 0, duration: D.snap, ease: E.in });
-  tl.add(pull(to, dir, true), 0);
-  tl.fromTo(items, { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: D.land, ease: E.out, stagger: 0.08 }, D.step + 0.2);
-}
-function crossfadeOpen(to: number) {
-  const st = engine!.st;
-  engine!.holdPrevious();
-  engine!.setScene(scenes[to]);
-  st.mix = 0; st.focus = scenes[to].focus;
-  gsap.to(st, { mix: 1, duration: 0.4, onUpdate: reveal });
-  updateReadouts(to, false);
-}
 
 // ------------------------------------------------------------------ the intro at rest: spot meter, exposure pool, idle
 const spot = { ev: 0 };
@@ -1038,23 +979,12 @@ window.addEventListener('keydown', () => armIdle(), { passive: true });
 // ------------------------------------------------------------------ buttons
 raiseBtn.addEventListener('click', raise);
 $('[data-skip]').addEventListener('click', (e) => { e.preventDefault(); if (S === 'intro') raise(); else if (S === 'raising' && tl) tl.timeScale(4); });
-$$('[data-open]').forEach((b) => b.addEventListener('click', openProject));
-$('[data-close]').addEventListener('click', closeProject);
-$('[data-proj-prev]').addEventListener('click', () => goOpen(-1));
-$('[data-proj-next]').addEventListener('click', () => goOpen(1));
+$$('[data-open]').forEach((b) => b.addEventListener('click', () => project.open()));
+$('[data-close]').addEventListener('click', () => project.close('input'));
 $('[data-lower]').addEventListener('click', lower);
 $('[data-prev]').addEventListener('click', () => go(pos - 1, -1));
 $('[data-next]').addEventListener('click', () => go(pos + 1, 1));
 idxBtns.forEach((b) => b.addEventListener('click', () => { const to = Number(b.dataset.go); if (S === 'open') return; go(to, Math.sign(to - pos)); }));
-proj.addEventListener('keydown', (e) => {
-  if (e.key !== 'Tab') return;
-  const f = $$<HTMLElement>('button, a[href]', proj).filter((x) => !x.hasAttribute('disabled'));
-  if (!f.length) return;
-  const first = f[0], last = f[f.length - 1];
-  if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
-  else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
-});
-
 // ------------------------------------------------------------------ resize
 let rz = 0;
 window.addEventListener('resize', () => {
@@ -1066,6 +996,7 @@ window.addEventListener('resize', () => {
     const r = frameRect(m);
     if (S === 'open') { writeRect(frameRect('work')); } else writeRect(r);
     if (engine) { engine.st.rect = r; placeAF(afFrac); syncDist(); engine.invalidate(200); }
+    project.onResize();
   });
 });
 
@@ -1079,4 +1010,4 @@ boot().catch((err) => {
 });
 
 // the test API (only under ?vf-test; a no-op otherwise)
-hooks.attach({ go, openProject, closeProject, lower, raise, setSim, state: () => S, pos: () => pos }, () => engine);
+hooks.attach({ go, openProject: () => project.open(), closeProject: () => project.close('input'), lower, raise, setSim, state: () => S, pos: () => pos }, () => engine);

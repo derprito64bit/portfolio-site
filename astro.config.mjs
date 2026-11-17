@@ -75,6 +75,34 @@ function seams() {
   };
 }
 
+/**
+ * The placeholder media fixtures (D-045, W-V1): test charts rendered from SVG by scripts/build/media-fixtures.mjs into the
+ * build cache before the pages render (they read its manifest), copied into dist/media/fixtures/ after the build, and
+ * served from the cache by the dev server. Never committed.
+ */
+function fixtures() {
+  const cache = join(ROOT, 'node_modules/.cache/portfolio-fixtures');
+  const render = async (logger) => (await import('./scripts/build/media-fixtures.mjs')).build({ out: cache, log: (m) => logger.info(m) });
+  return {
+    name: 'portfolio:media-fixtures',
+    hooks: {
+      'astro:build:start': ({ logger }) => render(logger),
+      'astro:server:setup': async ({ server, logger }) => {
+        await render(logger);
+        server.middlewares.use('/media/fixtures/', (req, res, next) => {
+          const file = join(cache, decodeURIComponent((req.url || '').split('?')[0]).replace(/^\/+/, ''));
+          if (!file.startsWith(cache) || !existsSync(file)) return next();
+          res.setHeader('Content-Type', file.endsWith('.avif') ? 'image/avif' : 'image/webp');
+          res.end(readFileSync(file));
+        });
+      },
+      'astro:build:done': ({ dir }) => {
+        if (existsSync(cache)) cpSync(cache, fileURLToPath(new URL('./media/fixtures/', dir)), { recursive: true, filter: (f) => !f.endsWith('manifest.json') });
+      },
+    },
+  };
+}
+
 export default defineConfig({
   site: SITE,
   output: 'static',
@@ -85,6 +113,7 @@ export default defineConfig({
   integrations: [
     sitemap({ filter: (page) => { const p = new URL(page).pathname; return !NEVER_INDEXED.test(p) && !builtNoindex(p); } }),
     seams(),
+    fixtures(),
   ],
   vite: {
     plugins: [chunkManifest()],
