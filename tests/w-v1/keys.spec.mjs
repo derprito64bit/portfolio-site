@@ -186,3 +186,28 @@ for (const [label, profile] of [['1440', DESK], ['390', PHONE]]) test(`A2 / budg
     await ctx.close();
   }
 });
+
+// wv1-skip-link-44 (#106): the skip link, once focused, is a 44 px target on / and on /work/<slug>/.
+for (const [label, profile] of [['1440', DESK], ['390', PHONE]]) test(`A12 / budgets the skip link is a 44 px target on / and /work/<slug>/ at ${label}`, async ({ browser, browserName }) => {
+  const ctx = await context(browser, browserName, profile);
+  const page = await ctx.newPage();
+  const skip = () => page.evaluate(() => {
+    const s = document.querySelector('.skip');
+    s.focus();
+    const r = s.getBoundingClientRect();
+    return { focused: document.activeElement === s, w: r.width, h: r.height, top: r.top };
+  });
+  try {
+    await page.goto(`${coldBase()}/work/project-01/?vf-test`, { waitUntil: 'load' });
+    const cold = await skip();
+    await home(page);
+    const evf = await skip();
+    for (const [where, s] of [['/work/project-01/', cold], ['/', evf]]) {
+      expect(s.focused, `${where}: the skip link takes focus`).toBe(true);
+      expect(s.h, `${where}: the skip link is 44 px tall or more (${s.h.toFixed(1)})`).toBeGreaterThanOrEqual(44);
+      expect(s.w, `${where}: and 44 px wide or more`).toBeGreaterThanOrEqual(44);
+    }
+  } finally {
+    await ctx.close();
+  }
+});

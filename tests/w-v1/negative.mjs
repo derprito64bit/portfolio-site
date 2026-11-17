@@ -75,6 +75,7 @@ export const PLANTS = [
   ['fc-bar-clear', 'A2', 'src/evf/style/project.css', '.proj__bar, .pj-bar { background-color: Canvas; background-image: none; border-bottom: 1px solid CanvasText; }', '', 'roll.spec.mjs', 'forced colours'],
   ['fc-play-block', 'A5', 'src/evf/style/print.css', '.print__play::after { forced-color-adjust: none; border-color: transparent; border-left-color: CanvasText; }', '', 'roll.spec.mjs', 'forced colours'],
   ['calm-nav-open', 'A13', 'src/evf/style.css', '.evf.is-open .meter, .evf.is-open .calm-nav { visibility: hidden; }', '.evf.is-open .meter { visibility: hidden; }', 'open.spec.mjs', 'Previous and Next hide while'],
+  ['skip-31px', 'A12', 'src/evf/style.css', 'font-size: 13px; line-height: 32px; letter-spacing: 0.06em;', 'font-size: 13px; letter-spacing: 0.06em;', 'keys.spec.mjs', 'skip link is a 44 px'],
 ];
 
 const SKIP = new Set(['node_modules', 'dist', '.git', 'test-results', '.astro', 'playwright-report']);

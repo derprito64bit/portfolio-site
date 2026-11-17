@@ -73,7 +73,7 @@ ol, ul { list-style: none; }
 
 .skip {
   position: fixed; left: var(--g); top: 8px; z-index: 60;
-  font-family: var(--f-mono); font-size: 13px; letter-spacing: 0.06em; text-transform: uppercase;
+  font-family: var(--f-mono); font-size: 13px; line-height: 32px; letter-spacing: 0.06em; text-transform: uppercase;
   background: var(--ink); color: var(--black); padding: 6px 10px; text-decoration: none;
   transform: translateY(-160%);
 }
