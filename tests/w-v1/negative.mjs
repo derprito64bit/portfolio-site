@@ -70,6 +70,7 @@ export const PLANTS = [
   ['pb-clip-arrows', 'A10', 'src/evf/project/playback.ts', "if ((e.target as Element | null)?.closest?.('video, input, select, textarea')) return;", '', 'playback.spec.mjs', 'cold #print-NN load'],
   // fix-pass B2
   ['meta-nowrap', 'A1', 'src/evf/style/project.css', '.pj__meta .ph { white-space: normal; max-width: 100%; }', '', 'open.spec.mjs', 'A1 meta cells hold'],
+  ['nojs-gap', 'A1', 'src/evf/style/project.css', '.pj-page:not(.pj-js) .pj__head { min-height: 0; padding-top: 8vh; padding-bottom: 48px; }', '.pj-page:not(.pj-js) .pj__head { min-height: 0; padding-bottom: 48px; }', 'playback.spec.mjs', 'no JS: /work/project-01/ is whole at 390'],
 ];
 
 const SKIP = new Set(['node_modules', 'dist', '.git', 'test-results', '.astro', 'playwright-report']);

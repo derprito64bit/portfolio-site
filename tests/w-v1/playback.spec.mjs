@@ -556,3 +556,24 @@ test.describe('A13 calm, no WebGL, no JS', () => {
     });
   }
 });
+
+// fix-pass B2
+for (const [label, profile] of [['1440', DESK], ['390', PHONE]]) {
+  test(`no JS: /work/project-01/ is whole at ${label}: the header is a plain page header, no frame gap above it`, async ({ browser, browserName }) => {
+    const ctx = await context(browser, browserName, profile, { js: false });
+    const page = await ctx.newPage();
+    try {
+      await page.goto(`${base()}/work/project-01/`, { waitUntil: 'load' });
+      await expect(page.locator('h1')).toHaveText('Project 01');
+      const head = await page.evaluate(() => {
+        const h = document.querySelector('.pj__head');
+        return { js: document.documentElement.classList.contains('pj-js'), pad: parseFloat(getComputedStyle(h).paddingTop), h1: document.querySelector('h1').getBoundingClientRect().top, vh: innerHeight };
+      });
+      expect(head.js, 'no JS: the page never gains pj-js').toBe(false);
+      expect(head.pad, `the header's top padding (${head.pad} px) is the page's 8vh, not the frame gap`).toBeLessThanOrEqual(head.vh * 0.1 + 1);
+      expect(head.h1, `the h1 sits in the first third of the view (${head.h1} of ${head.vh})`).toBeLessThan(head.vh * 0.35);
+    } finally {
+      await ctx.close();
+    }
+  });
+}

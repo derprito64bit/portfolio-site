@@ -83,5 +83,5 @@
   .pj__nav a[rel='next'] { justify-content: flex-end; text-align: right; }
 }
 
-/* ---------------- no JS on /work/<slug>/: the header is a plain page header ---------------- */
-.pj-page:not(.pj-js) .pj__head { min-height: 0; padding-bottom: 48px; }
+/* ---------------- no JS on /work/<slug>/: the header is a plain page header (no frame gap, on a phone too) ---------------- */
+.pj-page:not(.pj-js) .pj__head { min-height: 0; padding-top: 8vh; padding-bottom: 48px; }
