@@ -67,7 +67,7 @@ const alt = p.decorative ? '' : p.alt;
         <span class="print__box"><span class="ph">[PLACEHOLDER: media file]</span><span class="num">{p.w} × {p.h}</span></span>
       )}
       {p.type === 'video' && (
-        <video class="print__vid" preload="none" muted playsinline loop={p.loop} width={p.w} height={p.h} aria-hidden="true" tabindex="-1" data-src={p.video || undefined}>
+        <video class="print__vid" preload="none" muted playsinline loop={p.loop} width={p.w} height={p.h} aria-hidden="true" tabindex="-1" data-src={p.video || undefined} data-captions={p.captions || undefined}>
           {p.video && <source src={p.video} type="video/mp4" />}
         </video>
       )}

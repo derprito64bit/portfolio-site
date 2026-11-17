@@ -31,6 +31,7 @@ export function sources(projects) {
       if (m.type === 'video' || m.type === 'model') {
         out.push({ slug: p.slug, n: k + 1, src: m.src, kind: m.type, poster: m.poster });
         if (m.poster) out.push({ slug: p.slug, n: k + 1, src: m.poster, kind: 'poster' });
+        if (m.type === 'video' && m.captions) out.push({ slug: p.slug, n: k + 1, src: m.captions, kind: 'captions' });
       } else if (m.type === 'image') {
         out.push({ slug: p.slug, n: k + 1, src: m.src, kind: 'image' });
       }
@@ -67,10 +68,12 @@ export async function derive({ projects, mediaSrc, outDir, prev = { media: {} } 
     const dir = MEDIA_DIR(s.slug);
     mkdirSync(join(outDir, s.slug), { recursive: true });
     const old = prev.media?.[s.src];
-    if (s.kind === 'video' || s.kind === 'model') {
+    if (s.kind === 'video' || s.kind === 'model' || s.kind === 'captions') {
       const url = `${dir}${stem}${extname(s.src).toLowerCase()}`;
       if (!existsSync(outPath(outDir, url))) copyFileSync(file, outPath(outDir, url));
-      media[s.src] = { type: s.kind, hash, file: url, bytes: input.length, poster: s.poster };
+      media[s.src] = s.kind === 'captions'
+        ? { type: 'captions', hash, file: url, bytes: input.length }
+        : { type: s.kind, hash, file: url, bytes: input.length, poster: s.poster };
       continue;
     }
     const { w, h } = await realSize(sharp, input);

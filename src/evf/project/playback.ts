@@ -118,6 +118,7 @@ export function initPlayback(o: PlaybackOptions): PlaybackControl {
       const v = el('video', '', { controls: '', playsinline: '', preload: src ? 'metadata' : 'none', 'aria-label': img?.alt || 'Clip' }) as HTMLVideoElement;
       if (img) v.poster = img.currentSrc || img.src;
       if (src) v.append(el('source', '', { src, type: 'video/mp4' }));
+      const cc = p.querySelector('video')?.dataset.captions; if (cc) v.append(el('track', '', { kind: 'captions', src: cc, srclang: document.documentElement.lang || 'en', label: 'Captions', default: '' }));
       if (p.hasAttribute('data-loop')) { v.loop = true; v.muted = true; }
       frame.append(v);
     } else if (pic) {

@@ -255,3 +255,51 @@ test('D-042: a confirmed model derives from its .glb and poster, validates, and 
     try { rmSync(dir, { recursive: true, force: true, maxRetries: 3 }); } catch { /* a temp dir; the OS reaps it */ }
   }
 });
+
+// f12: a confirmed clip's .vtt is copied through the build, listed in media.json, and reaches the print as a site URL,
+// only for a clip with audio (validate allows captions on a silent clip, which then shows none).
+test("D-042: a video's captions file reaches the page", async () => {
+  const sharp = (await import('sharp')).default;
+  sharp.cache(false);
+  const dir = mkdtempSync(join(tmpdir(), 'wv1-captions-'));
+  try {
+    const src = join(dir, 'src');
+    mkdirSync(join(src, 'p'), { recursive: true });
+    writeFileSync(join(src, 'p', 'clip.mp4'), Buffer.from('not really an mp4'));
+    writeFileSync(join(src, 'p', 'clip.vtt'), 'WEBVTT\n\n00:00.000 --> 00:01.000\nHello\n');
+    await sharp({ create: { width: 1280, height: 720, channels: 3, background: '#335577' } }).png().toFile(join(src, 'p', 'clip.png'));
+    const clip = { type: 'video', src: 'media/p/clip.mp4', poster: 'media/p/clip.png', captions: 'media/p/clip.vtt', audio: true, loop: false, placeholder: false, w: 0, h: 0, scale: 'normal', alt: 'a', caption: '', decorative: false };
+    const projects = [{ slug: 'p', media: [clip] }];
+    const out = join(dir, 'public');
+    const m = await derive({ projects, mediaSrc: src, outDir: out });
+    const vtt = m.media['media/p/clip.vtt'];
+    assert.equal(vtt?.type, 'captions', 'the .vtt is in the manifest');
+    assert.match(vtt.file, /^\/media\/p\/clip-[0-9a-f]{10}\.vtt$/);
+    assert.ok(existsSync(join(out, 'p', basename(vtt.file))), 'the .vtt is written to public/media');
+    assert.equal(m.media['media/p/clip.mp4']?.type, 'video', 'the video stays');
+    assert.equal(m.media['media/p/clip.png']?.type, 'poster', 'the poster stays');
+    assert.equal(printsOf('p', projects[0].media, m, null)[0].captions, vtt.file, "the print carries the .vtt's site URL");
+    assert.equal(printsOf('p', [{ ...clip, audio: false }], m, null)[0].captions, '', 'a silent clip shows no captions');
+    assert.equal(printsOf('p', [{ ...clip, captions: '' }], m, null)[0].captions, '', 'no captions, none');
+    const noVtt = { media: { ...m.media } };
+    delete noVtt.media['media/p/clip.vtt'];
+    assert.equal(printsOf('p', [clip], noVtt, null)[0].captions, '', 'no manifest entry: never the authoring path');
+    const quiet = await derive({ projects: [{ slug: 'p', media: [{ ...clip, captions: '', audio: false }] }], mediaSrc: src, outDir: out });
+    assert.deepEqual(Object.keys(quiet.media).sort(), ['media/p/clip.mp4', 'media/p/clip.png'], 'empty captions add no key');
+  } finally {
+    try { rmSync(dir, { recursive: true, force: true, maxRetries: 3 }); } catch { /* a temp dir; the OS reaps it */ }
+  }
+});
+
+test('f12: captions sit under their project, and a confirmed clip names a captions file that exists', () => {
+  const a = confirmed();
+  const p = a.projects.projects[0];
+  p.media[0] = { ...p.media[0], type: 'video', src: `media/${p.slug}/clip.mp4`, poster: `media/${p.slug}/clip.png`, audio: true, captions: 'media/project-99/clip.vtt' };
+  a.media.media[`media/${p.slug}/clip.mp4`] = { type: 'video', file: '/media/x.mp4' };
+  a.media.media[`media/${p.slug}/clip.png`] = { type: 'poster', w: 1280, h: 720, files: [], lqip: '' };
+  has(errorsOf(a), new RegExp(`media/${p.slug}/<file>\\.vtt`));
+  p.media[0].captions = `media/${p.slug}/clip.vtt`;
+  has(errorsOf(a), /captions file has no file/);
+  a.media.media[`media/${p.slug}/clip.vtt`] = { type: 'captions', file: '/media/x.vtt' };
+  assert.deepEqual(errorsOf(a), [], 'with its captions file the clip is valid');
+});

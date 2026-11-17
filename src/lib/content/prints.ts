@@ -4,11 +4,11 @@
 //   - a placeholder entry takes its declared size (3:2 when absent) and the test chart's ladder when the fixtures were
 //     rendered (scripts/build/media-fixtures.mjs), else it is a typed placeholder box at that size;
 //   - only the first 3 prints carry an inline LQIP (W-V1 spec A8).
-import type { DerivedImage, DerivedVideo, Media, PrintView } from './types.ts';
+import type { DerivedCaptions, DerivedImage, DerivedVideo, Media, PrintView } from './types.ts';
 import { FIXTURE_DIR, ladder, pad2 } from '../prints/ladder.ts';
 import { pack, sizeOf, sizesAttr } from '../prints/size.ts';
 
-export interface MediaManifest { media: Record<string, DerivedImage | DerivedVideo> }
+export interface MediaManifest { media: Record<string, DerivedImage | DerivedVideo | DerivedCaptions> }
 export interface FixtureManifest { entries: Record<string, { w: number; h: number; lqip: string }> }
 
 /** How many prints carry an inline LQIP. */
@@ -19,11 +19,14 @@ export function printsOf(slug: string, media: Media[], manifest: MediaManifest, 
     const n = k + 1;
     const real = m.placeholder ? null : (manifest.media[m.type === 'image' ? m.src : m.poster] as DerivedImage | undefined) ?? null;
     const vid = !m.placeholder && m.type === 'video' ? (manifest.media[m.src] as DerivedVideo | undefined) ?? null : null;
+    // a clip's captions, as the .vtt's site URL: only with audio (a silent clip shows none), never the authoring path
+    const cap = !m.placeholder && m.type === 'video' && m.audio && m.captions
+      ? (manifest.media[m.captions] as DerivedCaptions | undefined)?.file ?? '' : '';
     const fx = m.placeholder ? fixtures?.entries[`${slug}/${pad2(n)}`] ?? null : null;
     // the file wins over the declared size (D-042)
     const { w, h } = real ? { w: real.w, h: real.h } : sizeOf(m);
     const files = real ? real.files : fx ? ladder(FIXTURE_DIR(slug), pad2(n), w, h, { first: n === 1, poster: m.type === 'video' }) : null;
-    return { m, n, w, h, files, lqip: real?.lqip ?? fx?.lqip ?? '', video: vid?.file ?? '' };
+    return { m, n, w, h, files, lqip: real?.lqip ?? fx?.lqip ?? '', video: vid?.file ?? '', cap };
   });
   const packed = pack(items.map((x) => ({ w: x.w, h: x.h, scale: x.m.scale })));
   return items.map((x, k) => ({
@@ -36,7 +39,7 @@ export function printsOf(slug: string, media: Media[], manifest: MediaManifest, 
     decorative: x.m.decorative,
     loop: x.m.type === 'video' && x.m.loop,
     audio: x.m.audio,
-    captions: x.m.captions,
+    captions: x.cap,
     placeholder: x.m.placeholder,
     w: x.w,
     h: x.h,

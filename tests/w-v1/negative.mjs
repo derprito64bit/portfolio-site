@@ -68,6 +68,9 @@ export const PLANTS = [
   ['pb-end-handoff', 'A10', 'src/evf/project/playback.ts', '(otherOff ? parts.close : other).focus({ preventScroll: true });', 'void other; void otherOff;', 'playback.spec.mjs', 'to either end'],
   ['pb-tab-out', 'A10', 'src/evf/project/playback.ts', "if (e.key === 'Tab') { tab(e, dlg); return; }", "if (e.key === 'Tab') return;", 'playback.spec.mjs', 'to either end'],
   ['pb-clip-arrows', 'A10', 'src/evf/project/playback.ts', "if ((e.target as Element | null)?.closest?.('video, input, select, textarea')) return;", '', 'playback.spec.mjs', 'cold #print-NN load'],
+  // fix-pass B5
+  // f12: playback's video never gets the clip's captions track
+  ['b5-no-track', 'A10', 'src/evf/project/playback.ts', "const cc = p.querySelector('video')?.dataset.captions; if (cc)", "const cc = ''; if (cc)", 'playback.spec.mjs', 'A10 f12'],
 ];
 
 const SKIP = new Set(['node_modules', 'dist', '.git', 'test-results', '.astro', 'playwright-report']);

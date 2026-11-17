@@ -46,6 +46,13 @@ export interface DerivedVideo {
   bytes: number;
   poster: string;
 }
+/** A video's WebVTT captions, copied as they are. */
+export interface DerivedCaptions {
+  type: 'captions';
+  hash: string;
+  file: string;
+  bytes: number;
+}
 
 /** A film print as the page renders it (src/components/print): the media entry, its files and its size. */
 export interface PrintView {
@@ -61,6 +68,7 @@ export interface PrintView {
   decorative: boolean;
   loop: boolean;
   audio: boolean;
+  /** The site URL of a clip's .vtt (a confirmed clip with audio), or '' when there is none. */
   captions: string;
   placeholder: boolean;
   /** The size the print is laid out at: the file's, else the declared one, else 3:2. */
