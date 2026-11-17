@@ -22,6 +22,8 @@ const first = p.n === 1;
 const kind = p.type === 'video' ? (p.loop ? 'loop clip' : 'clip') : p.type === 'model' ? 'model' : 'image';
 const label = `Print ${p.index} of ${pad2(total)}, ${kind}: open in playback`;
 const alt = p.decorative ? '' : p.alt;
+// the link is named by its content: the image's alt (or the placeholder box's text), then the hidden label
+const lead = alt || !p.files ? ', ' : '';
 ---
 <figure
   class="print"
@@ -44,7 +46,7 @@ const alt = p.decorative ? '' : p.alt;
   data-loop={p.loop ? '' : undefined}
   data-ph={p.placeholder ? '' : undefined}
 >
-  <a class="print__a" href={`#${p.id}`} aria-label={label} data-print-open>
+  <a class="print__a" href={`#${p.id}`} data-print-open>
     <span class="print__frame">
       {p.files ? (
         <picture>
@@ -73,6 +75,7 @@ const alt = p.decorative ? '' : p.alt;
       )}
       {p.type === 'video' && <i class="print__play" aria-hidden="true"></i>}
     </span>
+    <span class="sr">{lead}{label}</span>
   </a>
   <figcaption class="print__strip">
     <span class="print__n">{p.index}</span>

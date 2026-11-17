@@ -211,12 +211,27 @@ test.describe('A7 layout', () => {
 });
 
 test.describe('A8 expose', () => {
-  for (const reduced of [false, true]) {
-    test(`prints expose in order as they enter; none blank 1.0 s after 50% visible${reduced ? ' (reduced: opacity only)' : ''}`, async ({ own: browser, browserName }) => {
-      const ctx = await context(browser, browserName, DESK, { reduced });
+  // A16: at both gate viewports (expose() and the calm CSS have no viewport branch; these rows keep it so)
+  for (const [label, profile] of [['1440', DESK], ['390', PHONE]]) for (const reduced of [false, true]) {
+    test(`prints expose in order as they enter; none blank 1.0 s after 50% visible${reduced ? ' (reduced: opacity only)' : ''} at ${label}`, async ({ own: browser, browserName }) => {
+      const ctx = await context(browser, browserName, profile, { reduced });
       const page = await ctx.newPage();
       try {
         await cold(page, 'project-06');
+        // reduced: from before the first scroll, every frame an exposed print shows is checked for blur or brightness (the
+        // expose tween sets its filter at once and holds it at most 0.9 s, between the 1.0 s reads)
+        if (reduced) await page.evaluate(() => {
+          window.__lit = [];
+          window.__seen = 0;
+          const tick = () => {
+            const fs = document.querySelectorAll('.print.is-exp .print__frame');
+            window.__seen = Math.max(window.__seen, fs.length);
+            for (const f of fs) { const v = getComputedStyle(f).filter; if (/blur|brightness/.test(v)) window.__lit.push(`${f.closest('.print').id}: ${v}`); }
+            requestAnimationFrame(tick);
+          };
+          requestAnimationFrame(tick);
+        });
+        const end = await page.evaluate(() => document.scrollingElement.scrollHeight - innerHeight);
         await page.evaluate(() => {
           // print 1's top edge closes the first view, so it may have exposed already
           window.__exp = [...document.querySelectorAll('.print.is-exp')].map((p) => p.id);
@@ -224,9 +239,9 @@ test.describe('A8 expose', () => {
             .observe(document.querySelector('.roll__grid'), { subtree: true, attributes: true, attributeFilter: ['class'] });
         });
         const before = await page.evaluate(() => [...document.querySelectorAll('.print')].filter((p) => p.getBoundingClientRect().top > innerHeight).map((p) => getComputedStyle(p.querySelector('.print__frame'))[document.documentElement.classList.contains('calm') ? 'opacity' : 'filter']));
-        expect(before.length, 'prints below the fold').toBeGreaterThanOrEqual(11);
+        expect(before.length, 'prints below the fold').toBeGreaterThanOrEqual(profile === PHONE ? 9 : 11);
         expect(before.every((v) => v !== 'none' && v !== '1'), 'below the fold the prints wait underexposed').toBe(true);
-        for (let y = 500; y < 9000; y += 450) {
+        for (let y = 500; y < end + 450; y += 450) {
           await scrollTo(page, y);
           await page.waitForTimeout(1000);
           const blank = await page.evaluate(() => [...document.querySelectorAll('.print')].filter((p) => {
@@ -243,6 +258,9 @@ test.describe('A8 expose', () => {
         if (reduced) {
           const filters = await page.evaluate(() => [...document.querySelectorAll('.print__frame')].map((f) => getComputedStyle(f).filter));
           expect(filters.every((f) => f === 'none'), 'reduced: no blur or brightness').toBe(true);
+          const rec = await page.evaluate(() => ({ lit: window.__lit.slice(0, 5), seen: window.__seen }));
+          expect(rec.seen, 'the recorder saw exposed prints').toBeGreaterThan(0);
+          expect(rec.lit, 'reduced: no exposed frame ever showed blur or brightness').toEqual([]);
         }
       } finally {
         await ctx.close();
@@ -250,8 +268,8 @@ test.describe('A8 expose', () => {
     });
   }
 
-  test('a failed image becomes an "image unavailable" print at the same size', async ({ own: browser, browserName }) => {
-    const ctx = await context(browser, browserName, DESK);
+  for (const [label, profile] of [['1440', DESK], ['390', PHONE]]) test(`a failed image becomes an "image unavailable" print at the same size at ${label}`, async ({ own: browser, browserName }) => {
+    const ctx = await context(browser, browserName, profile);
     const page = await ctx.newPage();
     await page.route(/\/media\/fixtures\/project-06\/04-/, (r) => r.abort());
     try {
@@ -259,7 +277,7 @@ test.describe('A8 expose', () => {
       await centrePrint(page, 4);
       await expect(page.locator('#print-04')).toHaveClass(/is-failed/, { timeout: 5000 });
       const p = (await prints(page)).find((x) => x.n === 4);
-      expect(Math.abs(p.frame.w - Math.min(p.wf * p.roll.w, 720 * p.ar))).toBeLessThanOrEqual(2);
+      expect(Math.abs(p.frame.w - (profile === PHONE ? Math.min(p.pf * p.roll.w, 0.7 * 844 * p.ar) : Math.min(p.wf * p.roll.w, 720 * p.ar)))).toBeLessThanOrEqual(2);
       expect(await page.evaluate(() => getComputedStyle(document.querySelector('#print-04 .print__frame'), '::after').content)).toBe('"Image unavailable"');
     } finally {
       await ctx.close();
@@ -284,13 +302,13 @@ test.describe('A9 focus', () => {
       await page.waitForFunction(() => document.querySelector('.roll')?.dataset.focus === '3', null, { timeout: 3000 });
       await page.waitForTimeout(400);
       // the 0.24 s dim has landed (a slow CI engine was still at 0.550062 after 400 ms)
-      await page.waitForFunction(() => [...document.querySelectorAll('.print:not([data-focus])')].every((p) => getComputedStyle(p).opacity === '0.55' && getComputedStyle(p.querySelector('.print__img')).filter === 'saturate(0.4)'), null, { timeout: 3000 }).catch(() => {});
+      await page.waitForFunction(() => [...document.querySelectorAll('.print:not([data-focus])')].every((p) => getComputedStyle(p.querySelector('.print__frame')).opacity === '0.55' && getComputedStyle(p.querySelector('.print__img')).filter === 'saturate(0.4)'), null, { timeout: 3000 }).catch(() => {});
       const st = await page.evaluate(() => ({
         focus: document.querySelector('.print[data-focus]')?.id,
         dim: document.querySelector('.roll').hasAttribute('data-dim'),
         counter: document.querySelector('[data-print-count]').textContent,
-        others: [...document.querySelectorAll('.print:not([data-focus])')].map((p) => [getComputedStyle(p).opacity, getComputedStyle(p.querySelector('.print__img')).filter]),
-        self: [getComputedStyle(document.querySelector('.print[data-focus]')).opacity, getComputedStyle(document.querySelector('.print[data-focus] .print__img')).filter],
+        others: [...document.querySelectorAll('.print:not([data-focus])')].map((p) => [getComputedStyle(p.querySelector('.print__frame')).opacity, getComputedStyle(p.querySelector('.print__img')).filter]),
+        self: [getComputedStyle(document.querySelector('.print[data-focus] .print__frame')).opacity, getComputedStyle(document.querySelector('.print[data-focus] .print__img')).filter],
         af: (() => { const a = document.querySelector('.roll__af'), f = document.querySelector('#print-03'); const r = a.getBoundingClientRect(), q = f.getBoundingClientRect(); return { on: a.classList.contains('on'), dx: Math.abs(r.left - q.left), dy: Math.abs(r.top - q.top), dw: Math.abs(r.width - q.width), colour: getComputedStyle(a.querySelector('i')).borderTopColor, n: document.querySelectorAll('.roll__af').length }; })(),
       }));
       expect(st.focus).toBe('print-03');
@@ -420,7 +438,7 @@ test.describe('A9 focus', () => {
         const st = await page.evaluate((n) => {
           const p = document.querySelector(`.print[data-print="${n}"]`), a = document.querySelector('.roll__af');
           const r = p.getBoundingClientRect(), q = a.getBoundingClientRect();
-          return { focused: p.hasAttribute('data-focus'), opacity: getComputedStyle(p).opacity, dx: Math.abs(r.left - q.left), dy: Math.abs(r.top - q.top), counter: document.querySelector('[data-print-count]').textContent };
+          return { focused: p.hasAttribute('data-focus'), opacity: getComputedStyle(p.querySelector('.print__frame')).opacity, dx: Math.abs(r.left - q.left), dy: Math.abs(r.top - q.top), counter: document.querySelector('[data-print-count]').textContent };
         }, other.n);
         expect(st.focused && st.opacity === '1', `${where}: the hovered print has focus at full brightness`).toBe(true);
         expect(Math.max(st.dx, st.dy), `${where}: the brackets frame the hovered print`).toBeLessThanOrEqual(2);
@@ -509,14 +527,375 @@ test.describe('A11 loop clips', () => {
     }
   });
 
-  test('reduced motion: no inline play', async ({ own: browser, browserName }) => {
-    const ctx = await context(browser, browserName, DESK, { init: [STUB], reduced: true });
+  // at 390 this is not vacuous: the 390 x 4200 context above shows loops do play inline on a phone profile
+  for (const [label, profile] of [['1440', DESK], ['390', PHONE]]) test(`reduced motion: no inline play at ${label}`, async ({ own: browser, browserName }) => {
+    const ctx = await context(browser, browserName, profile, { init: [STUB], reduced: true });
     const page = await ctx.newPage();
     try {
       await cold(page, 'project-06');
       await centrePrint(page, 2);
       await page.waitForTimeout(800);
       expect(await calls(page)).toEqual([]);
+    } finally {
+      await ctx.close();
+    }
+  });
+});
+
+// fix-pass B1 (the W-V1 fix pass, batch B1: the roll and the print surface)
+/** The cold /work/<slug>/ page's entry module (cold.ts: initRoll, which sets the roll's [data-expose] and html[data-roll]). */
+const MODULE = /\/_astro\/_slug_\.astro_astro_type_script_index_0_lang\.[^/]+\.js/;
+
+test.describe('A9 focus (fix-pass B1)', () => {
+  /** The opacity each match is composited at: its own times every ancestor's (an expression for page.evaluate). */
+  const composite = (sel) => `[...document.querySelectorAll(${JSON.stringify(sel)})].map((e) => { let v = 1; for (let n = e; n; n = n.parentElement) v *= Number(getComputedStyle(n).opacity); return v; })`;
+
+  // f02: the dim is on the print's media, never on its caption strip: the strip's ink-2 on near-black at 0.55 was about
+  // 2.9:1 (WCAG 1.4.3 asks 4.5:1)
+  test('the dim leaves the strip at full ink: axe colour-contrast 0 in the dim state', async ({ own: browser, browserName }) => {
+    const { AxeBuilder } = await import('@axe-core/playwright');
+    const ctx = await context(browser, browserName, DESK);
+    const page = await ctx.newPage();
+    try {
+      await cold(page, 'project-06');
+      await centrePrint(page, 3);
+      // the dim has landed, wherever it applies (no catch: a dim that never lands fails here)
+      await page.waitForFunction(`document.querySelector('.roll[data-dim]')?.dataset.focus === '3' && ${composite('.print:not([data-focus]) .print__frame')}.every((v) => Math.abs(v - 0.55) < 0.001)`, null, { timeout: 3000 });
+      const strip = await page.evaluate(`({ n: ${composite('.print:not([data-focus]) .print__n')}, cap: ${composite('.print:not([data-focus]) .print__cap')} })`);
+      expect(strip.n.length, 'the dimmed prints').toBe(11);
+      for (const v of [...strip.n, ...strip.cap]) expect(v, 'a dimmed print\'s strip composites at full opacity').toBeCloseTo(1, 5);
+      const axe = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).include('.print').analyze();
+      const cc = axe.violations.filter((v) => v.id === 'color-contrast').flatMap((v) => v.nodes.map((n) => `${n.target.join(' ')}: ${n.failureSummary.split('\n')[1]?.trim()}`));
+      expect(cc, 'colour-contrast in the dim state').toEqual([]);
+      expect(await page.evaluate(() => [...document.querySelectorAll('.print:not([data-focus]) .print__frame')].every((f) => getComputedStyle(f).opacity === '0.55')), 'the dim is on the media').toBe(true);
+    } finally {
+      await ctx.close();
+    }
+    // a failed image and a typed placeholder box never dim: their label is text
+    const fctx = await context(browser, browserName, DESK);
+    const fp = await fctx.newPage();
+    await fp.route(/\/media\/fixtures\/project-06\/04-/, (r) => r.abort());
+    try {
+      await cold(fp, 'project-06');
+      await fp.evaluate(() => {
+        // the test build has no file-less print: print 5 becomes one, as Print.astro renders it
+        const f = document.querySelector('#print-05 .print__frame');
+        f.querySelector('picture')?.remove();
+        const box = document.createElement('span');
+        box.className = 'print__box';
+        const t = document.createElement('span');
+        t.className = 'ph';
+        t.textContent = '[PLACEHOLDER: media file]';
+        box.append(t);
+        f.prepend(box);
+      });
+      await centrePrint(fp, 3);
+      await expect(fp.locator('#print-04')).toHaveClass(/is-failed/, { timeout: 5000 });
+      await fp.waitForFunction(() => document.querySelector('.roll[data-dim]')?.dataset.focus === '3', null, { timeout: 3000 });
+      await fp.waitForTimeout(500);
+      const v = await fp.evaluate(composite('#print-02 .print__frame, #print-04 .print__frame, #print-05 .print__frame'));
+      expect(v[0], 'a print with media still dims').toBeCloseTo(0.55, 3);
+      expect(v[1], 'the failed print\'s frame stays at full ink').toBeCloseTo(1, 5);
+      expect(v[2], 'the placeholder box stays at full ink').toBeCloseTo(1, 5);
+    } finally {
+      await fctx.close();
+    }
+  });
+
+  // f03: a wheel or trackpad keeps sending scroll events for 100-150 ms after the focus changes; one on an unchanged
+  // focus re-placed the brackets with a jump and killed the glide. The reads are in-page, on both sides of the roll's
+  // own scroll listener (a capture listener runs before it, a later bubble one after), so the row does not depend on
+  // how long an engine's frames are (headless WebKit's ran 60-80 ms here: two frames were most of the glide)
+  test('the brackets glide through the scroll events that follow a focus change (A9 0.24 s, J3)', async ({ own: browser, browserName }) => {
+    const ctx = await context(browser, browserName, DESK);
+    const page = await ctx.newPage();
+    const gap = () => page.evaluate(() => Math.abs(document.querySelector('.roll__af').getBoundingClientRect().top - document.querySelector('#print-04').getBoundingClientRect().top));
+    try {
+      await cold(page, 'project-06');
+      await centrePrint(page, 3);
+      await page.waitForFunction(() => document.querySelector('.roll[data-dim]')?.dataset.focus === '3', null, { timeout: 3000 });
+      await page.waitForTimeout(400);
+      const s = await page.evaluate(() => new Promise((done) => {
+        const af = document.querySelector('.roll__af'), p4 = document.querySelector('#print-04');
+        const d = () => Math.abs(af.getBoundingClientRect().top - p4.getBoundingClientRect().top);
+        const out = [];
+        let pre = 0;
+        const end = () => { removeEventListener('scroll', before, true); removeEventListener('scroll', after); done(out); };
+        const before = () => { pre = d(); };
+        const after = () => {
+          out.push({ f: document.querySelector('.roll').dataset.focus, pre, post: d() });
+          if (out.length === 1) window.scrollBy(0, 1); // the change's event started the glide; the stream's next, on the same focus
+          else end();
+        };
+        addEventListener('scroll', before, { capture: true, passive: true });
+        addEventListener('scroll', after, { passive: true });
+        setTimeout(end, 3000);
+        const r = p4.querySelector('.print__frame').getBoundingClientRect();
+        window.scrollBy(0, r.top + r.height / 2 - innerHeight / 2);
+      }));
+      expect(s.map((e) => e.f), 'the change, then a 1 px nudge that keeps the focus').toEqual(['4', '4']);
+      expect(s[0].pre, 'the brackets start a print away').toBeGreaterThan(20);
+      expect(s[1].pre, 'the glide is in flight at the next scroll event').toBeGreaterThan(2);
+      expect(Math.abs(s[1].post - s[1].pre), `the next scroll event leaves the glide be (${s[1].pre.toFixed(1)} px to go before it, ${s[1].post.toFixed(1)} after)`).toBeLessThan(0.5);
+      await expect.poll(gap, { message: 'the glide lands', timeout: 1000, intervals: [50] }).toBeLessThanOrEqual(2);
+    } finally {
+      await ctx.close();
+    }
+  });
+});
+
+test.describe('A8 expose (fix-pass B1)', () => {
+  /** A cold page with its module held: the page as it paints before the module runs (the stylesheet in). */
+  const held = async (page, slug) => {
+    const routes = [];
+    await page.route(MODULE, (r) => { routes.push(r); });
+    await page.goto(`${base()}/work/${slug}/?vf-test`, { waitUntil: 'commit' }); // held module scripts hold DOMContentLoaded and load
+    await page.waitForSelector('.print__frame', { state: 'attached' });
+    await page.waitForFunction(() => getComputedStyle(document.querySelector('.pj-bar')).position === 'fixed');
+    return routes;
+  };
+  const release = (routes) => { routes.splice(0).forEach((r) => r.continue().catch(() => {})); };
+
+  // f16: before the module ran there was no underexposed state, so the prints painted lit, dropped to -3 EV when it ran
+  // and exposed again (lit, dark, lit), and the counter showed a static "01 / NN"
+  for (const reduced of [false, true]) test(`the cold page paints its prints underexposed and the counter hidden before its module runs${reduced ? ' (calm)' : ''}`, async ({ own: browser, browserName }) => {
+    const ctx = await context(browser, browserName, DESK, { reduced });
+    const page = await ctx.newPage();
+    let routes = [];
+    try {
+      routes = await held(page, 'project-06');
+      const st = await page.evaluate(() => ({
+        pjjs: document.documentElement.classList.contains('pj-js'), roll: document.documentElement.hasAttribute('data-roll'),
+        frames: [...document.querySelectorAll('.print__frame')].map((f) => { const cs = getComputedStyle(f); return [cs.filter, cs.opacity]; }),
+        counter: document.querySelector('[data-print-count]').hidden,
+      }));
+      expect([st.pjjs, st.roll], 'pj-js on, the module held').toEqual([true, false]);
+      expect(st.frames.length).toBe(12);
+      for (const [filter, opacity] of st.frames) {
+        if (reduced) expect([filter, opacity], 'calm: underexposed is unseen').toEqual(['none', '0']);
+        else expect(filter, 'underexposed: -3 EV behind the blur').toMatch(/brightness\(0\.125\).*blur\(8px\)/);
+      }
+      expect(st.counter, 'the counter waits hidden').toBe(true);
+      release(routes);
+      await page.waitForFunction(() => document.documentElement.hasAttribute('data-roll'), null, { timeout: 10000 });
+      if (reduced) {
+        // the dim (f02) must not show a print still to expose: the cold calm rule outranks it
+        await centrePrint(page, 3);
+        await page.waitForFunction(() => document.querySelector('.roll[data-dim]')?.dataset.focus === '3', null, { timeout: 3000 });
+        const waiting = await page.evaluate(() => [...document.querySelectorAll('.print:not(.is-exp) .print__frame')].map((f) => getComputedStyle(f).opacity));
+        expect(waiting.length, 'prints still to expose').toBeGreaterThan(0);
+        expect(waiting, 'calm, under the dim: a print still to expose stays unseen').toEqual(waiting.map(() => '0'));
+      }
+    } finally {
+      release(routes);
+      await ctx.close();
+    }
+    // a module that fails to load: the page falls back to its prints as they are
+    const fctx = await context(browser, browserName, DESK, { reduced });
+    const fp = await fctx.newPage();
+    try {
+      await fp.route(MODULE, (r) => r.abort());
+      await fp.goto(`${base()}/work/project-06/?vf-test`, { waitUntil: 'domcontentloaded' });
+      await fp.waitForFunction(() => !document.documentElement.classList.contains('pj-js'), null, { timeout: 8000 });
+      const lit = await fp.evaluate(() => [...document.querySelectorAll('.print__frame')].map((f) => { const cs = getComputedStyle(f); return `${cs.filter} ${cs.opacity}`; }));
+      expect(lit, 'a failed module: the prints lit').toEqual(lit.map(() => 'none 1'));
+    } finally {
+      await fctx.close();
+    }
+  });
+
+  // f16: the first print, sampled every frame from its first paint through the module landing: its exposure only rises
+  for (const reduced of [false, true]) test(`the first print never steps from lit to dark as the module lands${reduced ? ' (calm)' : ''}`, async ({ own: browser, browserName }) => {
+    const SAMPLER = `(() => {
+      window.__s = [];
+      const tick = () => {
+        const f = document.querySelector('#print-01 .print__frame');
+        if (f) { const cs = getComputedStyle(f); window.__s.push([cs.filter, cs.opacity]); }
+        requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    })();`;
+    const ctx = await context(browser, browserName, DESK, { reduced, init: [SAMPLER] });
+    const page = await ctx.newPage();
+    let routes = [];
+    try {
+      routes = await held(page, 'project-06');
+      await page.waitForTimeout(1500);
+      release(routes);
+      await page.waitForFunction(() => document.querySelector('#print-01')?.classList.contains('is-exp'), null, { timeout: 10000 });
+      await page.waitForTimeout(1200);
+      // exposure: opacity times brightness ('none' is 1)
+      const s = (await page.evaluate(() => window.__s)).map(([f, o]) => Number(o) * Number(/brightness\(([\d.]+)\)/.exec(f)?.[1] ?? 1));
+      expect(s.length, 'frames sampled').toBeGreaterThan(10);
+      expect(s[0], 'the first paint is underexposed').toBeLessThan(0.2);
+      const drops = s.map((v, i) => (i && v < s[i - 1] - 0.01 ? `${i}: ${s[i - 1].toFixed(3)} -> ${v.toFixed(3)}` : null)).filter(Boolean);
+      expect(drops, 'a step down in exposure').toEqual([]);
+      expect(s.at(-1), 'exposed in the end').toBeGreaterThan(0.99);
+    } finally {
+      release(routes);
+      await ctx.close();
+    }
+  });
+});
+
+test.describe('A7 the cold page while its module loads (fix-pass B1)', () => {
+  // f14: a 4 s timer took .pj-js off a page whose module was only slow: the header jumped to its no-JS layout (a layout
+  // shift) and the module then enhanced a page without .pj-js. Only a module that fails to load falls back now.
+  const head = (page) => page.evaluate(() => {
+    const cs = getComputedStyle(document.querySelector('.pj__head'));
+    return { pjjs: document.documentElement.classList.contains('pj-js'), roll: document.documentElement.hasAttribute('data-roll'), minHeight: cs.minHeight, paddingBottom: cs.paddingBottom };
+  });
+  const SHIFTS = `(() => { window.__ls = []; try { new PerformanceObserver((l) => { for (const e of l.getEntries()) if (!e.hadRecentInput) window.__ls.push({ t: e.startTime, v: e.value }); }).observe({ type: 'layout-shift', buffered: true }); } catch {} })();`;
+
+  for (const [label, profile] of [['phone', PHONE], ['desk', DESK]]) test(`slow module: the layout never changes on a timer (${label})`, async ({ own: browser, browserName }) => {
+    const ctx = await context(browser, browserName, profile, { init: [SHIFTS] });
+    const page = await ctx.newPage();
+    let release = () => {};
+    const gate = new Promise((r) => { release = r; });
+    try {
+      // a real wait, no page.clock: a faked clock would slow GSAP and the module too
+      await page.route(MODULE, async (r) => { await gate; await r.continue().catch(() => {}); });
+      await page.goto(`${base()}/work/project-06/?vf-test`, { waitUntil: 'commit' }); // the held module holds DOMContentLoaded and load
+      await page.waitForSelector('.pj__head', { state: 'visible' });
+      await page.waitForTimeout(4600);
+      const st = await head(page);
+      expect([st.pjjs, st.roll], 'past 4 s, the module still loading: pj-js holds').toEqual([true, false]);
+      expect(st.minHeight, 'the enhanced header (not the no-JS min-height 0)').not.toBe('0px');
+      expect(st.paddingBottom, 'the enhanced header (not the no-JS 48 px)').not.toBe('48px');
+      const at = await page.evaluate(() => performance.now());
+      release();
+      await page.waitForFunction(() => document.documentElement.hasAttribute('data-roll'), null, { timeout: 15000 });
+      expect((await head(page)).pjjs, 'the module enhanced a pj-js page').toBe(true);
+      if (browserName === 'chromium') {
+        // WebKit has no layout-shift entries; the module's own landing is cls-gl.spec's
+        const shifts = await page.evaluate((t) => window.__ls.filter((e) => e.t >= 3900 && e.t <= t), at);
+        expect(shifts, 'layout shifts from 3.9 s until the module came').toEqual([]);
+      }
+    } finally {
+      release();
+      await ctx.close();
+    }
+  });
+
+  test('module failure still falls back to the plain header', async ({ own: browser, browserName }) => {
+    for (const profile of [PHONE, DESK]) {
+      const ctx = await context(browser, browserName, profile);
+      const page = await ctx.newPage();
+      try {
+        await page.route(MODULE, (r) => r.abort());
+        await page.goto(`${base()}/work/project-06/?vf-test`, { waitUntil: 'domcontentloaded' });
+        // not under 5 s: before f14 the 4 s timer was the way down
+        await page.waitForFunction(() => !document.documentElement.classList.contains('pj-js'), null, { timeout: 8000 });
+        const st = await head(page);
+        expect([st.minHeight, st.paddingBottom], `the no-JS header at ${profile.viewport.width}`).toEqual(['0px', '48px']);
+      } finally {
+        await ctx.close();
+      }
+    }
+  });
+});
+
+test.describe('A9 keyboard focus (fix-pass B1)', () => {
+  // f08: a print that takes keyboard focus (a Tab stop, the open view's Tab trap, Esc from playback) never took the AF
+  // focus: its ring was drawn dimmed while the brackets and the counter stayed on the centre-line print
+  for (const place of ['cold', 'open']) test(`keyboard to focus: a Tab stop on a print takes the brackets, full brightness and the counter; Enter opens that print (${place})`, async ({ own: browser, browserName }) => {
+    const ctx = await context(browser, browserName, DESK);
+    const page = await ctx.newPage();
+    const focusOf = () => page.evaluate(() => document.querySelector('.roll').dataset.focus);
+    const pad = (n) => String(n).padStart(2, '0');
+    /** Print 5 on the centre line, the view still (as the hover row settles it). */
+    const settle = async () => {
+      await centrePrint(page, 5);
+      await page.waitForFunction(() => document.querySelector('.roll')?.dataset.focus === '5', null, { timeout: 3000 });
+      await page.waitForFunction(() => document.fonts.status === 'loaded', null, { timeout: 5000 }).catch(() => {});
+      await page.waitForTimeout(700);
+      for (let k = 0, prev = -1; k < 20; k++) {
+        const y = await page.evaluate(() => (document.querySelector('.proj:not([hidden]) .proj__col') ?? document.scrollingElement).scrollTop);
+        if (y === prev) break;
+        prev = y;
+        await page.waitForTimeout(150);
+      }
+    };
+    /** Print n's state: AF focus, its frame's and image's dim, the brackets on it, the counter. */
+    const stateOf = (n) => page.evaluate((k) => {
+      const p = document.querySelector(`.print[data-print="${k}"]`), a = document.querySelector('.roll__af');
+      const r = p.getBoundingClientRect(), q = a.getBoundingClientRect();
+      return { focused: p.hasAttribute('data-focus'), frame: getComputedStyle(p.querySelector('.print__frame')).opacity, img: getComputedStyle(p.querySelector('.print__img')).filter, af: Math.max(Math.abs(r.left - q.left), Math.abs(r.top - q.top)), counter: document.querySelector('[data-print-count]').textContent };
+    }, n);
+    try {
+      if (place === 'cold') await cold(page, 'project-06');
+      else { await home(page); await toFrame(page, 5); await page.keyboard.press('Enter'); await untilState(page, 'open', 5); }
+      // keyboard modality, then print 5 on the centre line again
+      await page.keyboard.press('Tab');
+      await page.keyboard.press('Shift+Tab');
+      await settle();
+      // Part A, no scroll: a script focus on another print in view (as the Tab trap and the Esc return focus a print)
+      const other = await page.evaluate(() => {
+        for (const p of document.querySelectorAll('.print')) {
+          if (p.dataset.print === '5') continue;
+          const r = p.querySelector('.print__frame').getBoundingClientRect();
+          const top = Math.max(r.top, 120), bottom = Math.min(r.bottom, innerHeight - 10);
+          if (bottom - top > 60) return { n: p.dataset.print };
+        }
+        return null;
+      });
+      expect(other, `${place}: a second print in view`).not.toBeNull();
+      await page.evaluate((n) => document.querySelector(`.print[data-print="${n}"] .print__a`).focus({ preventScroll: true }), other.n);
+      expect(await page.evaluate((n) => document.querySelector(`.print[data-print="${n}"] .print__a`).matches(':focus-visible'), other.n), `${place}: the script focus after a key is :focus-visible in ${browserName}`).toBe(true);
+      await expect.poll(focusOf, { message: `${place}: keyboard focus moves the AF focus to print ${other.n}`, timeout: 1000 }).toBe(other.n);
+      await page.waitForTimeout(400);
+      const a = await stateOf(other.n);
+      expect([a.focused, a.frame], `${place}: the focused print at full brightness`).toEqual([true, '1']);
+      expect(a.img, `${place}: not desaturated`).not.toBe('saturate(0.4)');
+      expect(a.af, `${place}: the brackets frame it`).toBeLessThanOrEqual(2);
+      expect(a.counter).toBe(`${pad(other.n)} / 12`);
+      // Part B: the real Tab and its scroll into view (an invariant: the HUD names the print the Tab reached). WebKit's
+      // Tab skips links (Safari's default) where no trap moves focus (the cold page): there the next print's link is
+      // focused by script, which scrolls it into view as a Tab stop does
+      let n = null;
+      for (let k = 0; k < 10 && !n; k++) {
+        await page.keyboard.press('Tab');
+        const at = await page.evaluate(() => document.activeElement?.closest('.print')?.dataset.print ?? null);
+        if (at && at !== other.n) n = at;
+      }
+      if (!n && browserName === 'webkit' && place === 'cold') {
+        n = String(Number(other.n) + 1);
+        await page.evaluate((k) => document.querySelector(`.print[data-print="${k}"] .print__a`).focus(), n);
+      }
+      expect(n, `${place}: Tab reaches another print`).not.toBeNull();
+      await page.waitForTimeout(600);
+      const b = await stateOf(n);
+      expect(await focusOf(), `${place}: the AF focus is the Tab stop's print`).toBe(n);
+      expect(b.af, `${place}: the brackets frame print ${n}`).toBeLessThanOrEqual(2);
+      expect(b.counter).toBe(`${pad(n)} / 12`);
+      await page.keyboard.press('Enter');
+      await expect.poll(() => page.evaluate(() => location.hash), { message: `${place}: Enter opens the print the HUD names`, timeout: 3000 }).toBe(`#print-${pad(n)}`);
+    } finally {
+      await ctx.close();
+    }
+  });
+});
+
+test.describe('A1 the print\'s accessible name (fix-pass B1)', () => {
+  // f01: the link's aria-label overrode its content, so the image's alt never reached the roll's names. Playwright's
+  // accessible-name reading is its own, the same in both engines: the dist test is the primary guard
+  test('the print link is named by the image\'s alt, then "Print NN of MM, <kind>: open in playback"', async ({ own: browser, browserName }) => {
+    const ctx = await context(browser, browserName, DESK);
+    const page = await ctx.newPage();
+    try {
+      for (const slug of ['project-01', 'project-02']) {
+        await cold(page, slug);
+        const figs = page.locator('.print');
+        const n = await figs.count();
+        expect(n, `${slug}: prints`).toBeGreaterThan(0);
+        for (let k = 0; k < n; k++) {
+          const fig = figs.nth(k);
+          const link = fig.locator('.print__a');
+          const alt = (await fig.locator('img.print__img').count()) ? await fig.locator('img.print__img').getAttribute('alt') : '';
+          if (alt) await expect(link, `${slug} #${k + 1}: the alt in the name`).toHaveAccessibleName(new RegExp(alt.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+          await expect(link, `${slug} #${k + 1}: the action in the name`).toHaveAccessibleName(/Print \d\d of \d\d, .*open in playback/);
+        }
+      }
     } finally {
       await ctx.close();
     }

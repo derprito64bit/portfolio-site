@@ -243,15 +243,15 @@ for (const [label, profile] of [['1440', DESK], ['390', PHONE]]) {
 
 // wv1-pb-failed-image (queued from judge r2): playback of a print whose image failed shows the same "image unavailable"
 // print at its aspect, with no broken-image glyph and no raw alt text (9f25a82 cloned the failed <picture>).
-test('A10 / A8 a failed image opens in playback as the same "image unavailable" print, at its aspect', async ({ browser, browserName }) => {
-  const ctx = await context(browser, browserName, DESK);
+for (const [label, profile] of [['1440', DESK], ['390', PHONE]]) test(`A10 / A8 a failed image opens in playback as the same "image unavailable" print, at its aspect, at ${label}`, async ({ browser, browserName }) => {
+  const ctx = await context(browser, browserName, profile);
   const page = await ctx.newPage();
   await page.route(/\/media\//, (r) => r.abort());
   try {
     await cold(page, 'project-06');
     await centrePrint(page, 3);
     await expect(page.locator('#print-03')).toHaveClass(/is-failed/, { timeout: 5000 });
-    await page.locator('#print-03 [data-print-open]').click();
+    if (profile.hasTouch) await page.locator('#print-03 [data-print-open]').tap(); else await page.locator('#print-03 [data-print-open]').click();
     await expect.poll(async () => (await pb(page))?.open).toBe(true);
     await page.waitForTimeout(800);
     const s = await page.evaluate(() => {
@@ -477,16 +477,19 @@ test('J4 paging never blanks the stage: one print is always up', async ({ browse
 });
 
 test.describe('A13 calm, no WebGL, no JS', () => {
-  test('reduced motion: a crossfade open, opacity-only expose, brackets that jump, no dim spring, a playback crossfade', async ({ browser, browserName }) => {
-    const ctx = await context(browser, browserName, DESK, { reduced: true });
+  // A16: at both gate viewports; the phone's pointer is coarse in both engines (no brackets, no dim)
+  for (const [label, profile] of [['1440', DESK], ['390', PHONE]]) test(`reduced motion: a crossfade open, opacity-only expose, brackets that jump, no dim spring, a playback crossfade at ${label}`, async ({ browser, browserName }) => {
+    const ctx = await context(browser, browserName, profile, { reduced: true, coarse: profile === PHONE });
     const page = await ctx.newPage();
     try {
       await home(page);
+      if (profile === PHONE) expect(await page.evaluate(() => matchMedia('(hover: hover) and (pointer: fine)').matches), 'a coarse pointer').toBe(false);
       await toFrame(page, 5);
       await page.keyboard.press('Enter');
       await untilState(page, 'open', 5);
+      // the dim's transition is on the print's frame (f02)
       const cs = await page.evaluate(() => ({
-        transition: getComputedStyle(document.querySelector('#proj .print')).transitionDuration,
+        transition: getComputedStyle(document.querySelector('#proj .print__frame')).transitionDuration,
         imgTransition: getComputedStyle(document.querySelector('#proj .print__img')).transitionDuration,
       }));
       expect(cs.transition.split(',').every((d) => parseFloat(d) === 0), 'no dim spring').toBe(true);
@@ -497,14 +500,20 @@ test.describe('A13 calm, no WebGL, no JS', () => {
       await page.waitForTimeout(300);
       await centrePrint(page, 3);
       await page.waitForFunction(() => document.querySelector('#proj .roll')?.dataset.focus === '3', null, { timeout: 3000 });
-      const jump = await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => {
-        const a = document.querySelector('#proj .roll__af').getBoundingClientRect(), f = document.querySelector('#print-03').getBoundingClientRect();
-        r(Math.abs(a.top - f.top) + Math.abs(a.width - f.width));
-      })));
-      expect(jump, 'the brackets jump').toBeLessThanOrEqual(2);
+      if (profile === PHONE) {
+        const af = await page.evaluate(() => { const a = document.querySelector('#proj .roll__af'); return [a.classList.contains('on'), getComputedStyle(a).opacity]; });
+        expect(af, 'a coarse pointer: no brackets').toEqual([false, '0']);
+      } else {
+        const jump = await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => {
+          const a = document.querySelector('#proj .roll__af').getBoundingClientRect(), f = document.querySelector('#print-03').getBoundingClientRect();
+          r(Math.abs(a.top - f.top) + Math.abs(a.width - f.width));
+        })));
+        expect(jump, 'the brackets jump').toBeLessThanOrEqual(2);
+      }
       const filters = await page.evaluate(() => [...document.querySelectorAll('#proj .print.is-exp .print__frame')].map((f) => getComputedStyle(f).filter));
+      expect(filters.length, 'exposed prints').toBeGreaterThan(0);
       expect(filters.every((f) => f === 'none'), 'opacity-only expose').toBe(true);
-      await page.locator('#print-03 [data-print-open]').click();
+      if (profile.hasTouch) await page.locator('#print-03 [data-print-open]').tap(); else await page.locator('#print-03 [data-print-open]').click();
       await expect.poll(async () => (await pb(page))?.open).toBe(true);
       const tr = await page.evaluate(() => new Promise((r) => { const out = []; const f = document.querySelector('.pb__frame'); const t0 = performance.now(); const s = () => { out.push(getComputedStyle(f).transform); if (performance.now() - t0 < 300) setTimeout(s, 10); else r(out); }; s(); }));
       expect(tr.every((t) => t === 'none' || t === 'matrix(1, 0, 0, 1, 0, 0)'), 'a crossfade, no Flip').toBe(true);

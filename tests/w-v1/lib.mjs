@@ -20,19 +20,24 @@ export const ownBrowser = base0.extend({
 export const DESK = { viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1, hasTouch: false, isMobile: false };
 export const PHONE = { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true };
 export const STEP_MS = Number(process.env.W_V1_STEP_MS) || 20000;
+/** A coarse pointer in both engines (an init script): WebKit reports a fine one under touch emulation, so the query is
+ *  forced. context()'s `coarse` option adds it. */
+export const COARSE = `(() => { const mm = window.matchMedia.bind(window); window.matchMedia = (q) => mm(/pointer: ?fine|hover: ?hover/.test(q) ? '(max-width: 0px)' : q); })();`;
 
 export function base() {
   if (!process.env.SMOKE_BASE) throw new Error('SMOKE_BASE is unset: run through tests/w-v1/playwright.config.mjs (its globalSetup serves dist/)');
   return process.env.SMOKE_BASE;
 }
 
-/** A context on the flat path (no WebGL in either engine) unless gl is true. WebKit ignores isMobile; touch still holds. */
-export async function context(browser, browserName, profile = DESK, { gl = false, reduced = false, js = true, init = [] } = {}) {
+/** A context on the flat path (no WebGL in either engine) unless gl is true. WebKit ignores isMobile; touch still holds,
+ *  and `coarse` makes the pointer coarse in both engines. */
+export async function context(browser, browserName, profile = DESK, { gl = false, reduced = false, js = true, coarse = false, init = [] } = {}) {
   const p = browserName === 'webkit' ? { ...profile, isMobile: false } : profile;
   const ctx = await browser.newContext({
     ...p, reducedMotion: reduced ? 'reduce' : 'no-preference', colorScheme: 'dark', serviceWorkers: 'block', javaScriptEnabled: js,
   });
   if (!gl) await ctx.addInitScript(NO_WEBGL_INIT);
+  if (coarse) await ctx.addInitScript(COARSE);
   for (const s of init) await ctx.addInitScript(s);
   return ctx;
 }
