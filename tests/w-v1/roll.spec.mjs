@@ -139,13 +139,23 @@ test.describe('A7 layout', () => {
   test('overflow 0 at 1440 with the brackets on: every step through the roll, cold and in the open view', async ({ own: browser, browserName }) => {
     const ctx = await context(browser, browserName, DESK);
     const page = await ctx.newPage();
-    // the worst overflow over the 320 ms after a scroll step, read every frame: a bracket glide onto a print flush with
-    // the edge overshoots (vf.detent), so a single late read would miss it
+    // after each scroll step: every frame for 320 ms, how far the brackets' drawn box (their inline transform and width,
+    // plus the corners' 7 px) reaches past their container's padding box, since a glide onto a print flush with the edge
+    // overshoots (vf.detent) and a single late read would miss it; then the page's overflow once. The per-frame read
+    // takes no layout (a forced layout every frame for minutes lost the page in CI's WebKit).
     const over = () => page.evaluate(() => new Promise((done) => {
       const read = () => Math.max(document.documentElement.scrollWidth - document.documentElement.clientWidth, ...[...document.querySelectorAll('.proj__col, .roll, .roll__grid, .pj, dialog[open]')].map((e) => e.scrollWidth - e.clientWidth));
-      let worst = read();
+      const af = document.querySelector('.roll__af');
+      const limit = af?.parentElement ? af.parentElement.clientWidth : Infinity;
+      let worst = 0;
       const t0 = performance.now();
-      const tick = () => { worst = Math.max(worst, read()); if (performance.now() - t0 < 320) requestAnimationFrame(tick); else done(worst); };
+      const tick = () => {
+        if (af) {
+          const x = Number(/translate3?d?\(\s*(-?[\d.]+)px/.exec(af.style.transform)?.[1] ?? 0);
+          worst = Math.max(worst, Math.round(x + (parseFloat(af.style.width) || 0) + 7 - limit)); // sub-pixel float noise is not overflow
+        }
+        if (performance.now() - t0 < 320) requestAnimationFrame(tick); else done(Math.max(worst, read()));
+      };
       requestAnimationFrame(tick);
     }));
     const sweep = async (where) => {
