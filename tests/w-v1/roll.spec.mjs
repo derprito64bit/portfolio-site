@@ -211,12 +211,27 @@ test.describe('A7 layout', () => {
 });
 
 test.describe('A8 expose', () => {
-  for (const reduced of [false, true]) {
-    test(`prints expose in order as they enter; none blank 1.0 s after 50% visible${reduced ? ' (reduced: opacity only)' : ''}`, async ({ own: browser, browserName }) => {
-      const ctx = await context(browser, browserName, DESK, { reduced });
+  // A16: at both gate viewports (expose() and the calm CSS have no viewport branch; these rows keep it so)
+  for (const [label, profile] of [['1440', DESK], ['390', PHONE]]) for (const reduced of [false, true]) {
+    test(`prints expose in order as they enter; none blank 1.0 s after 50% visible${reduced ? ' (reduced: opacity only)' : ''} at ${label}`, async ({ own: browser, browserName }) => {
+      const ctx = await context(browser, browserName, profile, { reduced });
       const page = await ctx.newPage();
       try {
         await cold(page, 'project-06');
+        // reduced: from before the first scroll, every frame an exposed print shows is checked for blur or brightness (the
+        // expose tween sets its filter at once and holds it at most 0.9 s, between the 1.0 s reads)
+        if (reduced) await page.evaluate(() => {
+          window.__lit = [];
+          window.__seen = 0;
+          const tick = () => {
+            const fs = document.querySelectorAll('.print.is-exp .print__frame');
+            window.__seen = Math.max(window.__seen, fs.length);
+            for (const f of fs) { const v = getComputedStyle(f).filter; if (/blur|brightness/.test(v)) window.__lit.push(`${f.closest('.print').id}: ${v}`); }
+            requestAnimationFrame(tick);
+          };
+          requestAnimationFrame(tick);
+        });
+        const end = await page.evaluate(() => document.scrollingElement.scrollHeight - innerHeight);
         await page.evaluate(() => {
           // print 1's top edge closes the first view, so it may have exposed already
           window.__exp = [...document.querySelectorAll('.print.is-exp')].map((p) => p.id);
@@ -224,9 +239,9 @@ test.describe('A8 expose', () => {
             .observe(document.querySelector('.roll__grid'), { subtree: true, attributes: true, attributeFilter: ['class'] });
         });
         const before = await page.evaluate(() => [...document.querySelectorAll('.print')].filter((p) => p.getBoundingClientRect().top > innerHeight).map((p) => getComputedStyle(p.querySelector('.print__frame'))[document.documentElement.classList.contains('calm') ? 'opacity' : 'filter']));
-        expect(before.length, 'prints below the fold').toBeGreaterThanOrEqual(11);
+        expect(before.length, 'prints below the fold').toBeGreaterThanOrEqual(profile === PHONE ? 9 : 11);
         expect(before.every((v) => v !== 'none' && v !== '1'), 'below the fold the prints wait underexposed').toBe(true);
-        for (let y = 500; y < 9000; y += 450) {
+        for (let y = 500; y < end + 450; y += 450) {
           await scrollTo(page, y);
           await page.waitForTimeout(1000);
           const blank = await page.evaluate(() => [...document.querySelectorAll('.print')].filter((p) => {
@@ -243,6 +258,9 @@ test.describe('A8 expose', () => {
         if (reduced) {
           const filters = await page.evaluate(() => [...document.querySelectorAll('.print__frame')].map((f) => getComputedStyle(f).filter));
           expect(filters.every((f) => f === 'none'), 'reduced: no blur or brightness').toBe(true);
+          const rec = await page.evaluate(() => ({ lit: window.__lit.slice(0, 5), seen: window.__seen }));
+          expect(rec.seen, 'the recorder saw exposed prints').toBeGreaterThan(0);
+          expect(rec.lit, 'reduced: no exposed frame ever showed blur or brightness').toEqual([]);
         }
       } finally {
         await ctx.close();
@@ -250,8 +268,8 @@ test.describe('A8 expose', () => {
     });
   }
 
-  test('a failed image becomes an "image unavailable" print at the same size', async ({ own: browser, browserName }) => {
-    const ctx = await context(browser, browserName, DESK);
+  for (const [label, profile] of [['1440', DESK], ['390', PHONE]]) test(`a failed image becomes an "image unavailable" print at the same size at ${label}`, async ({ own: browser, browserName }) => {
+    const ctx = await context(browser, browserName, profile);
     const page = await ctx.newPage();
     await page.route(/\/media\/fixtures\/project-06\/04-/, (r) => r.abort());
     try {
@@ -259,7 +277,7 @@ test.describe('A8 expose', () => {
       await centrePrint(page, 4);
       await expect(page.locator('#print-04')).toHaveClass(/is-failed/, { timeout: 5000 });
       const p = (await prints(page)).find((x) => x.n === 4);
-      expect(Math.abs(p.frame.w - Math.min(p.wf * p.roll.w, 720 * p.ar))).toBeLessThanOrEqual(2);
+      expect(Math.abs(p.frame.w - (profile === PHONE ? Math.min(p.pf * p.roll.w, 0.7 * 844 * p.ar) : Math.min(p.wf * p.roll.w, 720 * p.ar)))).toBeLessThanOrEqual(2);
       expect(await page.evaluate(() => getComputedStyle(document.querySelector('#print-04 .print__frame'), '::after').content)).toBe('"Image unavailable"');
     } finally {
       await ctx.close();
@@ -509,8 +527,9 @@ test.describe('A11 loop clips', () => {
     }
   });
 
-  test('reduced motion: no inline play', async ({ own: browser, browserName }) => {
-    const ctx = await context(browser, browserName, DESK, { init: [STUB], reduced: true });
+  // at 390 this is not vacuous: the 390 x 4200 context above shows loops do play inline on a phone profile
+  for (const [label, profile] of [['1440', DESK], ['390', PHONE]]) test(`reduced motion: no inline play at ${label}`, async ({ own: browser, browserName }) => {
+    const ctx = await context(browser, browserName, profile, { init: [STUB], reduced: true });
     const page = await ctx.newPage();
     try {
       await cold(page, 'project-06');

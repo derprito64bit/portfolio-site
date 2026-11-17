@@ -22,7 +22,7 @@ export const PLANTS = [
   ['strip-11px', 'A5', 'src/evf/style/print.css', '.print__n { flex: none; font-family: var(--f-mono); font-size: 12px;', '.print__n { flex: none; font-family: var(--f-mono); font-size: 11px;', 'roll.spec.mjs', 'own aspect'],
   ['width-96', 'A7', 'src/evf/style/print.css', 'width: min(calc(var(--f) * 100%), calc(80svh * var(--ar)));', 'width: min(calc(var(--f) * 96%), calc(80svh * var(--ar)));', 'roll.spec.mjs', '1440 x 900: width'],
   ['no-right-side', 'A7', 'src/evf/style/print.css', ".print[data-side='right'] { align-self: flex-end; }", '', 'roll.spec.mjs', '390 x 844: one column'],
-  ['late-expose', 'A8', 'src/evf/project/roll.ts', 'entering.forEach((p, k) => expose(p, (k % 4) * 0.1));', 'entering.forEach((p, k) => expose(p, 1.5 + k));', 'roll.spec.mjs', 'none blank 1.0 s after 50% visible$'],
+  ['late-expose', 'A8', 'src/evf/project/roll.ts', 'entering.forEach((p, k) => expose(p, (k % 4) * 0.1));', 'entering.forEach((p, k) => expose(p, 1.5 + k));', 'roll.spec.mjs', 'none blank 1.0 s after 50% visible at (1440|390)$'],
   ['measure-on-scroll', 'A9', 'src/evf/project/roll.ts', 'const onScroll = () => setFocus(pick());', 'const onScroll = () => { cache(); setFocus(pick()); };', 'roll.spec.mjs', 'the print nearest the centre'],
   ['dim-0.7', 'A9', 'src/evf/style/print.css', '.roll[data-dim] .print:not([data-focus], .is-failed) .print__frame:not(:has(> .print__box)) { opacity: 0.55; }', '.roll[data-dim] .print:not([data-focus], .is-failed) .print__frame:not(:has(> .print__box)) { opacity: 0.7; }', 'roll.spec.mjs', 'the print nearest the centre'],
   ['no-focus-return', 'A10', 'src/evf/project/playback.ts', 'linkOf(n)?.focus({ preventScroll: true });', 'void linkOf;', 'playback.spec.mjs', 'A10 at 1440'],
@@ -74,6 +74,8 @@ export const PLANTS = [
   ['cold-lit-first', 'A8', 'src/evf/style/print.css', '.pj-js .roll .print:not(.is-exp) .print__frame { filter', '.pj-js .roll[data-expose] .print:not(.is-exp) .print__frame { filter', 'roll.spec.mjs', 'never steps from lit to dark'],
   ['calm-dim-tie', 'A8', 'src/evf/style/print.css', '.calm.pj-js .roll[data-roll] .print:not(.is-exp) .print__frame', '.calm.pj-js .roll .print:not(.is-exp) .print__frame', 'roll.spec.mjs', 'before its module runs \\(calm\\)'],
   ['no-key-focus', 'A9', 'src/evf/project/roll.ts', "on(grid, 'focusin'", "on(grid, 'focusin-off'", 'roll.spec.mjs', 'keyboard to focus'],
+  ['phone-no-expose', 'A8', 'src/evf/project/roll.ts', 'if (!frame) return;', 'if (!frame || innerWidth < 760) return;', 'roll.spec.mjs', 'at 390'],
+  ['phone-calm-off', 'A13', 'src/evf/project/roll.ts', "const reduced = () => o.calm || matchMedia('(prefers-reduced-motion: reduce)').matches;", "const reduced = () => (o.calm || matchMedia('(prefers-reduced-motion: reduce)').matches) && innerWidth > 759;", 'roll.spec.mjs', 'reduced: opacity only\\) at 390'],
   ['cls-timer', 'A7', 'src/pages/work/[slug].astro', "addEventListener('error', (e) => {", "setTimeout(() => { if (!d.hasAttribute('data-roll')) d.classList.remove('pj-js'); }, 4000); addEventListener('error', (e) => {", 'roll.spec.mjs', 'slow module'],
 ];
 
