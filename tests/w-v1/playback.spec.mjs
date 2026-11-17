@@ -33,9 +33,9 @@ for (const [label, profile] of [['1440', DESK], ['390', PHONE]]) {
       expect(s.ro).toEqual(['03', '1080 × 1080', 'image']);
       expect(s.cap).toBe('[PLACEHOLDER: caption]');
       expect(s.media).toBe('PICTURE');
-      // the Flip lands in 0.6 s: the frame ends untransformed
-      await page.waitForTimeout(700);
-      expect(await page.evaluate(() => getComputedStyle(document.querySelector('.pb__frame')).transform)).toMatch(/^(none|matrix\(1, 0, 0, 1, 0, 0\))$/);
+      // the Flip lands (in 0.6 s: the gate's timing; a slow CI engine's long frame holds GSAP's clock): the frame ends
+      // untransformed
+      await expect.poll(() => page.evaluate(() => getComputedStyle(document.querySelector('.pb__frame')).transform), { message: 'the Flip lands untransformed', timeout: 3000 }).toMatch(/^(none|matrix\(1, 0, 0, 1, 0, 0\))$/);
 
       // arrows page; the address follows (replaceState)
       await page.keyboard.press('ArrowRight');

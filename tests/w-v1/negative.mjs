@@ -60,6 +60,8 @@ export const PLANTS = [
   // round 3, CI: the dim's saturation by CSS filter transition again (WPE's compositor crash), and a wrong end state
   ['filter-transition', 'A9', 'src/evf/style/print.css', '.roll[data-dim] .print { transition: opacity var(--step) var(--e-out); }', '.roll[data-dim] .print { transition: opacity var(--step) var(--e-out); }\n.roll[data-dim] .print__img { transition: filter var(--step) var(--e-out); }', 'roll.spec.mjs', 'the print nearest the centre'],
   ['sat-0.5', 'A9', 'src/evf/style/print.css', '.roll[data-dim] .print:not([data-focus]) .print__img { filter: saturate(0.4); }', '.roll[data-dim] .print:not([data-focus]) .print__img { filter: saturate(0.5); }', 'roll.spec.mjs', 'the print nearest the centre'],
+  // the Flip's landing, polled rather than read at 700 ms: a Flip that never lands untransformed still fails
+  ['flip-short', 'A10', 'src/evf/project/playback.ts', 'gsap.to(frame, { x: 0, y: 0, scaleX: 1, scaleY: 1, duration: D.land, ease: E.out });', 'gsap.to(frame, { x: 0, y: 0, scaleX: 0.9, scaleY: 0.9, duration: D.land, ease: E.out });', 'playback.spec.mjs', 'A10 at 1440'],
 ];
 
 const SKIP = new Set(['node_modules', 'dist', '.git', 'test-results', '.astro', 'playwright-report']);
