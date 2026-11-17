@@ -109,7 +109,7 @@ export function initProject(h: Host) {
   let enh: Enh | null = null;
   let enhLoad: Promise<Enh> | null = null;
   const loadEnh = () => (enhLoad ??= import('./enhance').then((m) => {
-    if (!enh) m.wireView(proj, col, () => h.state() === 'open', h.engine);
+    // probe P2: view.ts not wired
     return (enh = m);
   }, (e) => { enhLoad = null; throw e; }));
   function enhance() {
