@@ -75,6 +75,9 @@ export const PLANTS = [
   ['not-parsed-wait', 'A2', 'src/evf/project/inapp.ts', 'if (!ready) { fail(); return; }', 'if (!ready) return;', 'open.spec.mjs', 'not parsed by the landing'],
   ['step-mod-click', 'A2', 'src/evf/project/inapp.ts', 'if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;', '', 'open.spec.mjs', 'a modified click on previous or next'],
   ['cold-back-mod-click', 'A2', 'src/evf/project/cold.ts', 'if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;', '', 'open.spec.mjs', 'a modified click on a cold page'],
+  ['cold-restore-auto', 'A10', 'src/evf/project/cold.ts', "history.scrollRestoration = 'auto';", '', 'playback.spec.mjs', 'a reload after playback'],
+  // WebKit only (run with --project webkit): Chromium restores from the boot write alone
+  ['cold-restore-hide', 'A10', 'src/evf/project/cold.ts', "addEventListener('pagehide', autoRestore);", '', 'playback.spec.mjs', 'a reload after playback'],
 ];
 
 const SKIP = new Set(['node_modules', 'dist', '.git', 'test-results', '.astro', 'playwright-report']);

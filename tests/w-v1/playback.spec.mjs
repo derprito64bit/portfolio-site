@@ -660,3 +660,29 @@ test.describe('A2 / A10 history over playback: traversals that cross the open', 
     }
   });
 });
+
+// f27: playback's open leaves the history entry on 'manual' scroll restoration; every cold load starts from 'auto', so a
+// reload (or a Back from another page) puts the visitor back where they were
+test('A10 a reload after playback keeps the roll where the visitor was', async ({ browser, browserName }) => {
+  const ctx = await context(browser, browserName, DESK);
+  const page = await ctx.newPage();
+  try {
+    await cold(page, 'project-06');
+    await centrePrint(page, 6);
+    await page.waitForTimeout(300);
+    await page.locator('#print-06 [data-print-open]').click();
+    await expect.poll(async () => (await pb(page))?.hash).toBe('#print-06');
+    await page.waitForTimeout(700);
+    await page.keyboard.press('Escape');
+    await expect.poll(() => page.evaluate(() => [document.querySelector('dialog.pb')?.open, location.hash])).toEqual([false, '']);
+    const y0 = await page.evaluate(() => scrollY);
+    expect(y0, 'down in the roll').toBeGreaterThan(200);
+    await page.reload({ waitUntil: 'load' });
+    await page.waitForTimeout(400);
+    expect(await page.evaluate(() => history.scrollRestoration), 'the reloaded page restores its scroll').toBe('auto');
+    const y = await page.evaluate(() => scrollY);
+    expect(Math.abs(y - y0), `back where the visitor was (${y} against ${y0})`).toBeLessThanOrEqual(48);
+  } finally {
+    await ctx.close();
+  }
+});

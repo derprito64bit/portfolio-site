@@ -18,6 +18,12 @@ const calm = html.classList.contains('calm');
 const article = document.getElementById('pj') as HTMLElement;
 const n = Number(article.dataset.frame) || 1; // 1-based
 const hooks = testHooks(window, location.search);
+// playback's open leaves this entry on manual scroll restoration, and the mode outlives the document: every cold load
+// starts from auto, so a reload or a Back from another page restores the visitor's place (playback sets it again).
+// WebKit restores at its first layout, before this module runs, so the mode also goes back to auto as the page hides.
+const autoRestore = () => { history.scrollRestoration = 'auto'; };
+autoRestore();
+addEventListener('pagehide', autoRestore);
 let engine: Engine | null = null;
 let scene: Scene | null = null;
 let S: 'open' | 'closing' = 'open';
