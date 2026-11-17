@@ -524,6 +524,9 @@ test.describe('A11 loop clips', () => {
 });
 
 // fix-pass B1 (the W-V1 fix pass, batch B1: the roll and the print surface)
+/** The cold /work/<slug>/ page's entry module (cold.ts: initRoll, which sets the roll's [data-expose] and html[data-roll]). */
+const MODULE = /\/_astro\/_slug_\.astro_astro_type_script_index_0_lang\.[^/]+\.js/;
+
 test.describe('A9 focus (fix-pass B1)', () => {
   /** The opacity each match is composited at: its own times every ancestor's (an expression for page.evaluate). */
   const composite = (sel) => `[...document.querySelectorAll(${JSON.stringify(sel)})].map((e) => { let v = 1; for (let n = e; n; n = n.parentElement) v *= Number(getComputedStyle(n).opacity); return v; })`;
@@ -623,8 +626,6 @@ test.describe('A9 focus (fix-pass B1)', () => {
 });
 
 test.describe('A8 expose (fix-pass B1)', () => {
-  /** The cold page's entry module (and so initRoll, which sets the roll's [data-expose]). */
-  const MODULE = /\/_astro\/_slug_\.astro_astro_type_script_index_0_lang\.[^/]+\.js/;
   /** A cold page with its module held: the page as it paints before the module runs (the stylesheet in). */
   const held = async (page, slug) => {
     const routes = [];
@@ -714,6 +715,63 @@ test.describe('A8 expose (fix-pass B1)', () => {
     } finally {
       release(routes);
       await ctx.close();
+    }
+  });
+});
+
+test.describe('A7 the cold page while its module loads (fix-pass B1)', () => {
+  // f14: a 4 s timer took .pj-js off a page whose module was only slow: the header jumped to its no-JS layout (a layout
+  // shift) and the module then enhanced a page without .pj-js. Only a module that fails to load falls back now.
+  const head = (page) => page.evaluate(() => {
+    const cs = getComputedStyle(document.querySelector('.pj__head'));
+    return { pjjs: document.documentElement.classList.contains('pj-js'), roll: document.documentElement.hasAttribute('data-roll'), minHeight: cs.minHeight, paddingBottom: cs.paddingBottom };
+  });
+  const SHIFTS = `(() => { window.__ls = []; try { new PerformanceObserver((l) => { for (const e of l.getEntries()) if (!e.hadRecentInput) window.__ls.push({ t: e.startTime, v: e.value }); }).observe({ type: 'layout-shift', buffered: true }); } catch {} })();`;
+
+  for (const [label, profile] of [['phone', PHONE], ['desk', DESK]]) test(`slow module: the layout never changes on a timer (${label})`, async ({ own: browser, browserName }) => {
+    const ctx = await context(browser, browserName, profile, { init: [SHIFTS] });
+    const page = await ctx.newPage();
+    let release = () => {};
+    const gate = new Promise((r) => { release = r; });
+    try {
+      // a real wait, no page.clock: a faked clock would slow GSAP and the module too
+      await page.route(MODULE, async (r) => { await gate; await r.continue().catch(() => {}); });
+      await page.goto(`${base()}/work/project-06/?vf-test`, { waitUntil: 'commit' }); // the held module holds DOMContentLoaded and load
+      await page.waitForSelector('.pj__head', { state: 'visible' });
+      await page.waitForTimeout(4600);
+      const st = await head(page);
+      expect([st.pjjs, st.roll], 'past 4 s, the module still loading: pj-js holds').toEqual([true, false]);
+      expect(st.minHeight, 'the enhanced header (not the no-JS min-height 0)').not.toBe('0px');
+      expect(st.paddingBottom, 'the enhanced header (not the no-JS 48 px)').not.toBe('48px');
+      const at = await page.evaluate(() => performance.now());
+      release();
+      await page.waitForFunction(() => document.documentElement.hasAttribute('data-roll'), null, { timeout: 15000 });
+      expect((await head(page)).pjjs, 'the module enhanced a pj-js page').toBe(true);
+      if (browserName === 'chromium') {
+        // WebKit has no layout-shift entries; the module's own landing is cls-gl.spec's
+        const shifts = await page.evaluate((t) => window.__ls.filter((e) => e.t >= 3900 && e.t <= t), at);
+        expect(shifts, 'layout shifts from 3.9 s until the module came').toEqual([]);
+      }
+    } finally {
+      release();
+      await ctx.close();
+    }
+  });
+
+  test('module failure still falls back to the plain header', async ({ own: browser, browserName }) => {
+    for (const profile of [PHONE, DESK]) {
+      const ctx = await context(browser, browserName, profile);
+      const page = await ctx.newPage();
+      try {
+        await page.route(MODULE, (r) => r.abort());
+        await page.goto(`${base()}/work/project-06/?vf-test`, { waitUntil: 'domcontentloaded' });
+        // not under 5 s: before f14 the 4 s timer was the way down
+        await page.waitForFunction(() => !document.documentElement.classList.contains('pj-js'), null, { timeout: 8000 });
+        const st = await head(page);
+        expect([st.minHeight, st.paddingBottom], `the no-JS header at ${profile.viewport.width}`).toEqual(['0px', '48px']);
+      } finally {
+        await ctx.close();
+      }
     }
   });
 });

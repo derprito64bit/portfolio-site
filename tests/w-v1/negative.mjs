@@ -73,6 +73,7 @@ export const PLANTS = [
   ['scroll-snaps-af', 'A9', 'src/evf/project/roll.ts', 'if (n === cur) { if (dim && jump) place(n, true); return; }', 'if (n === cur) { if (dim) place(n, true); return; }', 'roll.spec.mjs', 'the brackets glide through'],
   ['cold-lit-first', 'A8', 'src/evf/style/print.css', '.pj-js .roll .print:not(.is-exp) .print__frame { filter', '.pj-js .roll[data-expose] .print:not(.is-exp) .print__frame { filter', 'roll.spec.mjs', 'never steps from lit to dark'],
   ['calm-dim-tie', 'A8', 'src/evf/style/print.css', '.calm.pj-js .roll[data-roll] .print:not(.is-exp) .print__frame', '.calm.pj-js .roll .print:not(.is-exp) .print__frame', 'roll.spec.mjs', 'before its module runs \\(calm\\)'],
+  ['cls-timer', 'A7', 'src/pages/work/[slug].astro', "addEventListener('error', (e) => {", "setTimeout(() => { if (!d.hasAttribute('data-roll')) d.classList.remove('pj-js'); }, 4000); addEventListener('error', (e) => {", 'roll.spec.mjs', 'slow module'],
 ];
 
 const SKIP = new Set(['node_modules', 'dist', '.git', 'test-results', '.astro', 'playwright-report']);

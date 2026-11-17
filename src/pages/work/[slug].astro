@@ -30,8 +30,11 @@ const count = p.prints.length;
       const d = document.documentElement;
       d.classList.add('pj-js');
       if (matchMedia('(prefers-reduced-motion: reduce)').matches) d.classList.add('calm');
-      // the prints wait underexposed for the roll script; if it never runs, show them as they are
-      setTimeout(() => { if (!d.hasAttribute('data-roll')) d.classList.remove('pj-js'); }, 4000);
+      // the prints wait underexposed for the roll script; if its module fails to load, show the no-JS page (never on a timer: CLS)
+      addEventListener('error', (e) => {
+        const t = e.target;
+        if (t instanceof HTMLScriptElement && t.type === 'module' && !d.hasAttribute('data-roll')) d.classList.remove('pj-js');
+      }, true);
     })();
   </script>
   <header class="pj-bar" slot="before">
