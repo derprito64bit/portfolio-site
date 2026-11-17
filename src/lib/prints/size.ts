@@ -10,6 +10,7 @@
 //   frames clamp to 9:21 .. 21:9; a more extreme image is letterboxed inside its frame, never cropped
 //   pack(): rows in content order; a gap is filled only by the next print; every second print in a row drops half its
 //   height (the zigzag); a lone print alternates sides; widthFrac = span / 12 x f of the roll's width
+//   in a full row (no spare column), f gives up GAP_COLS / 2 per inner side so neighbours never touch
 //   phone (under 760 px): one column; landscape and wide 100%, square 72%, portrait 56%, hero 100%, detail x 0.7;
 //   prints alternate left and right
 // Height caps (80 svh, phone 70 svh) are CSS: width = min(widthFrac x roll width, maxH x frame aspect).
@@ -33,6 +34,8 @@ export const MAX_H_SVH = 80;
 export const MAX_H_SVH_PHONE = 70;
 /** The phone breakpoint, in CSS px (the roll is one column below it). */
 export const PHONE_MAX = 759;
+/** The least gap between two prints in a row, in columns: 29 px on a 1384 px roll, 15 px at the 704 px minimum. */
+export const GAP_COLS = 0.25;
 
 const SLOT: Record<Bucket, number> = { wide: 12, landscape: 7, square: 5, portrait: 4 };
 const PHONE_W: Record<Bucket, number> = { wide: 1, landscape: 1, square: 0.72, portrait: 0.56 };
@@ -186,10 +189,16 @@ export function pack(prints: PrintInput[]): PackedPrint[] {
     // several prints: the first starts at column 1, the last ends at column 12, the spare columns go between them
     const spare = COLS - sum;
     const gaps = idx.length - 1;
+    // a row with spare columns already has at least one column between prints; only a full row cuts its gap from f
+    const tight = spare < gaps;
     let col = 1;
     idx.forEach((i, k) => {
       const justify: Justify = k === 0 ? 'start' : k === idx.length - 1 ? 'end' : 'center';
-      out[i] = place(sized[i], row, col, justify, k % 2 === 1, i);
+      // half a gap per inner side: the first print's slack is all on its right, the last's all on its left
+      const inner = (k > 0 ? 1 : 0) + (k < gaps ? 1 : 0);
+      const fMax = tight ? 1 - (inner * GAP_COLS) / 2 / spans[k] : 1;
+      const s = sized[i].f > fMax ? { ...sized[i], f: fMax } : sized[i];
+      out[i] = place(s, row, col, justify, k % 2 === 1, i);
       col += spans[k] + (k < gaps ? Math.floor(spare / gaps) + (k < spare % gaps ? 1 : 0) : 0);
     });
   });

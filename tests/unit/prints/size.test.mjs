@@ -174,6 +174,29 @@ rule('ladder: 480, 800, 1280, 1920, never upscaled; class tokens by rung, first 
   assert.equal(widest(files, 'avif'), '/m/a-large-1920.avif');
 });
 
+// fix-pass B5
+// f19: in a full row (no spare column) f gives up GAP_COLS / 2 per inner side, so neighbours never touch (the 8 px focus
+// ring and the 7 px AF brackets need room); a row with spare columns already has a whole column between its prints and
+// keeps D-044's f. A print's drawn extent in columns: it starts at col - 1, plus its slack before it (none when start-
+// justified, half when centred, all when end-justified).
+const extent = (p) => { const left = p.col - 1 + (p.justify === 'start' ? 0 : p.justify === 'center' ? (p.span * (1 - p.f)) / 2 : p.span * (1 - p.f)); return { left, right: left + p.span * p.f }; };
+rule('pack: neighbours in a row keep at least GAP_COLS between them; rows with room keep their f', (S) => {
+  const { GAP_COLS, pack, sizePrint } = S;
+  assert.ok((GAP_COLS * 704) / 12 >= 12, 'at the 704 px minimum roll the gap clears the 8 px ring');
+  const P = { w: 3024, h: 4032 }, Q = { w: 3024, h: 3024 }, L = { w: 4032, h: 3024 };
+  for (const r of [[P, P, P], [Q, L], [L, Q], [Q, P], [L, P]]) {
+    const p = pack(r);
+    for (let k = 1; k < p.length; k++) {
+      if (p[k].row !== p[k - 1].row) continue;
+      const gap = extent(p[k]).left - extent(p[k - 1]).right;
+      assert.ok(gap >= GAP_COLS - 1e-9, `${r.map((x) => `${x.w}x${x.h}`).join(' + ')}: ${gap} columns between prints ${k} and ${k + 1}`);
+    }
+  }
+  assert.deepEqual(pack([L, P]).map((x) => x.f), [1, 1], 'a 7 + 4 row has a spare column: f stays 1');
+  const room = [{ w: 1920, h: 1200 }, { w: 1170, h: 2532 }];
+  pack(room).forEach((p, k) => near(p.f, sizePrint(room[k]).f, `a row with room keeps D-044's f (print ${k + 1})`));
+});
+
 // Negative controls: one planted defect per branch class; the rules above must fail on every one.
 const MUTANTS = [
   ['square band loses its upper edge', 'if (r <= 1.25) return', 'if (r < 1.25) return'],
@@ -187,6 +210,10 @@ const MUTANTS = [
   ['s over 3 stops', 'Math.log2(px / SMALL_PX) / 4', 'Math.log2(px / SMALL_PX) / 3'],
   ['phone portrait 60%', 'portrait: 0.56', 'portrait: 0.6'],
   ['lone prints never alternate', 'if (lone % 2 === 1) {', 'if (false) {'],
+  // fix-pass B5: f19
+  ['full rows touch', 'const fMax = tight ? 1 - (inner * GAP_COLS) / 2 / spans[k] : 1;', 'const fMax = 1;'],
+  ['rows with room are capped too', 'const tight = spare < gaps;', 'const tight = true;'],
+  ['no gutter constant', 'export const GAP_COLS = 0.25;', 'export const GAP_COLS = 0;'],
 ];
 test('negative controls: every mutant of size.ts fails the rules', async () => {
   const src = readFileSync(join(SRC, 'size.ts'), 'utf8');
