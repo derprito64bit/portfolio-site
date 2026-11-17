@@ -242,6 +242,8 @@ export function initPlayback(o: PlaybackOptions): PlaybackControl {
       const n = cur;
       const had = pushed;
       cur = -1;
+      // a clip never plays on in the hidden dialog (WCAG 1.4.2): the sound stops with the close, not after the Flip
+      parts.frame?.querySelector('video')?.pause();
       if (!fromPop) {
         if (pushed) { pushed = false; hist.back(); }
         else if (/^#print-\d+$/.test(location.hash)) hist.replace('');

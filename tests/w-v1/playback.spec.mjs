@@ -556,3 +556,37 @@ test.describe('A13 calm, no WebGL, no JS', () => {
     });
   }
 });
+
+// fix-pass B3
+// f10: a clip in playback is paused at the close request (WCAG 1.4.2), not left playing in the hidden dialog. The stub
+// logs each play and pause with where it ran and, for a pause, whether the dialog was still open: a pause logged while
+// open is the close's own, not the detach of a later fill or of the Flip's end.
+const MEDIA_LOG = `(() => {
+  window.__media = [];
+  const at = (v) => (v.closest('.pb__frame') ? 'pb' : v.closest('.print')?.id);
+  HTMLMediaElement.prototype.play = function () { window.__media.push(['play', at(this)]); this.dispatchEvent(new Event('playing')); return Promise.resolve(); };
+  HTMLMediaElement.prototype.pause = function () { window.__media.push(['pause', at(this), !!this.closest('dialog')?.open]); };
+})();`;
+test('A10 / A11 a clip in playback is paused when playback closes, by Esc, Close or Back', async ({ browser, browserName }) => {
+  const ctx = await context(browser, browserName, DESK, { init: [MEDIA_LOG] });
+  try {
+    for (const closer of ['Esc', 'Close', 'Back']) {
+      const page = await ctx.newPage();
+      await cold(page, 'project-06');
+      await centrePrint(page, 5);
+      await page.locator('#print-05 [data-print-open]').click();
+      await expect.poll(async () => (await pb(page))?.open).toBe(true);
+      await expect.poll(async () => (await pb(page)).media).toBe('VIDEO');
+      await page.evaluate(() => { document.querySelector('.pb__frame video').play(); window.__media = []; });
+      if (closer === 'Esc') await page.keyboard.press('Escape');
+      else if (closer === 'Close') await page.locator('dialog.pb [data-pb-close]').click();
+      else await page.goBack();
+      await expect.poll(async () => (await pb(page)).open).toBe(false);
+      const calls = await page.evaluate(() => window.__media);
+      expect(calls.filter((c) => c[0] === 'pause' && c[1] === 'pb'), `${closer}: the playback clip is paused once, at the close request (log: ${JSON.stringify(calls)})`).toEqual([['pause', 'pb', true]]);
+      await page.close();
+    }
+  } finally {
+    await ctx.close();
+  }
+});
