@@ -248,6 +248,8 @@ export function initProject(h: Host) {
     const fl = { v: 23 };
     const flUp = () => { const v = nearestFl(fl.v); flEl.textContent = String(v); fl2.textContent = `${v}mm`; };
     afEl.classList.add('is-off');
+    // one focal-length readout at a time: the bar's waits for the HUD's to hand over at the landing (below)
+    fl2.style.visibility = 'hidden';
     const t = gsap.timeline({ onComplete: () => h.setTl(null) });
     h.setTl(t);
     t.call(settle, [], D.travel);
@@ -259,7 +261,7 @@ export function initProject(h: Host) {
     st.ndv = isPhone() ? 1 : 0;
     t.to(fl, { v: 56, duration: D.travel, ease: E.lens, onUpdate: flUp }, 0);
     t.to(st, { nd: isPhone() ? 0.9 : 1, duration: D.land, ease: E.out }, D.travel - 0.15);
-    t.call(() => $('.ro--fl').classList.remove('on'), [], D.travel - 0.14);
+    t.call(() => { $('.ro--fl').classList.remove('on'); fl2.style.visibility = ''; }, [], D.travel - 0.14);
   }
 
   // ---------------------------------------------------------------- close

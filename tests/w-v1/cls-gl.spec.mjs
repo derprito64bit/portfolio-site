@@ -190,3 +190,50 @@ test('A7 cold page with GL: the frame\'s dim reads the scroll before the roll wr
     await ctx.close();
   }
 });
+
+/** Logs, on every animation frame from now, whether the HUD's focal-length readout and the open view's bar readout are
+ *  shown (visible, effective opacity over 0.02 with every ancestor counted) and the bar readout's effective opacity. */
+function readoutSampler() {
+  const eff = (el) => { let o = 1; for (let e = el; e && e.nodeType === 1; e = e.parentElement) { const s = getComputedStyle(e); if (s.display === 'none') return 0; o *= parseFloat(s.opacity); } return o; };
+  const shown = (el) => getComputedStyle(el).visibility === 'visible' && !el.closest('[hidden]') && eff(el) > 0.02;
+  const hud = document.querySelector('.ro--fl'), bar = document.querySelector('[data-fl2]');
+  const log = [];
+  let stop = false;
+  window.__ro = { log, stop: () => { stop = true; return log; } };
+  const t0 = performance.now();
+  const f = () => {
+    if (stop) return;
+    log.push({ t: Math.round(performance.now() - t0), hud: shown(hud), bar: shown(bar), barO: Math.round(eff(bar) * 100) / 100 });
+    requestAnimationFrame(f);
+  };
+  requestAnimationFrame(f);
+}
+
+// wv1-landing-readout-double: the zoom's 23 to 56 mm readout hands over to the open view's bar at the landing; no frame
+// shows both (the gate saw "56 mm" twice in WebKit at 1440) or neither
+test('A2 with GL at 1440: one focal-length readout on every frame of the open\'s landing', async ({ browser, browserName }) => {
+  test.setTimeout(240_000);
+  const ctx = await context(browser, browserName, DESK, { gl: true });
+  const page = await ctx.newPage();
+  try {
+    await home(page);
+    test.skip(!(await page.evaluate(() => Boolean(window.__vfEngine))), 'no WebGL in this browser here: the row guards on the reference host');
+    await page.keyboard.press('Enter');
+    await untilState(page, 'evf', 0, GL_MS);
+    await page.keyboard.press('ArrowRight');
+    await untilState(page, 'evf', 1, GL_MS);
+    await page.waitForTimeout(600);
+    await page.evaluate(`(${readoutSampler})()`);
+    await page.keyboard.press('Enter');
+    await untilState(page, 'open', 1, GL_MS);
+    await page.waitForTimeout(400);
+    const log = await page.evaluate(() => window.__ro.stop());
+    const both = log.filter((x) => x.hud && x.bar), none = log.filter((x) => !x.hud && !x.bar);
+    test.info().annotations.push({ type: 'readouts', description: JSON.stringify({ frames: log.length, both: both.length, none: none.length }) });
+    expect(log.filter((x) => x.barO > 0.02 && x.barO < 0.98).length, 'frames sampled while the bar fades in').toBeGreaterThan(0);
+    expect(both.map((x) => `${x.t} ms (bar ${x.barO})`), 'no frame shows both readouts').toEqual([]);
+    expect(none.map((x) => `${x.t} ms`), 'no frame shows neither').toEqual([]);
+  } finally {
+    await ctx.close();
+  }
+});
