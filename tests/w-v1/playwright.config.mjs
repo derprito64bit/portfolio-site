@@ -23,6 +23,6 @@ export default defineConfig({
   outputDir: '../../test-results/w-v1',
   use: { headless: true, trace: 'off', screenshot: 'off', video: 'off' },
   projects: [
-    { name: 'webkit', use: { browserName: 'webkit' } },
+    { name: 'webkit', use: { browserName: 'webkit', launchOptions: { env: { ...process.env, WEBKIT_SKIA_ENABLE_CPU_RENDERING: '1' } } } },
   ],
 });
