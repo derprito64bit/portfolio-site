@@ -136,7 +136,10 @@ test.describe('A7 layout', () => {
 
   // the AF brackets sit 7 px outside the focused print: on a print flush with the roll's edge they overflowed the roll
   // by 7 px at 1440 (the gate's frames row, 9f25a82); every step of the roll, cold and in the open view
-  test('overflow 0 at 1440 with the brackets on: every step through the roll, cold and in the open view', async ({ own: browser, browserName }) => {
+  // each place a row of its own, in a fresh browser (lib.mjs `fresh`): CI's WebKit (Linux, WPE) segfaults in its
+  // compositor during these long scripted sweeps, cold pages and the open view alike, and round 2's source does too
+  // (#114's round-3 CI probes); a crash runs the row again, an assertion failure never does. Steps and assertions as before.
+  for (const where of ['project-01', 'project-06', 'the open view']) test(`overflow 0 at 1440 with the brackets on: every step through the roll (${where === 'the open view' ? where : `cold ${where}`})`, async ({ fresh, browserName }) => fresh(async (browser) => {
     const ctx = await context(browser, browserName, DESK);
     const page = await ctx.newPage();
     // after each scroll step: every frame for 320 ms, how far the brackets' drawn box (their inline transform and width,
@@ -169,7 +172,7 @@ test.describe('A7 layout', () => {
       expect(worst, `${where}: steps with overflow`).toEqual([]);
     };
     try {
-      for (const slug of ['project-01', 'project-06']) { await cold(page, slug); await sweep(slug); }
+      if (where !== 'the open view') { await cold(page, where); await sweep(where); return; }
       await home(page);
       await toFrame(page, 5);
       await page.keyboard.press('Enter');
@@ -178,7 +181,7 @@ test.describe('A7 layout', () => {
     } finally {
       await ctx.close();
     }
-  });
+  }));
 
   test('CLS 0.02 or less over the open path (Chromium: the layout-shift entries)', async ({ own: browser, browserName }) => {
     test.skip(browserName !== 'chromium', 'WebKit has no layout-shift entries; the gate traces CLS in Chromium');
@@ -317,7 +320,8 @@ test.describe('A9 focus', () => {
     }
   });
 
-  test('the centre line leads: a print the line crosses has focus; the last print takes it at the scroll end (12 / 12)', async ({ own: browser, browserName }) => {
+  // each place a row of its own, in a fresh browser (WebKit's compositor crash in CI: see the overflow rows above)
+  for (const where of ['cold page', 'the open view', 'cold page at 1440 x 1800']) test(`the centre line leads: a print the line crosses has focus; the last print takes it at the scroll end (12 / 12) (${where})`, async ({ fresh, browserName }) => fresh(async (browser) => {
     const ctx = await context(browser, browserName, DESK);
     const page = await ctx.newPage();
     /** Steps the scroller (the window, or the open view's column) through the roll; at each stop, the focused print and
@@ -347,30 +351,35 @@ test.describe('A9 focus', () => {
       expect(last, `${where}: the scroll end`).toEqual({ focus: 12, counter: '12 / 12' });
     };
     try {
-      await cold(page, 'project-06');
-      check(await sweep(), 'cold page');
-      await home(page);
-      await toFrame(page, 5);
-      await page.keyboard.press('Enter');
-      await untilState(page, 'open', 5);
-      check(await sweep(), 'the open view');
-      // a tall view: at the scroll end the centre line crosses print 11, and the last print still takes focus
-      await page.setViewportSize({ width: 1440, height: 1800 });
-      await cold(page, 'project-06');
-      const tall = await sweep();
-      expect(tall.out.at(-1).crossing, 'the case the end rule exists for').not.toContain(12);
-      check(tall, 'cold page at 1440 x 1800');
+      if (where === 'cold page') {
+        await cold(page, 'project-06');
+        check(await sweep(), where);
+      } else if (where === 'the open view') {
+        await home(page);
+        await toFrame(page, 5);
+        await page.keyboard.press('Enter');
+        await untilState(page, 'open', 5);
+        check(await sweep(), where);
+      } else {
+        // a tall view: at the scroll end the centre line crosses print 11, and the last print still takes focus
+        await page.setViewportSize({ width: 1440, height: 1800 });
+        await cold(page, 'project-06');
+        const tall = await sweep();
+        expect(tall.out.at(-1).crossing, 'the case the end rule exists for').not.toContain(12);
+        check(tall, where);
+      }
     } finally {
       await ctx.close();
     }
-  });
+  }));
 
-  test('hover to focus: a fine pointer on a print takes the brackets and full brightness; the next scroll returns to the centre line', async ({ own: browser, browserName }) => {
+  // the cold page and the open view each a row of its own, in a fresh browser (as the overflow rows above)
+  for (const place of ['cold', 'open']) test(`hover to focus: a fine pointer on a print takes the brackets and full brightness; the next scroll returns to the centre line (${place})`, async ({ fresh, browserName }) => fresh(async (browser) => {
     const ctx = await context(browser, browserName, DESK);
     const page = await ctx.newPage();
     const focusOf = () => page.evaluate(() => document.querySelector('.roll').dataset.focus);
     try {
-      for (const where of ['cold', 'open']) {
+      for (const where of [place]) {
         if (where === 'cold') await cold(page, 'project-06');
         else { await home(page); await toFrame(page, 5); await page.keyboard.press('Enter'); await untilState(page, 'open', 5); }
         await centrePrint(page, 5);
@@ -421,7 +430,7 @@ test.describe('A9 focus', () => {
     } finally {
       await ctx.close();
     }
-  });
+  }));
 
   test('no dim under 4 prints, nor on touch', async ({ own: browser, browserName }) => {
     const ctx = await context(browser, browserName, DESK);
