@@ -53,6 +53,11 @@ export function pageProblems(html, p, i, { dist = DIST, total = projects.length 
     const box = /class="print__box"><span class="ph">\[PLACEHOLDER: [^\]]+\]<\/span>/.test(body);
     need(Boolean(img) || box, `${at}: an img or a typed placeholder box`);
     need(/<figcaption class="print__strip"><span class="print__n">\d\d<\/span><span class="print__cap">/.test(body), `${at}: the caption strip`);
+    // fix-pass B1 (f01): the link's name comes from its content (the image's alt, then a hidden "Print NN of MM, ...:
+    // open in playback"), never an aria-label that hides the alt; before the img check, so a placeholder box counts too
+    const a = /<a class="print__a"[^>]*>/.exec(body)?.[0] ?? '';
+    need(a !== '' && attr(a, 'aria-label') === null && attr(a, 'aria-labelledby') === null, `${at}: link named by its content, not aria-label`);
+    need(/<span class="sr">[^<]*open in playback<\/span>\s*<\/a>/.test(body), `${at}: the hidden action text is the last child of the link`);
     need((/--lqip:url\(data:image\/webp;base64,[A-Za-z0-9+/=]+\)/.test(fattrs)) === (k < 3), `${at}: the LQIP inline for the first 3 only`);
     const lq = /--lqip:url\(data:image\/webp;base64,([A-Za-z0-9+/=]+)\)/.exec(fattrs);
     if (lq) need(Buffer.from(lq[1], 'base64').length <= 300, `${at}: LQIP <= 300 B`);
@@ -154,6 +159,7 @@ test('negative controls: the page checks catch each planted defect', { skip: !bu
     ['no strip', (h) => h.replace('<figcaption class="print__strip">', '<figcaption>'), /caption strip/],
     // fix-pass B1
     ['counter shown', (h) => h.replace(/(<span[^>]*data-print-count[^>]*?)\shidden(?=[\s>])/, '$1'), /counter renders hidden/],
+    ['a link label masking the alt', (h) => h.replace('class="print__a" href=', 'class="print__a" aria-label="x" href='), /named by its content/],
   ];
   assert.deepEqual(pageProblems(real, p, i), [], 'the real page is clean');
   for (const [name, plant, re] of plants) {

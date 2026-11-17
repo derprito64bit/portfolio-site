@@ -856,3 +856,29 @@ test.describe('A9 keyboard focus (fix-pass B1)', () => {
     }
   });
 });
+
+test.describe('A1 the print\'s accessible name (fix-pass B1)', () => {
+  // f01: the link's aria-label overrode its content, so the image's alt never reached the roll's names. Playwright's
+  // accessible-name reading is its own, the same in both engines: the dist test is the primary guard
+  test('the print link is named by the image\'s alt, then "Print NN of MM, <kind>: open in playback"', async ({ own: browser, browserName }) => {
+    const ctx = await context(browser, browserName, DESK);
+    const page = await ctx.newPage();
+    try {
+      for (const slug of ['project-01', 'project-02']) {
+        await cold(page, slug);
+        const figs = page.locator('.print');
+        const n = await figs.count();
+        expect(n, `${slug}: prints`).toBeGreaterThan(0);
+        for (let k = 0; k < n; k++) {
+          const fig = figs.nth(k);
+          const link = fig.locator('.print__a');
+          const alt = (await fig.locator('img.print__img').count()) ? await fig.locator('img.print__img').getAttribute('alt') : '';
+          if (alt) await expect(link, `${slug} #${k + 1}: the alt in the name`).toHaveAccessibleName(new RegExp(alt.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+          await expect(link, `${slug} #${k + 1}: the action in the name`).toHaveAccessibleName(/Print \d\d of \d\d, .*open in playback/);
+        }
+      }
+    } finally {
+      await ctx.close();
+    }
+  });
+});
