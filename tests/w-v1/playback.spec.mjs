@@ -590,3 +590,82 @@ test('A10 / A11 a clip in playback is paused when playback closes, by Esc, Close
     await ctx.close();
   }
 });
+
+// f09: a clip's own controls keep their keys and drags: an arrow on the clip is not cancelled (it seeks) and does not
+// page, and a horizontal drag that starts on the clip (its scrubber) does not page; the same drag on the bar does. The
+// fixture clips have no file, so print 05 is given one (an address that answers 404: the clip still has its controls).
+/** A drag 150 px to the left, as pointer events on `sel` (every field set: a pointerup without clientY reads as 300 px up). */
+const swipeOn = (page, sel) => page.evaluate((s) => {
+  const t = document.querySelector(s);
+  t.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 9, clientX: 300, clientY: 300, bubbles: true }));
+  t.dispatchEvent(new PointerEvent('pointerup', { pointerId: 9, clientX: 150, clientY: 300, bubbles: true }));
+}, sel);
+for (const [label, profile] of [['1440', DESK], ['390', PHONE]]) {
+  test(`A10 / A11 at ${label}: a clip in playback keeps its own arrow keys and drags`, async ({ browser, browserName }) => {
+    const ctx = await context(browser, browserName, profile);
+    const page = await ctx.newPage();
+    await page.route(/\/b3-clip\.mp4$/, (r) => r.fulfill({ status: 404, body: '' }));
+    const open5 = async () => {
+      await page.locator('#print-05 [data-print-open]').focus();
+      await page.keyboard.press('Enter');
+      await expect.poll(async () => (await pb(page))?.open).toBe(true);
+      await expect.poll(async () => (await pb(page)).hash).toBe('#print-05');
+    };
+    const on5 = async (why) => {
+      const s = await pb(page);
+      expect([s.hash, s.ro[0], s.media], why).toEqual(['#print-05', '05', 'VIDEO']);
+    };
+    try {
+      await cold(page, 'project-06');
+      await centrePrint(page, 5);
+      await page.evaluate(() => { document.querySelector('#print-05 video').dataset.src = '/media/b3-clip.mp4'; });
+      await open5();
+      await expect.poll(async () => (await pb(page)).media).toBe('VIDEO');
+      expect(await page.evaluate(() => document.querySelector('.pb__frame video').controls), 'the clip has its controls').toBe(true);
+      await expect.poll(() => page.evaluate(() => getComputedStyle(document.querySelector('.pb__frame')).transform), { timeout: 3000 }).toMatch(/^(none|matrix\(1, 0, 0, 1, 0, 0\))$/);
+      // the arrows on the clip: not cancelled (the native seek runs), no paging
+      for (const key of ['ArrowRight', 'ArrowLeft']) {
+        const prevented = await page.evaluate((k) => { const e = new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true }); document.querySelector('.pb__frame video').dispatchEvent(e); return e.defaultPrevented; }, key);
+        expect(prevented, `${key} on the clip is not cancelled`).toBe(false);
+        await page.waitForTimeout(200);
+        await on5(`${key} on the clip does not page`);
+      }
+      const focused = await page.evaluate(() => { document.querySelector('.pb__frame video').focus(); return document.activeElement?.tagName; });
+      if (browserName === 'chromium') expect(focused, 'the clip takes focus').toBe('VIDEO');
+      if (focused === 'VIDEO') {
+        await page.keyboard.press('ArrowRight');
+        await page.waitForTimeout(200);
+        await on5('a real ArrowRight on the focused clip does not page');
+      }
+      // a drag that starts on the clip (its scrubber) does not page
+      await swipeOn(page, '.pb__frame video');
+      await page.waitForTimeout(300);
+      await on5('a drag that starts on the clip does not page');
+      if (!profile.hasTouch) {
+        const r = await page.locator('.pb__frame video').boundingBox();
+        await page.mouse.move(r.x + r.width / 2, r.y + r.height / 2);
+        await page.mouse.down();
+        await page.mouse.move(r.x + r.width / 2 - 80, r.y + r.height / 2, { steps: 4 });
+        await page.mouse.move(r.x + r.width / 2 - 160, r.y + r.height / 2, { steps: 4 });
+        await page.mouse.up();
+        await page.waitForTimeout(300);
+        await on5('a mouse drag across the clip does not page');
+      }
+      // Esc from the clip still closes
+      if (focused === 'VIDEO') await page.evaluate(() => document.querySelector('.pb__frame video').focus());
+      await page.keyboard.press('Escape');
+      await expect.poll(async () => (await pb(page)).open).toBe(false);
+      await expect.poll(() => page.evaluate(() => location.hash)).toBe('');
+      expect((await pb(page)).focus, 'focus returns to the print').toBe('print-05');
+      // the control: the same drag on the bar pages, and the arrows page from Close
+      await open5();
+      await swipeOn(page, '.pb__bar');
+      await expect.poll(async () => (await pb(page)).hash, { message: 'a drag on the bar pages', timeout: 1000 }).toBe('#print-06');
+      await page.locator('dialog.pb [data-pb-close]').focus();
+      await pages(page, 'ArrowLeft', '#print-05');
+      await pages(page, 'ArrowRight', '#print-06');
+    } finally {
+      await ctx.close();
+    }
+  });
+}

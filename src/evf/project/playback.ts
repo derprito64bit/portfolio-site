@@ -81,7 +81,8 @@ export function initPlayback(o: PlaybackOptions): PlaybackControl {
     d.addEventListener('wheel', stop, { passive: false });
     d.addEventListener('touchmove', stop, { passive: false });
     let sx = 0, sy = 0, sid = -1;
-    d.addEventListener('pointerdown', (e) => { sid = e.pointerId; sx = e.clientX; sy = e.clientY; });
+    // a drag that starts on a clip is its own (the scrubber): no page
+    d.addEventListener('pointerdown', (e) => { if ((e.target as Element | null)?.closest?.('video')) { sid = -1; return; } sid = e.pointerId; sx = e.clientX; sy = e.clientY; });
     d.addEventListener('pointerup', (e) => {
       if (e.pointerId !== sid) return;
       sid = -1;
