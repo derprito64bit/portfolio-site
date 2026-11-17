@@ -37,7 +37,9 @@ export const ownBrowser = base0.extend({
       console.log(`[probe] core_pattern: ${sh('cat /proc/sys/kernel/core_pattern')}; ulimit -c: ${sh('bash -c "ulimit -c"')}`);
       console.log(`[probe] /var/crash: ${sh('ls -la /var/crash 2>&1 | tail -5')}`);
       console.log(`[probe] coredumpctl: ${sh('coredumpctl list --no-pager 2>&1 | tail -3')}`);
-      console.log(`[probe] coredump info:\n${sh('sudo coredumpctl info --no-pager -1 2>&1 | head -90')}`);
+      console.log(`[probe] coredump signal: ${sh('sudo coredumpctl info --no-pager -1 2>&1 | grep -E "Signal:|Timestamp:"')}`);
+      console.log(`[probe] crashing thread:\n${sh('sudo coredumpctl info --no-pager -1 2>&1 | awk \'/Stack trace of thread/{n++} n==1\' | head -40')}`);
+      console.log(`[probe] threads: ${sh('sudo coredumpctl info --no-pager -1 2>&1 | grep -c "Stack trace of thread"')}`);
       console.log(`[probe] journal:\n${sh('sudo journalctl --no-pager -n 30 2>&1 | grep -iE "segfault|core|crash|WPE|WebKit|signal|abort" | tail -15')}`);
     }
     await b.close();
