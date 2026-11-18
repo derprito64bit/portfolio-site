@@ -833,12 +833,25 @@ test.describe('A9 keyboard focus (fix-pass B1)', () => {
         await page.waitForTimeout(150);
       }
     };
-    /** Print n's state: AF focus, its frame's and image's dim, the brackets on it, the counter. */
-    const stateOf = (n) => page.evaluate((k) => {
+    /** Print n's state: AF focus, its frame's and image's dim, the brackets on it, the counter. Read once it has landed
+     *  (the brackets' glide, the frame's opacity transition and the image's saturation tween, 0.24 s each), checked each
+     *  frame and given up only after 60 frames and 2 s both: a fixed wait read them mid-flight on CI's WebKit, whose
+     *  frames can run past GSAP's 500 ms lag-smoothing threshold (a tween then moves 33 ms a frame). */
+    const stateOf = (n) => page.evaluate((k) => new Promise((done) => {
       const p = document.querySelector(`.print[data-print="${k}"]`), a = document.querySelector('.roll__af');
-      const r = p.getBoundingClientRect(), q = a.getBoundingClientRect();
-      return { focused: p.hasAttribute('data-focus'), frame: getComputedStyle(p.querySelector('.print__frame')).opacity, img: getComputedStyle(p.querySelector('.print__img')).filter, af: Math.max(Math.abs(r.left - q.left), Math.abs(r.top - q.top)), counter: document.querySelector('[data-print-count]').textContent };
-    }, n);
+      const read = () => {
+        const r = p.getBoundingClientRect(), q = a.getBoundingClientRect();
+        return { focused: p.hasAttribute('data-focus'), frame: getComputedStyle(p.querySelector('.print__frame')).opacity, img: getComputedStyle(p.querySelector('.print__img')).filter, af: Math.max(Math.abs(r.left - q.left), Math.abs(r.top - q.top)), counter: document.querySelector('[data-print-count]').textContent };
+      };
+      const t0 = performance.now();
+      let f = 0;
+      const tick = () => {
+        const s = read(), ms = performance.now() - t0;
+        if ((s.focused && s.frame === '1' && !/saturate\(0\./.test(s.img) && s.af <= 2) || (++f >= 60 && ms >= 2000)) done(s); else requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+      setTimeout(() => done(read()), 60000); // no frames at all
+    }), n);
     try {
       if (place === 'cold') await cold(page, 'project-06');
       else { await home(page); await toFrame(page, 5); await page.keyboard.press('Enter'); await untilState(page, 'open', 5); }
