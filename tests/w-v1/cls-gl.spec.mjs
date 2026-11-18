@@ -5,6 +5,7 @@
 // CLS at 60 Hz on the reference host; this fails on 9f25a82, whose travel wrote the frame's left, top, width and height
 // on every frame.
 import { test, expect } from '@playwright/test';
+import { CI, SOFTWARE_RENDERER } from '../harness/lib.mjs';
 import { DESK, base, context, home, scrollTo, untilState } from './lib.mjs';
 
 const G1 = { viewport: { width: 640, height: 400 }, deviceScaleFactor: 1, hasTouch: false, isMobile: false };
@@ -209,16 +210,32 @@ function readoutSampler() {
   requestAnimationFrame(f);
 }
 
+/** The WebGL2 renderer this context draws with, read on its blank first page the way scripts/crew.mjs's GL probe reads
+ *  it (no site code): the unmasked renderer, else RENDERER; 'none' without WebGL2. */
+const glRenderer = (page) => page.evaluate(() => {
+  try {
+    const gl = document.createElement('canvas').getContext('webgl2');
+    if (!gl) return 'none';
+    const e = gl.getExtension('WEBGL_debug_renderer_info');
+    return String(e ? gl.getParameter(e.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER));
+  } catch { return 'none'; }
+});
+
 // wv1-landing-readout-double: the zoom's 23 to 56 mm readout hands over to the open view's bar at the landing; no frame
-// shows both (the gate saw "56 mm" twice in WebKit at 1440) or neither
+// shows both (the gate saw "56 mm" twice in WebKit at 1440) or neither. It runs only with a GPU (the reference host), so
+// CI does not cover it: software GL draws the 1440 x 900 open with main-thread stalls of 0.5 to 2 s, and a stall that
+// carries the open's timeline past both hand-over points in one frame shows neither readout on that frame (with the
+// boot and the raise at G1 and only the open at 1440, Chromium on SwiftShader passed 5 of 10). It skips in CI (no GPU;
+// WebKit names no renderer, "Apple GPU" on every host) and wherever the renderer is software or missing.
 test('A2 with GL at 1440: one focal-length readout on every frame of the open\'s landing', async ({ browser, browserName }) => {
   test.setTimeout(240_000);
   const ctx = await context(browser, browserName, DESK, { gl: true });
   const page = await ctx.newPage();
   try {
-    // the boot gets the GL budget too: CI's software GL (SwiftShader) takes over 20 s to leave the preloader at 1440 x 900
-    // (23 s on the reference host's CPU with SwiftShader forced; the G1 rows boot inside 20 s)
-    await home(page, '/?vf-test', GL_MS);
+    const gl = await glRenderer(page);
+    test.info().annotations.push({ type: 'renderer', description: gl });
+    test.skip(CI || gl === 'none' || SOFTWARE_RENDERER.test(gl), `no GPU here (${CI ? 'CI' : gl}): the row runs on the reference host`);
+    await home(page);
     test.skip(!(await page.evaluate(() => Boolean(window.__vfEngine))), 'no WebGL in this browser here: the row guards on the reference host');
     await page.keyboard.press('Enter');
     await untilState(page, 'evf', 0, GL_MS);

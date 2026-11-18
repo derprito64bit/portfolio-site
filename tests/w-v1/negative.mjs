@@ -90,7 +90,7 @@ export const PLANTS = [
   // a reference-host plant (GL in Chromium): with no __vfEngine the row skips and this is MISSED
   ['cold-scroll-dirty', 'J3', 'src/evf/project/cold.ts', 'if (!engine) return;\n  const d = dimAt();', "if (!engine) return;\n  document.body.dataset.d = '1';\n  const d = dimAt();", 'cls-gl.spec.mjs', 'reads the scroll before the roll writes'],
   ['typed-hash-pushed', 'A2', 'src/evf/project/inapp.ts', 'if (history.state == null) pushed = false;', '', 'playback.spec.mjs', 'while the project is open in the Viewfinder, then Esc, Esc'],
-  // a reference-host plant (GL): with no __vfEngine the row skips and this is MISSED
+  // a reference-host plant (a GPU): in CI, on software GL or with no __vfEngine the row skips and this is MISSED
   ['readout-double', 'A2', 'src/evf/project/inapp.ts', "fl2.style.visibility = 'hidden';", '', 'cls-gl.spec.mjs', 'one focal-length readout'],
   // fix-pass B2
   ['meta-nowrap', 'A1', 'src/evf/style/project.css', '.pj__meta .ph { white-space: normal; max-width: 100%; }', '', 'open.spec.mjs', 'A1 meta cells hold'],
