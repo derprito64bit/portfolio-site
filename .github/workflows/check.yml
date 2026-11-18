@@ -1,7 +1,10 @@
 # CI has no GPU: the harness runs on / with Playwright Chromium (software GL), and GL, performance and Lighthouse
-# evidence comes from the reference host (RX 6700 XT) through scripts/crew.mjs. This job proves the build, the checks and
-# the harness core on / (console, overflow at 320 px, contrast, keyboard, flash, axe), and (W-V0b) the D-055 gating
-# both ways, the state-machine smoke in Chromium and WebKit and the idle check on the engine's frame counters.
+# evidence comes from the reference host (RX 6700 XT) through scripts/crew.mjs. The job `check` proves the build, the
+# checks and the harness core on / (console, overflow at 320 px, contrast, keyboard, flash, axe), and (W-V0b) the D-055
+# gating both ways, the state-machine smoke in Chromium and WebKit and the idle check on the engine's frame counters.
+# The W-V1 browser suite runs beside it in the job `w-v1`, once per engine (a matrix: each entry builds the same commit
+# and runs one engine's rows). The rows are state-sensitive and run on one worker, so a suite grows by jobs, never by
+# workers: a later suite takes a job (or a matrix) of its own rather than stretching one job towards its cap.
 name: check
 
 on:
@@ -19,7 +22,8 @@ concurrency:
 jobs:
   check:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    # about 10 minutes (the W-V1 browser rows moved to the job w-v1)
+    timeout-minutes: 20
     env:
       CI: 'true'
     steps:
@@ -88,12 +92,9 @@ jobs:
           SMOKE_JSON: smoke-flat.json
         run: npm run test:smoke
 
-      # W-V1 (#21): the project pages and the film prints. A1, A4 and A15 read dist; A2 and A5 to A13 run on the flat path
-      # (WebGL off), DOM only, in Chromium and WebKit at 1440 x 900 and 390 x 844; A14 with GL at 640 x 400, DPR 1.
-      - name: W-V1 tests (dist; prints, open, playback and calm on the flat path; idle with GL at G1; Chromium and WebKit)
-        run: |
-          npm run test:w-v1-dist
-          npm run test:w-v1
+      # W-V1 (#21): A1, A4 and A15 read dist here; the W-V1 browser rows run in the job w-v1, one engine per entry.
+      - name: W-V1 tests (dist; the browser rows run in the job w-v1)
+        run: npm run test:w-v1-dist
 
       - name: Idle check with GL at G1 (frame counters at rest, hidden and reduced; Chromium trace cross-check)
         run: npm run h:idle -- --profile G1 --window 5 --browsers chromium,webkit --out idle.json
@@ -119,3 +120,48 @@ jobs:
             idle.json
             idle-negative.json
           if-no-files-found: ignore
+          overwrite: true # a re-run attempt replaces the earlier attempt's logs
+
+  # W-V1 (#21): the project pages and the film prints, in Chromium and WebKit, one engine per matrix entry (each about 13
+  # minutes). A2 and A5 to A13 run on the flat path (WebGL off), DOM only, at 1440 x 900 and 390 x 844; A14 and the GL
+  # rows (A7's zoom and close, the resize during the open, the cold page's dim) with GL at 640 x 400, DPR 1. The GL row at
+  # 1440 x 900 (one focal-length readout over the open's landing) runs only on hardware GL: it skips here and runs on the
+  # reference host. Its own build of the commit, so the entry needs nothing from the job check.
+  w-v1:
+    name: w-v1 (${{ matrix.engine }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false # one engine's failure keeps the other's rows and logs
+      matrix:
+        engine: [chromium, webkit]
+    env:
+      CI: 'true'
+      W_V1_JSON: ${{ github.workspace }}/w-v1-${{ matrix.engine }}.json
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - name: Playwright ${{ matrix.engine }}
+        run: npx playwright install --with-deps ${{ matrix.engine }}
+
+      - name: Build (dist for the suite's server)
+        run: npm run build
+
+      - name: W-V1 tests in ${{ matrix.engine }} (prints, open, playback and calm on the flat path; idle and GL rows at G1)
+        run: npx playwright test -c tests/w-v1/playwright.config.mjs --project ${{ matrix.engine }}
+
+      - name: Keep the logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: w-v1-${{ matrix.engine }}-${{ github.sha }}
+          path: w-v1-${{ matrix.engine }}.json
+          if-no-files-found: ignore
+          overwrite: true # a re-run attempt replaces the earlier attempt's logs
