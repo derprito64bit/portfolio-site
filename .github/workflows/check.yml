@@ -22,8 +22,8 @@ concurrency:
 jobs:
   check:
     runs-on: ubuntu-latest
-    # about 11 minutes (the W-V1 browser rows moved to the job w-v1)
-    timeout-minutes: 20
+    # 11 to 13.5 minutes measured (the W-V1 browser rows moved to the job w-v1)
+    timeout-minutes: 25
     env:
       CI: 'true'
     steps:
@@ -147,11 +147,11 @@ jobs:
           if-no-files-found: ignore
           overwrite: true # a re-run attempt replaces the earlier attempt's logs
 
-  # W-V1 (#21): the project pages and the film prints, in Chromium and WebKit, one engine per matrix entry (each about 13
-  # minutes). A2 and A5 to A13 run on the flat path (WebGL off), DOM only, at 1440 x 900 and 390 x 844; A14 and the GL
-  # rows (A7's zoom and close, the resize during the open, the cold page's dim) with GL at 640 x 400, DPR 1. The GL row at
-  # 1440 x 900 (one focal-length readout over the open's landing) runs only on hardware GL: it skips here and runs on the
-  # reference host. Its own build of the commit, so the entry needs nothing from the job check.
+  # W-V1 (#21): the project pages and the film prints, in Chromium and WebKit, one engine per matrix entry (11 to 13.5
+  # minutes measured). A2 and A5 to A13 run on the flat path (WebGL off), DOM only, at 1440 x 900 and 390 x 844; A14, A7's
+  # zoom and close and the resize during the open with GL at 640 x 400, DPR 1 (the cold page's dim row, a count of scroll
+  # reads, with GL at 1440 x 900). The GL readout row over the open's landing at 1440 x 900 runs only with a GPU: it skips
+  # here and runs on the reference host. Its own build of the commit, so the entry needs nothing from the job check.
   w-v1:
     name: w-v1 (${{ matrix.engine }})
     runs-on: ubuntu-latest
