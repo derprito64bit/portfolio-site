@@ -22,7 +22,7 @@ concurrency:
 jobs:
   check:
     runs-on: ubuntu-latest
-    # about 10 minutes (the W-V1 browser rows moved to the job w-v1)
+    # about 11 minutes (the W-V1 browser rows moved to the job w-v1)
     timeout-minutes: 20
     env:
       CI: 'true'
@@ -38,8 +38,33 @@ jobs:
 
       - run: npm ci
 
+      # The Playwright deps' .deb files come from the Actions cache. On the runners whose apt mirror is
+      # us-east-2.ec2.archive.ubuntu.com the deps (up to 185 packages, 139 MB) have downloaded at under 200 kB/s, 13 to 20
+      # minutes and a job cancelled at its cap; with apt's archive folder in ~/apt-archives (one apt.conf.d line), a cache
+      # hit installs from local files. The key names the image's release and the Playwright version, so either refreshes it.
+      - name: Apt cache key (the runner image and Playwright)
+        id: aptkey
+        run: echo "key=apt-$ImageOS-$(. /etc/os-release && echo "$VERSION_CODENAME")-pw$(node -p "require('playwright-core/package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Apt cache for the Playwright deps (restore)
+        id: apt
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/apt-archives/*.deb
+          key: ${{ steps.aptkey.outputs.key }}-chromium-webkit
+
       - name: Playwright Chromium and WebKit (harness and smoke on /)
-        run: npx playwright install --with-deps chromium webkit
+        run: |
+          mkdir -p ~/apt-archives/partial
+          echo "Dir::Cache::Archives \"$HOME/apt-archives/\";" | sudo tee /etc/apt/apt.conf.d/90-ci-archives
+          npx playwright install --with-deps chromium webkit
+
+      - name: Apt cache for the Playwright deps (save, on a miss)
+        if: steps.apt.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/apt-archives/*.deb
+          key: ${{ steps.apt.outputs.cache-primary-key }}
 
       - name: npm run check (build, astro check, lint, ownership, deps, size-limit, media-caps, ph-gate, CSS lint, tokens)
         run: npm run check -- --log check.log --json check.json
@@ -148,8 +173,30 @@ jobs:
 
       - run: npm ci
 
+      # the Playwright deps' .deb files from the Actions cache, as in the job check
+      - name: Apt cache key (the runner image and Playwright)
+        id: aptkey
+        run: echo "key=apt-$ImageOS-$(. /etc/os-release && echo "$VERSION_CODENAME")-pw$(node -p "require('playwright-core/package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Apt cache for the Playwright deps (restore)
+        id: apt
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/apt-archives/*.deb
+          key: ${{ steps.aptkey.outputs.key }}-${{ matrix.engine }}
+
       - name: Playwright ${{ matrix.engine }}
-        run: npx playwright install --with-deps ${{ matrix.engine }}
+        run: |
+          mkdir -p ~/apt-archives/partial
+          echo "Dir::Cache::Archives \"$HOME/apt-archives/\";" | sudo tee /etc/apt/apt.conf.d/90-ci-archives
+          npx playwright install --with-deps ${{ matrix.engine }}
+
+      - name: Apt cache for the Playwright deps (save, on a miss)
+        if: steps.apt.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/apt-archives/*.deb
+          key: ${{ steps.apt.outputs.cache-primary-key }}
 
       - name: Build (dist for the suite's server)
         run: npm run build
