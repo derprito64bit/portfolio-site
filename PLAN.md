@@ -5,23 +5,26 @@
 - One crew at a time, one stage per session.
 - The owner gives each stage the go-ahead and caps crew rounds.
 
-## Where things stand (2026-11-17, after W-V1)
+## Where things stand (2026-11-18, after the W-V1 fix pass)
 - **2026-11-15, the owner answered eight questions (D-057 to D-062):** budgets-v2 is confirmed ('Balanced', D-057): the host-independent rows (every byte cap, the media caps, CLS from a deterministic trace, the engine-counter rows) bind as must-fix now, and every budget applies on phones, which get the full experience; the idle rule D-053 is confirmed, so the intro's redraw at the display rate is a W-V3 must-fix; the video rules stand as proposed. Fonts: 200 kB in at most 4 files, target 170 kB (D-058; today about 270 kB in 6, for W-V3 or W-V4). Timed tests wait for one quiet-window set before G3a (D-059): no timed set at any crew's approval candidate, and the Lighthouse baseline is taken in that window. At the cap, a crew with no must-fix left is merged with CI green and its should-fix items queued in #106, without asking (D-060). Hosting option A is approved: W-R runs the game repo's publish.ps1 once (D-061). The five plan questions are closed (D-062).
-- **W-V1 is done: the project view and Flux's film prints are on main. Next = the W-V1 fix pass, then launch W-V2 in a fresh session (NEXT STAGE below).** #21 is closed.
-- **main = 982cf90 plus this stage's docs PR.** Merged this stage:
+- **W-V1 and its fix pass are done: the project view and Flux's film prints are on main, with the review's 30 items and W-V1's 8 queued leftovers fixed. Next = launch W-V2 in a fresh session (NEXT STAGE below).** #21 is closed.
+- **main = 8e01883 plus this stage's docs PR.** Merged in W-V1 and the fix pass:
   - #113 (f4fbb8f): `crew-config.json` pins crew, gate, judge and jury to `opus`, so they never inherit the session model;
   - **W-V1 #114** (982cf90, crew head d8385f6): `/work/<slug>/` as a static page opened in-app with history, content model v3, the image ladder, prints sized by their images, playback and video prints. Three rounds; at the cap the gate passed every row, CI was green and the jury scored J1 8, J2 7, J3 8, J4 8, J5 8;
-  - #129 (faa0b91, into `crew/w-v1` before #114): the last must-fix, `wv1-pb-arrows-focus`, in one source file (`playback.ts`), passed by an independent Opus verifier (`portfolio-evidence/v2/W-V1/faa0b91/verify/`).
+  - #129 (faa0b91, into `crew/w-v1` before #114): the last must-fix, `wv1-pb-arrows-focus`, in one source file (`playback.ts`), passed by an independent Opus verifier (`portfolio-evidence/v2/W-V1/faa0b91/verify/`);
+  - #130 (e4a3502): W-V1's close-out docs;
+  - **the fix pass #131** (8e01883, branch head 249431f): all 38 items, each reproduced before it was fixed. f02: the dimmed caption strips read 7.5:1 (main 2.88:1; floor 4.5:1). f03: the brackets glide and land in about 204 ms on a wheel stream (main snapped in 29 to 72 ms). The jury scored J1 8, J2 8, J3 8, J4 8, J5 8. It also split CI into two jobs (see CI below).
+- **Bytes at 8e01883:** critical JS on `/` 66,221 B gz (+181 B in the fix pass; cap 80 kB, target 65 kB), on `/work/<slug>/` 59,967 B; CSS 7,743 B; all 47 size-limit rows pass. **Tests:** the W-V1 suite has 262 rows (131 per engine) and 83 negative plants.
 - **Side work, ready for the next stages** (`portfolio-evidence/v2/sidework/2026-11-16/`, read-only workflows run beside the crew):
-  - `pr114-review.md`: 38 findings, 33 survived two skeptics, 32 new; read from code, not yet reproduced in a browser;
-  - `fix-pass-plan.md`: the 30 items still present at 4f2deb5 (2 must-fix, 21 should-fix, 7 nits), in five batches B1 to B5 by file;
-  - `specs/wv2/draft-3.md`, `specs/wv3/draft-3.md`, `specs/wv4/draft-3.md`: spec drafts, each refuted twice, to re-check against main before posting;
+  - `pr114-review.md`: 38 findings, 33 survived two skeptics, 32 new; the 30 still present went into the fix pass;
+  - `fix-pass-plan.md`: done (#131);
+  - `specs/wv2/draft-3.md`, `specs/wv3/draft-3.md`, `specs/wv4/draft-3.md`: spec drafts, each refuted twice, to re-check against main 8e01883 before posting;
   - `watchlist.md` (#65: nothing to adopt; Spline and Unicorn Studio fail the no-watermark rule), `queue-106-triage.md` (22 items: 18 open, 1 fixed, 1 mostly fixed, 2 moot), `content-intake-kit.md` and `hosting-preflight.md`.
-- **CI has no GPU.** GL runs in CI only at 640 × 400, DPR 1; the rest runs on the flat path (`H_NO3D=1`). Full-size GL runs (smoke, idle, Lighthouse) are one command each on the reference host.
+- **CI has no GPU.** GL runs in CI only at G1 (640 × 400, DPR 1); the rest runs on the flat path (`H_NO3D=1`). Full-size GL runs (smoke, idle, Lighthouse, and W-V1's GL readout row, which skips in CI) are one command each on the reference host. CI runs two jobs in parallel, `check` and `w-v1` (Paths and tools).
 - **The Lighthouse baseline is blocked (host):** the PC was busy (6 host-suspect mobile runs; the desktop precheck stayed busy 30 minutes). Re-run it in the owner's quiet window with the one command in `portfolio-evidence/v2/baseline/README.md`. Under D-059 it is taken in the one pre-G3a quiet-window set.
-- **Over budgets-v2 on main (pre-existing, each in #106 with its stage):** fonts about 270 kB in 6 files against 200 kB and 4 (D-058); CLS on `/` 0.0978 mobile (host-suspect runs) and 0.051 desktop (one clean run); the intro redraws at the display rate (about 240 fps on the 238 Hz host; must-fix in W-V3, D-057). Critical JS on `/` is 66,040 B gz at faa0b91: over the 65 kB target, under the 80 kB cap (information only, ruling 6929055151).
-- **The queue is #106** ("Follow-up queue (v2)"). W-V1's leftovers are in its comment 6951226401: 14 items, each with a done-when line and its stage (8 for the fix pass), and a pointer to the fix-pass plan.
-- **Session cost (W-V1):** the crew loop about $195 (rounds of $64, $52 and $80; an API-equivalent estimate). The side work: two read-only workflows of 148 and 72 agents, all Opus or Sonnet.
+- **Over budgets-v2 on main (pre-existing, each in #106 with its stage):** fonts about 270 kB in 6 files against 200 kB and 4 (D-058); CLS on `/` 0.0978 mobile (host-suspect runs) and 0.051 desktop (one clean run); the intro redraws at the display rate (about 240 fps on the 238 Hz host; must-fix in W-V3, D-057). Critical JS on `/` is 66,221 B gz at 8e01883: over the 65 kB target, under the 80 kB cap (information only, ruling 6929055151).
+- **The queue is #106** ("Follow-up queue (v2)"). W-V1's leftovers are in its comment 6951226401: items 1 to 8 are closed by #131; items 9 to 14 stay open with their stages. The fix pass's own leftovers are in comment 6969424785: 23 items, each with a done-when line and its stage (CI and tests, keyboard, the flat path's console error, playback history, media, design notes, and `wv1-wk-open-freeze` updated).
+- **Session cost (W-V1):** the crew loop about $195 (rounds of $64, $52 and $80; an API-equivalent estimate). The side work: two read-only workflows of 148 and 72 agents, all Opus or Sonnet. The fix pass: two workflows of 16 and 2 agents, all Opus.
 - **System review:** `portfolio-evidence/loop-audit/SYSTEM-REVIEW-2026-10-13.md`.
 
 ## Operating model (adopted by the owner 2026-10-27; recorded on #91)
@@ -89,29 +92,20 @@ The lean loop stays as written in PLAN.md. Changes:
 - The landing checklist and the first crew spec stay in the evidence repo: `C:\Users\Aaron\Documents\GitHub\portfolio-evidence\research-reset\2026-10-29\plan\w-v0-checklist.md` and `C:\Users\Aaron\Documents\GitHub\portfolio-evidence\research-reset\2026-10-29\plan\first-crew-spec.md`.
 - Owner questions: the "Owner questions" section below.
 
-## NEXT STAGE: the W-V1 fix pass, then launch W-V2 (#22)
+## NEXT STAGE: launch W-V2 (#22)
 
-Done before this point: W-V1 (#114, merged as 982cf90, with #129 for its last must-fix), the W-V1 leftovers in #106 (comment 6951226401), and the side work in `portfolio-evidence/v2/sidework/2026-11-16/`. Start a fresh session.
+Done before this point: W-V1 (#114, merged as 982cf90, with #129 for its last must-fix), the W-V1 fix pass (#131, merged as 8e01883), the leftovers in #106 (comments 6951226401 and 6969424785), and the side work in `portfolio-evidence/v2/sidework/2026-11-16/`. Start a fresh session.
 
-### Part 1: the W-V1 fix pass (orchestrator PRs, not a crew loop, like W-V0)
-1. **What goes in:**
-   - the 30 items of `C:\Users\Aaron\Documents\GitHub\portfolio-evidence\v2\sidework\2026-11-16\fix-pass-plan.md` (2 must-fix: f02, dimmed captions at about 2.9:1, and f03, the bracket glide killed by scroll events; 21 should-fix; 7 nits);
-   - the two rulings in PR #114 comment 6950559309: Enter at the end pages backwards, and the one-clip roll's Tab;
-   - round 3's queued items that fit. #106 comment 6951226401 marks them: 8 in all with the two rulings.
-2. **Build:** five batches, B1 to B5, by file, as the plan sets them. One Opus worker per batch, each in its own sibling worktree under `portfolio-site.wt\` (never `portfolio-site/.claude/worktrees/`: Astro builds fail there), branched from a fix-pass branch cut from main. The plan's line numbers are at 4f2deb5, so each worker re-checks them against main first.
-3. **Each item:** first reproduced in a browser, then fixed with a test that fails before the fix. An item that does not reproduce is recorded and dropped, not fixed blind.
-4. **Verify:** one independent verifier per batch, with its own probes, in Chromium and WebKit. CI green.
-5. **Merge order** into the fix-pass branch: B1, B4, B2, B3, B5 (the plan's section 5 has the shared files and the hand merges). Then the fix-pass PR to main, with CI green.
+**Go-ahead:** the owner gives the go-ahead before the crew loop launches (step 3), as for every stage. The spec work (step 1) needs none.
 
-### Part 2: launch W-V2 (#22)
-1. **Spec:** finalise it from `C:\Users\Aaron\Documents\GitHub\portfolio-evidence\v2\sidework\2026-11-16\specs\wv2\draft-3.md`, re-checked against main after the fix pass. Its second refutation raised 5 blocking points that draft 3 says it addresses; that is not re-refuted yet, so a refuter checks it once more. Then post it on #22 and save it as `portfolio-evidence\v2\specs\wv2\spec-v1.md` with `meta-v1.json`. Draft 3's preamble lists its launch prerequisites (O1 to O6), among them a `wv2` entry in `crew-config.json`, which main does not have yet.
+1. **Spec:** finalise it from `C:\Users\Aaron\Documents\GitHub\portfolio-evidence\v2\sidework\2026-11-16\specs\wv2\draft-3.md`, re-checked against main 8e01883. The fix pass changed files W-V2 builds on (`src/evf/main.ts`, `src/evf/project/playback.ts`, `src/evf/style.css`, `src/pages/index.astro`, `src/pages/work/[slug].astro`, `src/lib/content/**` and `.github/workflows/check.yml`), so each of draft 3's assumptions about them is re-checked there. Its second refutation raised 5 blocking points that draft 3 says it addresses; that is not re-refuted yet, so a refuter checks it once more. The spec also says where W-V2's browser rows run in CI (the `w-v1` job's layout) and what that adds to the job's time. It folds in the #106 items staged for W-V2: `wv1-gl-context-loss` (6951226401 item 9) and `fp-flat-ogl-console` (6969424785 item 10); W-V2's gate runs the GL readout row on the reference host (6969424785 item 1). Then post it on #22 and save it as `portfolio-evidence\v2\specs\wv2\spec-v1.md` with `meta-v1.json`. Draft 3's preamble lists its launch prerequisites (O1 to O6), among them a `wv2` entry in `crew-config.json`, which main does not have yet.
 2. **Preflight.** At least 4 GB of free memory. The live preview (`portfolio-preview/preview.py`, :4400 main and :4401 the crew PR) running; start it detached if not (`Start-Process python preview.py -WindowStyle Hidden`). No other perf-lane holder.
 3. **Launch** from a sibling worktree at origin/main (never from `portfolio-site/.claude/worktrees/`):
    `node scripts/fleet/loop/launch.cjs wv2 --spec C:\Users\Aaron\Documents\GitHub\portfolio-evidence\v2\specs\wv2\spec-v1.md --spec-meta C:\Users\Aaron\Documents\GitHub\portfolio-evidence\v2\specs\wv2\meta-v1.json --out C:\Users\Aaron\Documents\GitHub\portfolio-evidence\v2\runs\wv2`
    It prints LAUNCH READY. The Workflow tool loads scripts only from inside the working directory, so copy `<out>\crew-loop.wv2.js` byte for byte to `.claude\workflows-run\` under the session's working directory, then run `Workflow({ scriptPath: '<that copy>' })` with no args.
    No quiet window and no timed set at W-V2's approval candidate (D-059). The gate's one Lighthouse run is reported with a host-suspect flag and never blocks.
 4. **Confirm the first agent's model is Opus** within minutes of the launch (its `agent-*.meta.json` in the run's transcript folder). If it is not, stop the run before it pushes anything and fix `crew-config.json` first.
-5. **Watch** each round with `orchestrator-tools/2026-10-27/round-watch.mjs --stale 240` (one W-V1 crew stage ran past 90 minutes without a journal write), and post a cost line per round (`scripts/fleet/cost-line.mjs`). Reap browsers after each round.
+5. **Watch** each round with `orchestrator-tools/2026-10-27/round-watch.mjs --stale 240` (one W-V1 crew stage ran past 90 minutes without a journal write), and post a cost line per round (`scripts/fleet/cost-line.mjs`). Reap browsers after each round. After a round that adds tests, check each CI job's time against its cap.
 6. **At the cap** (3 code rounds plus 1 evidence round), per D-060: with no must-fix left, merge with CI green and queue the should-fix items in #106 with done-when lines, without asking. Only when a must-fix still blocks, give the owner the 5-line summary: merge with follow-ups, one more round, or hold.
 7. **Size check after round 1:** as the final spec sets it (draft 3: about 2,000 changed lines under `src/`; over 2,600, or A1 to A6 failing, moves A11, then A12, then the row's paging into a W-V2b slice).
 8. **After merge:** update the build-log artifact, back up, log, and move on to W-V3 (#20) in a fresh session, from `specs/wv3/draft-3.md`.
@@ -121,7 +115,7 @@ Done before this point: W-V1 (#114, merged as 982cf90, with #129 for its last mu
 | # | Id | What | Issue | Jury | Caps | Rough cost |
 |---|---|---|---|---|---|---|
 | 0 | W-V0 | **Done 2026-10-29** (#108, #110; the name #109). Landing, two PRs. W-V0a: Viewfinder on main, Darkroom deleted, checks and harness re-pointed. W-V0b: engine counters, test gating, smoke, baseline | #11 | no | each: 1 build + 1 fix pass | $50-90 |
-| 1 | W-V1 | **Done 2026-11-17** (#114, merged as 982cf90; its last must-fix #129). The project view and the film prints, in three rounds | #21 | yes | 3 code + 1 evidence; 2 breaker passes | $140-230 |
+| 1 | W-V1 | **Done 2026-11-17** (#114, merged as 982cf90; its last must-fix #129; the fix pass #131, merged as 8e01883 on 2026-11-18). The project view and the film prints, in three rounds | #21 | yes | 3 code + 1 evidence; 2 breaker passes | $140-230 |
 | 2 | W-V2 | The honours display (Flux's glass and medal), per project and in the honours section | #22 | yes | 3 + 1; 2 breaker passes | $110-180 |
 | 3 | W-V3 | The EVF and gallery: real media in the frame, life at rest, the jury's open items | #20 | yes | 3 + 1; 2 breaker passes | $100-170 |
 | 4 | Content | The owner's facts, media, honours and order | #32 | no | 1 PR | $10-25 |
@@ -371,6 +365,10 @@ Crew totals: about $525 to $925. Add about $50 to $70 of orchestrator time per s
   - `runs/`, `research-*`, `status/`;
   - `orchestrator-tools/2026-10-27/`: `round-watch.mjs` (wakes the orchestrator when a round is judged, with its cost line), `judged.mjs` (one round's verdict, rulings, must-fix and queue), `quiet-watch.mjs` (waits for a quiet host); `2026-10-13/` holds the earlier helpers.
 - **The lean crew loop:** `scripts/fleet/loop/` (README, `crew-loop.js`, `crew-config.json`, `launch.cjs`, `prior-from-journal.cjs`, `crew-loop.check.cjs`; `--self-test` runs in CI). Shared tools in `scripts/fleet/`: `waitfor.mjs` (waits of 270 s or less), `build-once.mjs` (one build per SHA in `portfolio-site.wt/_builds/`), `perfq.mjs` (the detached perf queue), `cost-line.mjs`.
+- **CI** (`.github/workflows/check.yml`, two jobs in parallel since #131; a run takes about 12.5 min, against 31 for the one job before):
+  - `check`: every check, the units, the harness on `/`, the smokes, idle, the crew-loop self-test and `test:w-v1-dist`. Timeout 25 min; about 10 min measured;
+  - `w-v1`: a matrix over chromium and webkit (fail-fast off), each running the W-V1 browser suite for its engine. Timeout 30 min; about 12 min each;
+  - an apt .deb cache holds Playwright's system deps (a slow apt mirror had stalled two runs). On a cache miss a job can still stall (#106 comment 6969424785, item 5).
 - **Assets (private repo):** `C:\Users\Aaron\Documents\GitHub\portfolio-assets`, which holds the X-T5 Blender sources and the QC studio.
 - **Lanes and host:**
   - `scripts/fleet/lane.ps1` (perf and blender lanes; tools that aren't crews acquire with `-StaleMinutes 100000`);
@@ -394,6 +392,8 @@ Crew totals: about $525 to $925. Add about $50 to $70 of orchestrator time per s
 - **A ruling reaches a crew agent only if it is posted before that agent starts.** The crew prompt reads Orchestrator comments at its start; a re-read at every checkpoint is a queued tooling fix (#91 comment 6476370307, item a). So a ruling posted after a round's crew starts reaches only the next round.
 - **Every agent gets an explicit model, `opus` or `sonnet`.** None inherits the session model (W-V1's first launch did, on Fable).
 - **The Workflow tool loads a script only from inside the working directory.** Copy the launch file there, byte for byte, before running it.
+- **Tests wait on the landed state, never on frame time.** A read that depends on frame time (a fixed sleep or a single-frame read) is flaky on CI's WebKit and software GL. Wait until the end state holds and keep the assertion, with no retry wrapper and no weaker bound (215855d, 191547d, 92a9f5a). Full-size GL rows belong to the reference host; CI runs GL at G1 only.
+- **After a workflow that adds tests, check each CI job's time against its cap.** Before the fix pass split it, the one CI job took 31 of its 35 minutes.
 - **The owner's to-do list** is `C:\Users\Aaron\.claude\user-todo.md`, and every reply ends with it (global CLAUDE.md).
 - **Read-only concept worktrees.** `portfolio-site.wt/concept-*` stay as references until go-live. Crews read Flux's code there (`concept-flux/src/concept/flux/`) and never build into it.
 - **No content through innerHTML** (D-055). No retired path comes back (D-049).
