@@ -15,6 +15,25 @@ const pb = (page) => page.evaluate(() => {
   };
 });
 
+/** A tween's end state, once it has landed: `read` (self-contained, run in the page) each frame until `ok` holds for its
+ *  value, given up only after 60 frames and 2 s both, as the roll's glide is; resolves the last value read. Not a
+ *  wall-clock window alone: once frames run over 500 ms GSAP's lag smoothing moves a tween 33 ms a frame (CI's WebKit
+ *  held the 0.6 s Flip at 0.91 scale through a 3 s poll); not a frame count alone either (headless Chromium can run 60
+ *  frames in 250 ms). The row's assertion then reads the value as before. */
+const landed = (page, read, ok) => page.evaluate(`new Promise((done) => {
+  const read = ${read}, ok = ${ok};
+  const t0 = performance.now();
+  let n = 0;
+  const step = () => {
+    const v = read();
+    if (ok(v) || (++n >= 60 && performance.now() - t0 >= 2000)) done(v); else requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+  setTimeout(() => done(read()), 60000); // no frames at all
+})`);
+/** The playback frame's computed transform once the Flip (0.6 s, the gate's timing) has landed untransformed. */
+const flipLanded = (page) => landed(page, () => getComputedStyle(document.querySelector('.pb__frame')).transform, (t) => /^(none|matrix\(1, 0, 0, 1, 0, 0\))$/.test(t));
+
 for (const [label, profile] of [['1440', DESK], ['390', PHONE]]) {
   test(`A10 at ${label}: open with the readouts, page, Esc / Close / Back return focus to the print, #print-NN`, async ({ browser, browserName }) => {
     const ctx = await context(browser, browserName, profile);
@@ -35,7 +54,7 @@ for (const [label, profile] of [['1440', DESK], ['390', PHONE]]) {
       expect(s.media).toBe('PICTURE');
       // the Flip lands (in 0.6 s: the gate's timing; a slow CI engine's long frame holds GSAP's clock): the frame ends
       // untransformed
-      await expect.poll(() => page.evaluate(() => getComputedStyle(document.querySelector('.pb__frame')).transform), { message: 'the Flip lands untransformed', timeout: 3000 }).toMatch(/^(none|matrix\(1, 0, 0, 1, 0, 0\))$/);
+      expect(await flipLanded(page), 'the Flip lands untransformed').toMatch(/^(none|matrix\(1, 0, 0, 1, 0, 0\))$/);
 
       // arrows page; the address follows (replaceState)
       await page.keyboard.press('ArrowRight');
@@ -453,8 +472,9 @@ test('J4 paging never blanks the stage: one print is always up', async ({ browse
       const frames = await watch;
       expect(frames.length, 'sampled').toBeGreaterThan(5);
       expect(frames.filter((o) => o < 0.05).length, `${key}: blank frames (max opacity on the stage per frame: ${frames.map((o) => o.toFixed(2)).join(' ')})`).toBe(0);
-      // fully up once the page lands (polled: a slow CI engine can run the 0.3 s fade past the 500 ms window above)
-      await expect.poll(() => page.evaluate(() => Math.max(0, ...[...document.querySelectorAll('dialog.pb .pb__stage > *')].map((e) => (getComputedStyle(e).visibility === 'hidden' ? 0 : Number(getComputedStyle(e).opacity))))), { message: 'the page ends fully up', timeout: 3000 }).toBe(1);
+      // fully up once the page lands (a slow CI engine can run the 0.3 s fade past the 500 ms window above)
+      const up = await landed(page, () => Math.max(0, ...[...document.querySelectorAll('dialog.pb .pb__stage > *')].map((e) => (getComputedStyle(e).visibility === 'hidden' ? 0 : Number(getComputedStyle(e).opacity)))), (o) => o === 1);
+      expect(up, 'the page ends fully up').toBe(1);
       expect(await page.locator('dialog.pb .pb__ghost').count(), 'the leaving copy is gone').toBe(0);
     }
     // rapid paging (each page cut short by the next), Esc, a reopen, Back / Forward / Back, Forward: playback is fully
@@ -815,7 +835,7 @@ for (const [label, profile] of [['1440', DESK], ['390', PHONE]]) {
       await open5();
       await expect.poll(async () => (await pb(page)).media).toBe('VIDEO');
       expect(await page.evaluate(() => document.querySelector('.pb__frame video').controls), 'the clip has its controls').toBe(true);
-      await expect.poll(() => page.evaluate(() => getComputedStyle(document.querySelector('.pb__frame')).transform), { timeout: 3000 }).toMatch(/^(none|matrix\(1, 0, 0, 1, 0, 0\))$/);
+      expect(await flipLanded(page)).toMatch(/^(none|matrix\(1, 0, 0, 1, 0, 0\))$/);
       // the arrows on the clip: not cancelled (the native seek runs), no paging
       for (const key of ['ArrowRight', 'ArrowLeft']) {
         const prevented = await page.evaluate((k) => { const e = new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true }); document.querySelector('.pb__frame video').dispatchEvent(e); return e.defaultPrevented; }, key);
@@ -925,7 +945,7 @@ for (const [n, dpr] of [[6, 1], [6, 2], [4, 1]]) {
 // f17: a phone on its side (under 760 px wide, 520 px or less tall) matched the phone block as well, whose frame width
 // (100svh - top - 190px) and stacked foot left a portrait print a 121 px sliver over an empty stage.
 const sideways = async (page, why) => {
-  await expect.poll(() => page.evaluate(() => getComputedStyle(document.querySelector('.pb__frame')).transform), { timeout: 3000 }).toMatch(/^(none|matrix\(1, 0, 0, 1, 0, 0\))$/);
+  expect(await flipLanded(page)).toMatch(/^(none|matrix\(1, 0, 0, 1, 0, 0\))$/);
   const s = await page.evaluate(() => {
     const r = (sel) => document.querySelector(`dialog.pb ${sel}`).getBoundingClientRect();
     const [f, stage, foot, bar, nav, strip] = ['.pb__frame', '.pb__stage', '.pb__foot', '.pb__bar', '.pb__nav', '.pb__strip'].map(r);
