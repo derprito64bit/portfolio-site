@@ -9,10 +9,13 @@
 //   with 9 or more prints the first one (scale 'normal') is the hero
 //   frames clamp to 9:21 .. 21:9; a more extreme image is letterboxed inside its frame, never cropped
 //   pack(): rows in content order; a gap is filled only by the next print; every second print in a row drops half its
-//   height (the zigzag); a lone print alternates sides; widthFrac = span / 12 x f of the roll's width
+//   height (the zigzag); a lone print alternates sides, one column in when it spans 5 or fewer; widthFrac = span / 12 x f
+//   of the roll's width
+//   in a full row (no spare column), f gives up GAP_COLS / 2 per inner side so neighbours never touch
 //   phone (under 760 px): one column; landscape and wide 100%, square 72%, portrait 56%, hero 100%, detail x 0.7;
 //   prints alternate left and right
-// Height caps (80 svh, phone 70 svh) are CSS: width = min(widthFrac x roll width, maxH x frame aspect).
+// Height caps (80 svh, phone 70 svh) are CSS: width = min(widthFrac x roll width, maxH x frame aspect); sizesAttr says
+// the same, so the browser picks a rung for the frame it will draw.
 
 export type Bucket = 'portrait' | 'square' | 'landscape' | 'wide';
 export type Scale = 'hero' | 'normal' | 'detail';
@@ -33,6 +36,10 @@ export const MAX_H_SVH = 80;
 export const MAX_H_SVH_PHONE = 70;
 /** The phone breakpoint, in CSS px (the roll is one column below it). */
 export const PHONE_MAX = 759;
+/** The least gap between two prints in a row, in columns: 29 px on a 1384 px roll, 15 px at the 704 px minimum. */
+export const GAP_COLS = 0.25;
+/** A lone print this many columns wide or narrower sits one column in from its side of the roll. */
+export const LONE_INSET_SPAN = 5;
 
 const SLOT: Record<Bucket, number> = { wide: 12, landscape: 7, square: 5, portrait: 4 };
 const PHONE_W: Record<Bucket, number> = { wide: 1, landscape: 1, square: 0.72, portrait: 0.56 };
@@ -173,9 +180,12 @@ export function pack(prints: PrintInput[]): PackedPrint[] {
         col = (COLS - s.span) / 2 + 1;
         justify = 'center';
       } else {
-        // lone prints alternate sides down the roll, so single prints still read as a zigzag
+        // lone prints alternate sides down the roll, so single prints still read as a zigzag; a narrow one sits one
+        // column in from its side, so it never hugs the gutter
+        const inset = s.span <= LONE_INSET_SPAN ? 1 : 0;
+        col = 1 + inset;
         if (lone % 2 === 1) {
-          col = COLS - s.span + 1;
+          col = COLS - s.span + 1 - inset;
           justify = 'end';
         }
         lone++;
@@ -186,10 +196,16 @@ export function pack(prints: PrintInput[]): PackedPrint[] {
     // several prints: the first starts at column 1, the last ends at column 12, the spare columns go between them
     const spare = COLS - sum;
     const gaps = idx.length - 1;
+    // a row with spare columns already has at least one column between prints; only a full row cuts its gap from f
+    const tight = spare < gaps;
     let col = 1;
     idx.forEach((i, k) => {
       const justify: Justify = k === 0 ? 'start' : k === idx.length - 1 ? 'end' : 'center';
-      out[i] = place(sized[i], row, col, justify, k % 2 === 1, i);
+      // half a gap per inner side: the first print's slack is all on its right, the last's all on its left
+      const inner = (k > 0 ? 1 : 0) + (k < gaps ? 1 : 0);
+      const fMax = tight ? 1 - (inner * GAP_COLS) / 2 / spans[k] : 1;
+      const s = sized[i].f > fMax ? { ...sized[i], f: fMax } : sized[i];
+      out[i] = place(s, row, col, justify, k % 2 === 1, i);
       col += spans[k] + (k < gaps ? Math.floor(spare / gaps) + (k < spare % gaps ? 1 : 0) : 0);
     });
   });
@@ -220,13 +236,17 @@ export function frameWidth(p: Pick<PackedPrint, 'widthFrac' | 'ar' | 'phoneFrac'
 export const ROLL = { gutter: 28, gutterPhone: 16, max: 1680 } as const;
 
 /**
- * The sizes attribute: the print's width at each breakpoint, from the roll width (calc only, which every engine reads in
- * sizes; the height cap is left out, so sizes never under-asks).
+ * The sizes attribute: the print's frame width at each breakpoint, as frameWidth and the CSS have it: min(the width from
+ * the roll, the height cap x the frame aspect). vh, not svh: equal on a desktop, never smaller on a phone, so sizes can
+ * only over-ask; the aspect is rounded up for the same reason. The list has commas inside min(): split it at top-level
+ * commas only.
  */
-export function sizesAttr(p: Pick<PackedPrint, 'widthFrac' | 'phoneFrac'>) {
-  const phone = `calc((100vw - ${ROLL.gutterPhone * 2}px) * ${round(p.phoneFrac)})`;
-  const wide = `${Math.ceil(p.widthFrac * ROLL.max)}px`;
-  const desk = `calc((100vw - ${ROLL.gutter * 2}px) * ${round(p.widthFrac)})`;
+export function sizesAttr(p: Pick<PackedPrint, 'widthFrac' | 'phoneFrac' | 'ar'>) {
+  const ar = Math.ceil(p.ar * 1000) / 1000;
+  const cap = (h: number, w: string) => `min(${w}, calc(${h}vh * ${ar}))`;
+  const phone = cap(MAX_H_SVH_PHONE, `calc((100vw - ${ROLL.gutterPhone * 2}px) * ${round(p.phoneFrac)})`);
+  const wide = cap(MAX_H_SVH, `${Math.ceil(p.widthFrac * ROLL.max)}px`);
+  const desk = cap(MAX_H_SVH, `calc((100vw - ${ROLL.gutter * 2}px) * ${round(p.widthFrac)})`);
   return `(max-width: ${PHONE_MAX}px) ${phone}, (min-width: ${ROLL.max + ROLL.gutter * 2}px) ${wide}, ${desk}`;
 }
 

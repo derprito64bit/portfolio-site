@@ -21,6 +21,8 @@
 .print__a { display: block; color: inherit; text-decoration: none; cursor: zoom-in; }
 /* the ring: phosphor between two near-black bands, so it holds 3:1 over the frame behind as over the ground */
 .print__a:focus-visible { outline: 2px solid var(--phos); outline-offset: 4px; box-shadow: 0 0 0 8px var(--black); }
+/* the ring reaches 8 px past the link (4 px offset and 2 px outline, inside the 8 px band): a focus scroll leaves room for it */
+.print__a { scroll-margin-block: 10px; }
 .print__frame {
   position: relative; display: block; aspect-ratio: var(--ar); overflow: hidden;
   background: var(--panel) var(--lqip, none) center / cover no-repeat;
@@ -55,16 +57,22 @@
   font-family: var(--f-mono); font-size: 12px; letter-spacing: 0.07em; text-transform: uppercase; color: var(--ink-2);
 }
 
-/* the expose (A8): before a print enters it sits at -3 EV behind an 8 px blur; project/roll.ts clears it */
-:is(.js, .pj-js) .roll[data-expose] .print:not(.is-exp) .print__frame { filter: brightness(0.125) blur(8px); }
-.calm:is(.js, .pj-js) .roll[data-expose] .print:not(.is-exp) .print__frame { filter: none; opacity: 0; }
+/* the expose (A8): before a print enters it sits at -3 EV behind an 8 px blur; project/roll.ts clears it. A cold
+   /work/<slug>/ page (.pj-js) holds that state from its first paint, before its module runs, so a print never goes lit,
+   dark, lit. The cold calm rule names the server-rendered [data-roll] to outrank the dim below (a print still to expose
+   stays unseen) */
+.js .roll[data-expose] .print:not(.is-exp) .print__frame,
+.pj-js .roll .print:not(.is-exp) .print__frame { filter: brightness(0.125) blur(8px); }
+.calm.js .roll[data-expose] .print:not(.is-exp) .print__frame,
+.calm.pj-js .roll[data-roll] .print:not(.is-exp) .print__frame { filter: none; opacity: 0; }
 
-/* focus (A9): the print nearest the centre keeps full brightness and the AF brackets; the rest dim */
-.roll[data-dim] .print { transition: opacity var(--step) var(--e-out); }
-.roll[data-dim] .print:not([data-focus]) { opacity: 0.55; }
+/* focus (A9): the print nearest the centre keeps full brightness and the AF brackets; the rest dim their media.
+   The strip, a placeholder box and the 'Image unavailable' label stay at full ink (WCAG 1.4.3) */
+.roll[data-dim] .print__frame { transition: opacity var(--step) var(--e-out); }
+.roll[data-dim] .print:not([data-focus], .is-failed) .print__frame:not(:has(> .print__box)) { opacity: 0.55; }
 /* the saturation's end state; project/roll.ts tweens it (no CSS filter transition: WPE's compositor crashes on them) */
 .roll[data-dim] .print:not([data-focus]) .print__img { filter: saturate(0.4); }
-.calm .roll[data-dim] .print { transition: none; }
+.calm .roll[data-dim] .print__frame { transition: none; }
 .roll__af { position: absolute; left: 0; top: 0; width: 0; height: 0; z-index: 2; pointer-events: none; opacity: 0; transition: opacity var(--snap); }
 .roll__af.on { opacity: 1; }
 .roll__af i { position: absolute; width: 14px; height: 14px; border: 0 solid var(--phos); }
@@ -84,7 +92,7 @@
 .pb__bar { display: flex; align-items: center; gap: 22px; padding: 0 var(--g); }
 .pb__k { color: var(--ink-2); margin-right: auto; font-weight: 400; }
 .pb__count { font-size: 17px; }
-.pb__nav button[disabled] { color: var(--ink-4); cursor: default; }
+.pb__nav button[aria-disabled='true'], .pb__nav button[aria-disabled='true']:hover { color: var(--ink-4); cursor: default; }
 .pb__close, .pb__nav button {
   display: inline-flex; align-items: center; justify-content: center; gap: 10px; min-width: 44px; min-height: 44px; padding: 0 12px;
   color: var(--ink); transition: color var(--snap);
@@ -93,7 +101,7 @@
 .pb__close kbd { font-family: var(--f-mono); color: var(--ink-3); }
 .pb__stage { position: relative; display: flex; align-items: center; justify-content: center; padding: 8px var(--g); min-height: 0; }
 .pb__frame { position: relative; aspect-ratio: var(--ar); width: min(100%, calc((100svh - var(--top) - 132px) * var(--ar))); background: var(--panel) var(--lqip, none) center / cover no-repeat; }
-.pb__frame[data-letterbox] { background: #030303; }
+.pb__frame[data-letterbox] { background: #030303 var(--lqip, none) center / contain no-repeat; }
 .pb__frame img, .pb__frame video, .pb__frame picture { display: block; width: 100%; height: 100%; object-fit: contain; }
 .pb__foot { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 18px; padding: 10px var(--g) 18px; }
 .pb__nav { display: flex; gap: 4px; }
@@ -120,4 +128,16 @@
   .pb__nav { justify-content: space-between; order: 2; }
   .pb__ro { gap: 12px; }
   .pb__frame { width: min(100%, calc((100svh - var(--top) - 190px) * var(--ar))); }
+}
+
+/* a phone on its side (under 760 px wide and short): the short-view rule must win over the phone rule */
+@media (max-width: 759px) and (max-height: 520px) {
+  .pb__foot { grid-template-columns: auto minmax(0, 1fr); gap: 12px; }
+  .pb__nav { order: 0; justify-content: flex-start; }
+  .pb__frame { width: min(100%, calc((100svh - 120px) * var(--ar))); }
+}
+
+/* ---------------- forced colours: the play mark stays a triangle (its clear borders are not forced to a block) ---------------- */
+@media (forced-colors: active) {
+  .print__play::after { forced-color-adjust: none; border-color: transparent; border-left-color: CanvasText; }
 }

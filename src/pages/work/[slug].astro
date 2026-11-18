@@ -30,13 +30,16 @@ const count = p.prints.length;
       const d = document.documentElement;
       d.classList.add('pj-js');
       if (matchMedia('(prefers-reduced-motion: reduce)').matches) d.classList.add('calm');
-      // the prints wait underexposed for the roll script; if it never runs, show them as they are
-      setTimeout(() => { if (!d.hasAttribute('data-roll')) d.classList.remove('pj-js'); }, 4000);
+      // the prints wait underexposed for the roll script; if its module fails to load, show the no-JS page (never on a timer: CLS)
+      addEventListener('error', (e) => {
+        const t = e.target;
+        if (t instanceof HTMLScriptElement && t.type === 'module' && !d.hasAttribute('data-roll')) d.classList.remove('pj-js');
+      }, true);
     })();
   </script>
   <header class="pj-bar" slot="before">
     <a class="pj-back mono" href={`/#work-${pad2(p.number)}`} data-close><span aria-hidden="true">←</span> Back <span class="num proj__fl" aria-hidden="true">23mm</span></a>
-    <span class="pj-count num" data-print-count aria-hidden="true" hidden={!count}>01 / {pad2(count)}</span>
+    <span class="pj-count num" data-print-count aria-hidden="true" hidden>01 / {pad2(count)}</span>
     <span class="num proj__fl2" aria-hidden="true">56mm</span>
   </header>
   <Article project={p} prev={prev} next={next} total={N} />

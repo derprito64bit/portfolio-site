@@ -6,14 +6,15 @@
 //     the build without originals keeps the committed manifest.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { validateContent } from '../../../src/lib/content/validate.js';
 import { printsOf } from '../../../src/lib/content/prints.ts';
 import { main as imagesMain, derive } from '../../../scripts/build/images.mjs';
 import { plan, chartSvg } from '../../../scripts/build/media-fixtures.mjs';
+import { classOf } from '../../../scripts/check/media-caps.mjs';
 
 const ROOT = fileURLToPath(new URL('../../../', import.meta.url));
 const read = (f) => JSON.parse(readFileSync(join(ROOT, 'content', f), 'utf8'));
@@ -197,7 +198,7 @@ test('negative controls: every D-042 rule, removed, lets its bad input through',
   const badHonour = () => { const a = base(); a.honours.awards[0].project = 'project-99'; return a; };
   const MUTANTS = [
     ['no file', 'if (m.placeholder === false && !hasFile(m.src)) err(', 'if (false) err(', noFile, /without a file/],
-    ['no poster', "if (m.type === 'video' && m.placeholder === false && !m.poster) err(", 'if (false) err(', noPoster, /without a poster/],
+    ['no poster', "if (m.type !== 'image' && m.placeholder === false && !m.poster) err(", 'if (false) err(', noPoster, /without a poster/],
     ['no captions', "if (m.type === 'video' && m.audio && !/\\.vtt$/i.test(m.captions || '')) err(", 'if (false) err(', noCaptions, /captions/],
     ['no honour check', 'if (h.project && !projectSlugs.has(h.project)) err(', 'if (false) err(', badHonour, /unknown project slug/],
   ];
@@ -214,4 +215,136 @@ test('negative controls: every D-042 rule, removed, lets its bad input through',
   } finally {
     try { rmSync(dir, { recursive: true, force: true }); } catch { /* temp */ }
   }
+});
+
+// fix-pass B5
+// f24: a model is copied like a video and sized by its poster (D-042: a video's size comes from its poster; types are
+// image, video and model). The poster is 16:9, never the 3:2 fallback, so the size assertion means something.
+test('D-042: a confirmed model derives from its .glb and poster, validates, and its print is sized by the poster', async () => {
+  const sharp = (await import('sharp')).default;
+  sharp.cache(false); // Windows: libvips keeps files open while cached, which blocks the cleanup
+  const input = confirmed();
+  const p = input.projects.projects[0];
+  p.media = [{ type: 'model', src: `media/${p.slug}/m.glb`, poster: `media/${p.slug}/m.png`, w: 0, h: 0, alt: 'A model.', caption: '', captions: '', audio: false, decorative: false, scale: 'normal', loop: false, placeholder: false }];
+  const glbKey = `media/${p.slug}/m.glb`;
+  const pngKey = `media/${p.slug}/m.png`;
+  const dir = mkdtempSync(join(tmpdir(), 'wv1-model-'));
+  try {
+    const mediaSrc = join(dir, 'assets');
+    mkdirSync(join(mediaSrc, p.slug), { recursive: true });
+    writeFileSync(join(mediaSrc, p.slug, 'm.glb'), Buffer.from('glTF\x02\x00\x00\x00'));
+    await sharp({ create: { width: 1600, height: 900, channels: 3, background: '#446688' } }).png().toFile(join(mediaSrc, p.slug, 'm.png'));
+    const outDir = join(dir, 'public');
+    const m = await derive({ projects: input.projects.projects, mediaSrc, outDir });
+    const glb = m.media[glbKey];
+    assert.equal(glb?.type, 'model', 'the .glb is in the manifest as a model');
+    assert.match(glb.file, new RegExp(`^/media/${p.slug}/m-[0-9a-f]{10}\.glb$`), 'copied under its own extension');
+    assert.ok(existsSync(join(outDir, p.slug, basename(glb.file))), 'the .glb is written to public/media');
+    assert.equal(glb.poster, pngKey);
+    assert.equal(m.media[pngKey]?.type, 'poster');
+    assert.deepEqual([m.media[pngKey].w, m.media[pngKey].h], [1600, 900], "the poster's real size");
+    assert.deepEqual(validateContent({ ...input, media: m }).errors, [], 'a confirmed model with its files is valid');
+    const pv = printsOf(p.slug, p.media, m, null)[0];
+    assert.deepEqual([pv.w, pv.h], [1600, 900], "sized by its poster, not the 3:2 fallback");
+    assert.notEqual(pv.files, null, "the poster's ladder, not a typed placeholder box");
+    assert.equal(pv.video, '', 'playback stays video-only: no .glb in <video data-src>');
+    assert.equal(pv.type, 'model');
+    const noPoster = { media: { ...m.media } };
+    delete noPoster.media[pngKey];
+    has(validateContent({ ...input, media: noPoster }).errors, /D-042: the poster has no file/);
+  } finally {
+    try { rmSync(dir, { recursive: true, force: true, maxRetries: 3 }); } catch { /* a temp dir; the OS reaps it */ }
+  }
+});
+
+// f12: a confirmed clip's .vtt is copied through the build, listed in media.json, and reaches the print as a site URL,
+// only for a clip with audio (validate allows captions on a silent clip, which then shows none).
+test("D-042: a video's captions file reaches the page", async () => {
+  const sharp = (await import('sharp')).default;
+  sharp.cache(false);
+  const dir = mkdtempSync(join(tmpdir(), 'wv1-captions-'));
+  try {
+    const src = join(dir, 'src');
+    mkdirSync(join(src, 'p'), { recursive: true });
+    writeFileSync(join(src, 'p', 'clip.mp4'), Buffer.from('not really an mp4'));
+    writeFileSync(join(src, 'p', 'clip.vtt'), 'WEBVTT\n\n00:00.000 --> 00:01.000\nHello\n');
+    await sharp({ create: { width: 1280, height: 720, channels: 3, background: '#335577' } }).png().toFile(join(src, 'p', 'clip.png'));
+    const clip = { type: 'video', src: 'media/p/clip.mp4', poster: 'media/p/clip.png', captions: 'media/p/clip.vtt', audio: true, loop: false, placeholder: false, w: 0, h: 0, scale: 'normal', alt: 'a', caption: '', decorative: false };
+    const projects = [{ slug: 'p', media: [clip] }];
+    const out = join(dir, 'public');
+    const m = await derive({ projects, mediaSrc: src, outDir: out });
+    const vtt = m.media['media/p/clip.vtt'];
+    assert.equal(vtt?.type, 'captions', 'the .vtt is in the manifest');
+    assert.match(vtt.file, /^\/media\/p\/clip-[0-9a-f]{10}\.vtt$/);
+    assert.ok(existsSync(join(out, 'p', basename(vtt.file))), 'the .vtt is written to public/media');
+    assert.equal(m.media['media/p/clip.mp4']?.type, 'video', 'the video stays');
+    assert.equal(m.media['media/p/clip.png']?.type, 'poster', 'the poster stays');
+    assert.equal(printsOf('p', projects[0].media, m, null)[0].captions, vtt.file, "the print carries the .vtt's site URL");
+    assert.equal(printsOf('p', [{ ...clip, audio: false }], m, null)[0].captions, '', 'a silent clip shows no captions');
+    assert.equal(printsOf('p', [{ ...clip, captions: '' }], m, null)[0].captions, '', 'no captions, none');
+    const noVtt = { media: { ...m.media } };
+    delete noVtt.media['media/p/clip.vtt'];
+    assert.equal(printsOf('p', [clip], noVtt, null)[0].captions, '', 'no manifest entry: never the authoring path');
+    const quiet = await derive({ projects: [{ slug: 'p', media: [{ ...clip, captions: '', audio: false }] }], mediaSrc: src, outDir: out });
+    assert.deepEqual(Object.keys(quiet.media).sort(), ['media/p/clip.mp4', 'media/p/clip.png'], 'empty captions add no key');
+  } finally {
+    try { rmSync(dir, { recursive: true, force: true, maxRetries: 3 }); } catch { /* a temp dir; the OS reaps it */ }
+  }
+});
+
+test('f12: captions sit under their project, and a confirmed clip names a captions file that exists', () => {
+  const a = confirmed();
+  const p = a.projects.projects[0];
+  p.media[0] = { ...p.media[0], type: 'video', src: `media/${p.slug}/clip.mp4`, poster: `media/${p.slug}/clip.png`, audio: true, captions: 'media/project-99/clip.vtt' };
+  a.media.media[`media/${p.slug}/clip.mp4`] = { type: 'video', file: '/media/x.mp4' };
+  a.media.media[`media/${p.slug}/clip.png`] = { type: 'poster', w: 1280, h: 720, files: [], lqip: '' };
+  has(errorsOf(a), new RegExp(`media/${p.slug}/<file>\\.vtt`));
+  p.media[0].captions = `media/${p.slug}/clip.vtt`;
+  has(errorsOf(a), /captions file has no file/);
+  a.media.media[`media/${p.slug}/clip.vtt`] = { type: 'captions', file: '/media/x.vtt' };
+  assert.deepEqual(errorsOf(a), [], 'with its captions file the clip is valid');
+});
+
+// f15: images.mjs writes each rung within its class cap (budgets-v2 site.media.capBytes, the caps media-caps holds dist
+// to), stepping the quality down only when a file is over; an original that cannot fit even at the floor stops the run
+// and names the file and its class. A 1400 px blurred-noise original (named so no class token sits in its stem): as
+// the first print its rungs are 480 small, 800 first and 1280 first.
+test('images.mjs: every derived file fits its class cap; an unfittable one fails loudly', async () => {
+  const sharp = (await import('sharp')).default;
+  sharp.cache(false);
+  const dir = mkdtempSync(join(tmpdir(), 'wv1-fit-'));
+  try {
+    const src = join(dir, 'src');
+    mkdirSync(join(src, 'p'), { recursive: true });
+    const file = join(src, 'p', 'big.png');
+    await sharp({ create: { width: 1400, height: 933, channels: 3, noise: { type: 'gaussian', mean: 128, sigma: 40 } } }).blur(1.2).png().toFile(file);
+    const projects = [{ slug: 'p', media: [{ type: 'image', src: 'media/p/big.png', placeholder: false }] }];
+    // the 1280 rung at the top and floor qualities, through the same pipeline
+    const r = sharp(file).rotate().resize({ width: 1280, withoutEnlargement: true });
+    const size = async (fmt, q) => (await r.clone()[fmt]({ quality: q, effort: 6 }).toBuffer()).length;
+    const a52 = await size('avif', 52), a22 = await size('avif', 22), w78 = await size('webp', 78), w30 = await size('webp', 30);
+    // above each format's floor size and below the larger top-quality size: one file is over before any fitting
+    const cap = Math.floor(Math.max((a52 + a22) / 2, (w78 + w30) / 2));
+    const caps = { first: cap, small: 1e9, mid: 1e9, large: 1e9, extreme: 1e9, poster: 1e9 };
+    const out = join(dir, 'out');
+    await derive({ projects, mediaSrc: src, outDir: out, caps });
+    const written = readdirSync(join(out, 'p')).sort();
+    for (const f of written) assert.ok(statSync(join(out, 'p', f)).size <= caps[classOf(f)], `${f}: ${statSync(join(out, 'p', f)).size} B is over its ${classOf(f)} cap of ${caps[classOf(f)]} B`);
+    const at = (rung, fmt) => written.find((f) => new RegExp(`-first-${rung}\\.${fmt}$`).test(f));
+    for (const rung of [800, 1280]) for (const fmt of ['avif', 'webp']) assert.ok(statSync(join(out, 'p', at(rung, fmt))).size <= cap, `${rung} ${fmt} within the first cap`);
+    assert.ok(statSync(join(out, 'p', at(1280, 'avif'))).size < a52 || statSync(join(out, 'p', at(1280, 'webp'))).size < w78, 'a step-down happened at 1280');
+    for (const f of written) assert.equal((await sharp(join(out, 'p', f)).metadata()).width, Number(/-(\d+)\.(avif|webp)$/.exec(f)[1]), `${f} decodes at its rung width`);
+    // a cap no quality reaches: the run stops, naming the file and its class
+    await assert.rejects(derive({ projects, mediaSrc: src, outDir: join(dir, 'out2'), caps: { small: 1e9, mid: 1e9, large: 1e9, extreme: 1e9, poster: 1e9, first: 500 } }),
+      /big-[0-9a-f]{10}-first-800\.avif \(first\) is over the 500 B cap/);
+  } finally {
+    try { rmSync(dir, { recursive: true, force: true, maxRetries: 3 }); } catch { /* a temp dir; the OS reaps it */ }
+  }
+});
+
+test("media-caps classOf reads the writer's class tail, not a token in the original's stem", () => {
+  assert.equal(classOf('p/my-poster-shot-ab12cd34ef-mid-800.avif'), 'mid');
+  assert.equal(classOf('p/the-first-light-ab12cd34ef-large-1920.webp'), 'large');
+  assert.equal(classOf('p/big-ab12cd34ef-first-1280.avif'), 'first');
+  assert.equal(classOf('x/y-poster.avif'), 'poster', 'a name without the tail keeps the old token rule');
 });

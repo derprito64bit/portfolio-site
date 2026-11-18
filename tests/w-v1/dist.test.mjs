@@ -41,6 +41,8 @@ export function pageProblems(html, p, i, { dist = DIST, total = projects.length 
   need(new RegExp(`<a href="/work/${prev}/" rel="prev"`).test(html) && new RegExp(`<a href="/work/${next}/" rel="next"`).test(html), 'previous and next links');
   need(/<meta name="robots" content="noindex"/.test(html) === p.placeholder, 'noindex exactly when a placeholder');
   need(!/id="(evf|intro)"|<canvas|data-raise|class="frame"/.test(html), 'no EVF markup');
+  // fix-pass B1 (f16): the HUD counter shows only when the roll script names a print (never a static, wrong 01 / NN)
+  need(/<span[^>]*\sdata-print-count[^>]*\shidden[\s>]/.test(html), 'the counter renders hidden');
   const figs = [...html.matchAll(/<figure class="print"([^>]*)>([\s\S]*?)<\/figure>/g)];
   need(figs.length === p.media.length, `${figs.length} figures for ${p.media.length} media`);
   if (!p.media.length) need(/class="roll__empty"><span class="ph">\[PLACEHOLDER: media\]<\/span>/.test(html), 'an empty roll says [PLACEHOLDER: media]');
@@ -51,6 +53,11 @@ export function pageProblems(html, p, i, { dist = DIST, total = projects.length 
     const box = /class="print__box"><span class="ph">\[PLACEHOLDER: [^\]]+\]<\/span>/.test(body);
     need(Boolean(img) || box, `${at}: an img or a typed placeholder box`);
     need(/<figcaption class="print__strip"><span class="print__n">\d\d<\/span><span class="print__cap">/.test(body), `${at}: the caption strip`);
+    // fix-pass B1 (f01): the link's name comes from its content (the image's alt, then a hidden "Print NN of MM, ...:
+    // open in playback"), never an aria-label that hides the alt; before the img check, so a placeholder box counts too
+    const a = /<a class="print__a"[^>]*>/.exec(body)?.[0] ?? '';
+    need(a !== '' && attr(a, 'aria-label') === null && attr(a, 'aria-labelledby') === null, `${at}: link named by its content, not aria-label`);
+    need(/<span class="sr">[^<]*open in playback<\/span>\s*<\/a>/.test(body), `${at}: the hidden action text is the last child of the link`);
     need((/--lqip:url\(data:image\/webp;base64,[A-Za-z0-9+/=]+\)/.test(fattrs)) === (k < 3), `${at}: the LQIP inline for the first 3 only`);
     const lq = /--lqip:url\(data:image\/webp;base64,([A-Za-z0-9+/=]+)\)/.exec(fattrs);
     if (lq) need(Buffer.from(lq[1], 'base64').length <= 300, `${at}: LQIP <= 300 B`);
@@ -150,6 +157,9 @@ test('negative controls: the page checks catch each planted defect', { skip: !bu
     ['EVF markup', (h) => h.replace('<main', '<canvas></canvas><main'), /no EVF markup/],
     ['no noindex', (h) => h.replace('<meta name="robots" content="noindex">', ''), /noindex/],
     ['no strip', (h) => h.replace('<figcaption class="print__strip">', '<figcaption>'), /caption strip/],
+    // fix-pass B1
+    ['counter shown', (h) => h.replace(/(<span[^>]*data-print-count[^>]*?)\shidden(?=[\s>])/, '$1'), /counter renders hidden/],
+    ['a link label masking the alt', (h) => h.replace('class="print__a" href=', 'class="print__a" aria-label="x" href='), /named by its content/],
   ];
   assert.deepEqual(pageProblems(real, p, i), [], 'the real page is clean');
   for (const [name, plant, re] of plants) {
@@ -157,5 +167,37 @@ test('negative controls: the page checks catch each planted defect', { skip: !bu
     assert.notEqual(bad, real, `${name}: the plant applies`);
     const found = pageProblems(bad, p, i);
     assert.ok(found.some((x) => re.test(x)), `${name}: caught (got ${JSON.stringify(found)})`);
+  }
+});
+
+// fix-pass B2
+import { readdirSync as b2Readdir } from 'node:fs';
+
+/** f21: a viewport meta with viewport-fit=cover lays the page under the notch and the home indicator, so the page's own
+ *  styles (inlined: astro's inlineStylesheets 'always') must pad by env(safe-area-inset-*). [] when the page is clean. */
+export function viewportInsetProblems(html) {
+  const meta = /<meta\s+name="viewport"\s+content="([^"]*)"/i.exec(html)?.[1] ?? '';
+  if (!/viewport-fit\s*=\s*cover/i.test(meta)) return [];
+  const css = [...html.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style>/gi)].map((m) => m[1]).join('\n');
+  return /env\(\s*safe-area-inset-/.test(css) ? [] : ['viewport-fit=cover with no env(safe-area-inset-*) in the page styles'];
+}
+/** Every built page: /, the 404 and each /work/<slug>/ found in dist (not only the projects in content/). */
+const b2Pages = () => ['index.html', '404.html', ...b2Readdir(join(DIST, 'work')).map((s) => `work/${s}/index.html`)]
+  .filter((f) => existsSync(join(DIST, f)));
+
+test('no viewport-fit=cover without safe-area insets: /, the 404 and every /work/<slug>/', { skip: !built && 'needs npm run build' }, () => {
+  const pages = b2Pages();
+  assert.ok(pages.length >= 2 + projects.length, `/, the 404 and the project pages are built (${pages.length})`);
+  const bad = pages.map((f) => [f, viewportInsetProblems(readFileSync(join(DIST, f), 'utf8'))]).filter(([, x]) => x.length);
+  assert.deepEqual(bad, [], 'every page is clean');
+});
+
+test('negative control: viewport-fit=cover put back without insets is caught', { skip: !built && 'needs npm run build' }, () => {
+  for (const f of ['index.html', 'work/project-01/index.html']) {
+    const real = readFileSync(join(DIST, f), 'utf8');
+    assert.deepEqual(viewportInsetProblems(real), [], `${f}: the real page is clean`);
+    const planted = real.replace(/(<meta\s+name="viewport"\s+content="[^"]*)"/i, '$1, viewport-fit=cover"');
+    assert.notEqual(planted, real, `${f}: the plant applies`);
+    assert.ok(viewportInsetProblems(planted).some((x) => /viewport-fit=cover/.test(x)), `${f}: caught`);
   }
 });

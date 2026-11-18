@@ -18,9 +18,36 @@ const calm = html.classList.contains('calm');
 const article = document.getElementById('pj') as HTMLElement;
 const n = Number(article.dataset.frame) || 1; // 1-based
 const hooks = testHooks(window, location.search);
+// playback's open leaves this entry on manual scroll restoration, and the mode outlives the document: every cold load
+// starts from auto, so a reload or a Back from another page restores the visitor's place (playback sets it again).
+// WebKit restores at its first layout, before this module runs, so the mode also goes back to auto as the page hides.
+const autoRestore = () => { history.scrollRestoration = 'auto'; };
+autoRestore();
+addEventListener('pagehide', autoRestore);
 let engine: Engine | null = null;
 let scene: Scene | null = null;
 let S: 'open' | 'closing' = 'open';
+
+// ---------------------------------------------------------------- the frame recedes as the roll comes up
+/** -4 EV as the roll comes up: the frame recedes behind the prints. */
+const dimAt = () => Math.pow(2, -4 * Math.min(1, Math.max(0, window.scrollY / (window.innerHeight * 0.85))));
+let lastDim = -1;
+let again: gsap.core.Tween | null = null;
+// registered before initRoll on purpose: this reads scrollY before the roll's focus writes in the same scroll dispatch
+// (the roll reads first, then writes), so no read here forces a style pass
+window.addEventListener('scroll', () => {
+  if (!engine) return;
+  const d = dimAt();
+  if (Math.abs(d - lastDim) < 0.002) return;
+  lastDim = d;
+  engine.st.dim = d;
+  engine.invalidate(250);
+  // once more as the scroll settles: after a jump scroll a busy WebKit can spend the first window on one stale frame
+  // (or none: a late frame past the window draws nothing), which left the frame at full exposure behind the roll, and a
+  // print's ring over it. The second window opens from a ticker frame, so it always gets one.
+  again?.kill();
+  again = gsap.delayedCall(0.3, () => engine?.invalidate(400));
+}, { passive: true });
 
 // ---------------------------------------------------------------- the roll and playback
 const roll = initRoll({ root: article, scroller: window, calm, counter: document.querySelector<HTMLElement>('[data-print-count]') });
@@ -34,14 +61,16 @@ function leave() {
   S = 'closing';
   location.replace(homeUrl(workHash(n)));
 }
-document.querySelector('[data-close]')?.addEventListener('click', (e) => { e.preventDefault(); leave(); });
+// a modified or non-primary click is the browser's (/#work-NN in a new tab or window): the page stays
+document.querySelector<HTMLElement>('[data-close]')?.addEventListener('click', (e) => {
+  if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+  e.preventDefault(); leave();
+});
 window.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && !pb.isOpen() && !e.defaultPrevented) { e.preventDefault(); leave(); }
 });
 
 // ---------------------------------------------------------------- the frame behind the header
-/** -4 EV as the roll comes up: the frame recedes behind the prints. */
-const dimAt = () => Math.pow(2, -4 * Math.min(1, Math.max(0, window.scrollY / (window.innerHeight * 0.85))));
 function frameState() {
   if (!engine || !scene) return;
   Object.assign(engine.st, landedState(scene, subjectOf(scene), openZoom(frameRect('work'))), { dim: dimAt() });
@@ -91,22 +120,6 @@ async function boot() {
     html.classList.add('nogl');
   }
 }
-
-let lastDim = -1;
-let again: gsap.core.Tween | null = null;
-window.addEventListener('scroll', () => {
-  if (!engine) return;
-  const d = dimAt();
-  if (Math.abs(d - lastDim) < 0.002) return;
-  lastDim = d;
-  engine.st.dim = d;
-  engine.invalidate(250);
-  // once more as the scroll settles: after a jump scroll a busy WebKit can spend the first window on one stale frame
-  // (or none: a late frame past the window draws nothing), which left the frame at full exposure behind the roll, and a
-  // print's ring over it. The second window opens from a ticker frame, so it always gets one.
-  again?.kill();
-  again = gsap.delayedCall(0.3, () => engine?.invalidate(400));
-}, { passive: true });
 
 let rz: gsap.core.Tween | null = null;
 window.addEventListener('resize', () => {

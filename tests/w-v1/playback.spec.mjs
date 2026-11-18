@@ -15,6 +15,25 @@ const pb = (page) => page.evaluate(() => {
   };
 });
 
+/** A tween's end state, once it has landed: `read` (self-contained, run in the page) each frame until `ok` holds for its
+ *  value, given up only after 60 frames and 2 s both, as the roll's glide is; resolves the last value read. Not a
+ *  wall-clock window alone: once frames run over 500 ms GSAP's lag smoothing moves a tween 33 ms a frame (CI's WebKit
+ *  held the 0.6 s Flip at 0.91 scale through a 3 s poll); not a frame count alone either (headless Chromium can run 60
+ *  frames in 250 ms). The row's assertion then reads the value as before. */
+const landed = (page, read, ok) => page.evaluate(`new Promise((done) => {
+  const read = ${read}, ok = ${ok};
+  const t0 = performance.now();
+  let n = 0;
+  const step = () => {
+    const v = read();
+    if (ok(v) || (++n >= 60 && performance.now() - t0 >= 2000)) done(v); else requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+  setTimeout(() => done(read()), 60000); // no frames at all
+})`);
+/** The playback frame's computed transform once the Flip (0.6 s, the gate's timing) has landed untransformed. */
+const flipLanded = (page) => landed(page, () => getComputedStyle(document.querySelector('.pb__frame')).transform, (t) => /^(none|matrix\(1, 0, 0, 1, 0, 0\))$/.test(t));
+
 for (const [label, profile] of [['1440', DESK], ['390', PHONE]]) {
   test(`A10 at ${label}: open with the readouts, page, Esc / Close / Back return focus to the print, #print-NN`, async ({ browser, browserName }) => {
     const ctx = await context(browser, browserName, profile);
@@ -35,7 +54,7 @@ for (const [label, profile] of [['1440', DESK], ['390', PHONE]]) {
       expect(s.media).toBe('PICTURE');
       // the Flip lands (in 0.6 s: the gate's timing; a slow CI engine's long frame holds GSAP's clock): the frame ends
       // untransformed
-      await expect.poll(() => page.evaluate(() => getComputedStyle(document.querySelector('.pb__frame')).transform), { message: 'the Flip lands untransformed', timeout: 3000 }).toMatch(/^(none|matrix\(1, 0, 0, 1, 0, 0\))$/);
+      expect(await flipLanded(page), 'the Flip lands untransformed').toMatch(/^(none|matrix\(1, 0, 0, 1, 0, 0\))$/);
 
       // arrows page; the address follows (replaceState)
       await page.keyboard.press('ArrowRight');
@@ -44,7 +63,7 @@ for (const [label, profile] of [['1440', DESK], ['390', PHONE]]) {
       await page.keyboard.press('ArrowRight');
       await expect.poll(async () => (await pb(page)).ro[2]).toBe('loop clip');
       expect((await pb(page)).media).toBe('VIDEO');
-      expect(await page.evaluate(() => document.querySelector('.pb__frame video').controls), 'controls in playback').toBe(true);
+      expect(await page.evaluate(() => document.querySelector('.pb__frame video').controls), 'a clip with no file has no controls in playback').toBe(false);
       expect(await page.evaluate(() => history.length), 'paging adds no entry').toBe(len + 1);
 
       // Esc: closed, the hash gone, focus on the print shown
@@ -122,7 +141,10 @@ for (const [label, profile] of [['1440', DESK], ['390', PHONE]]) {
     const ctx = await context(browser, browserName, profile);
     const page = await ctx.newPage();
     try {
+      // print 05's clip is given a file (an address that answers 404), so it has its controls: a clip with no file has none
+      await page.route(/\/b3-clip\.mp4$/, (r) => r.fulfill({ status: 404, body: '' }));
       await cold(page, 'project-06', '#print-03');
+      await page.evaluate(() => { document.querySelector('#print-05 video').dataset.src = '/media/b3-clip.mp4'; });
       await expect.poll(async () => (await pb(page))?.open).toBe(true);
       await frames(page);
       await expect.poll(() => where(page), { message: 'after the load\'s fragment scroll, focus is in playback' }).toMatch(/^in:/);
@@ -218,12 +240,17 @@ for (const [label, profile] of [['1440', DESK], ['390', PHONE]]) {
       await pages(page, 'ArrowRight', '#print-02');
       await shut();
 
-      // by Enter on a focused Next or Prev: focus moves to the other one as its own is disabled
+      // by Enter on a focused Next or Prev: at an end the button is off (aria-disabled) but keeps focus, so Enter again
+      // stays put (fix-pass B3, ruling 1 on #114: focus once moved to the other button, and a second Enter paged back)
       await openAt(11, 'key');
       await page.locator('dialog.pb [data-pb-next]').focus();
       await page.keyboard.press('Enter');
       await expect.poll(async () => (await pb(page)).hash).toBe('#print-12');
-      expect(await where(page), 'Enter on Next to the end: focus on Prev').toBe('in:BUTTON[prev]');
+      expect(await where(page), 'Enter on Next to the end: focus stays on Next').toBe('in:BUTTON[next]');
+      expect(await page.locator('dialog.pb [data-pb-next]').getAttribute('aria-disabled'), 'Next is off at the end').toBe('true');
+      await page.keyboard.press('Enter');
+      await page.waitForTimeout(300);
+      expect([(await pb(page)).hash, await where(page)], 'Enter again on Next at the end: no page, focus on Next').toEqual(['#print-12', 'in:BUTTON[next]']);
       await pages(page, 'ArrowLeft', '#print-11');
       await pages(page, 'ArrowRight', '#print-12');
       await tabsStay(page);
@@ -232,7 +259,10 @@ for (const [label, profile] of [['1440', DESK], ['390', PHONE]]) {
       await page.locator('dialog.pb [data-pb-prev]').focus();
       await page.keyboard.press('Enter');
       await expect.poll(async () => (await pb(page)).hash).toBe('#print-01');
-      expect(await where(page), 'Enter on Prev to the start: focus on Next').toBe('in:BUTTON[next]');
+      expect(await where(page), 'Enter on Prev to the start: focus stays on Prev').toBe('in:BUTTON[prev]');
+      await page.keyboard.press('Enter');
+      await page.waitForTimeout(300);
+      expect([(await pb(page)).hash, await where(page)], 'Enter again on Prev at the start: no page, focus on Prev').toEqual(['#print-01', 'in:BUTTON[prev]']);
       await pages(page, 'ArrowRight', '#print-02');
       await tabsStay(page);
     } finally {
@@ -243,15 +273,15 @@ for (const [label, profile] of [['1440', DESK], ['390', PHONE]]) {
 
 // wv1-pb-failed-image (queued from judge r2): playback of a print whose image failed shows the same "image unavailable"
 // print at its aspect, with no broken-image glyph and no raw alt text (9f25a82 cloned the failed <picture>).
-test('A10 / A8 a failed image opens in playback as the same "image unavailable" print, at its aspect', async ({ browser, browserName }) => {
-  const ctx = await context(browser, browserName, DESK);
+for (const [label, profile] of [['1440', DESK], ['390', PHONE]]) test(`A10 / A8 a failed image opens in playback as the same "image unavailable" print, at its aspect, at ${label}`, async ({ browser, browserName }) => {
+  const ctx = await context(browser, browserName, profile);
   const page = await ctx.newPage();
   await page.route(/\/media\//, (r) => r.abort());
   try {
     await cold(page, 'project-06');
     await centrePrint(page, 3);
     await expect(page.locator('#print-03')).toHaveClass(/is-failed/, { timeout: 5000 });
-    await page.locator('#print-03 [data-print-open]').click();
+    if (profile.hasTouch) await page.locator('#print-03 [data-print-open]').tap(); else await page.locator('#print-03 [data-print-open]').click();
     await expect.poll(async () => (await pb(page))?.open).toBe(true);
     await page.waitForTimeout(800);
     const s = await page.evaluate(() => {
@@ -442,8 +472,9 @@ test('J4 paging never blanks the stage: one print is always up', async ({ browse
       const frames = await watch;
       expect(frames.length, 'sampled').toBeGreaterThan(5);
       expect(frames.filter((o) => o < 0.05).length, `${key}: blank frames (max opacity on the stage per frame: ${frames.map((o) => o.toFixed(2)).join(' ')})`).toBe(0);
-      // fully up once the page lands (polled: a slow CI engine can run the 0.3 s fade past the 500 ms window above)
-      await expect.poll(() => page.evaluate(() => Math.max(0, ...[...document.querySelectorAll('dialog.pb .pb__stage > *')].map((e) => (getComputedStyle(e).visibility === 'hidden' ? 0 : Number(getComputedStyle(e).opacity))))), { message: 'the page ends fully up', timeout: 3000 }).toBe(1);
+      // fully up once the page lands (a slow CI engine can run the 0.3 s fade past the 500 ms window above)
+      const up = await landed(page, () => Math.max(0, ...[...document.querySelectorAll('dialog.pb .pb__stage > *')].map((e) => (getComputedStyle(e).visibility === 'hidden' ? 0 : Number(getComputedStyle(e).opacity)))), (o) => o === 1);
+      expect(up, 'the page ends fully up').toBe(1);
       expect(await page.locator('dialog.pb .pb__ghost').count(), 'the leaving copy is gone').toBe(0);
     }
     // rapid paging (each page cut short by the next), Esc, a reopen, Back / Forward / Back, Forward: playback is fully
@@ -477,16 +508,19 @@ test('J4 paging never blanks the stage: one print is always up', async ({ browse
 });
 
 test.describe('A13 calm, no WebGL, no JS', () => {
-  test('reduced motion: a crossfade open, opacity-only expose, brackets that jump, no dim spring, a playback crossfade', async ({ browser, browserName }) => {
-    const ctx = await context(browser, browserName, DESK, { reduced: true });
+  // A16: at both gate viewports; the phone's pointer is coarse in both engines (no brackets, no dim)
+  for (const [label, profile] of [['1440', DESK], ['390', PHONE]]) test(`reduced motion: a crossfade open, opacity-only expose, brackets that jump, no dim spring, a playback crossfade at ${label}`, async ({ browser, browserName }) => {
+    const ctx = await context(browser, browserName, profile, { reduced: true, coarse: profile === PHONE });
     const page = await ctx.newPage();
     try {
       await home(page);
+      if (profile === PHONE) expect(await page.evaluate(() => matchMedia('(hover: hover) and (pointer: fine)').matches), 'a coarse pointer').toBe(false);
       await toFrame(page, 5);
       await page.keyboard.press('Enter');
       await untilState(page, 'open', 5);
+      // the dim's transition is on the print's frame (f02)
       const cs = await page.evaluate(() => ({
-        transition: getComputedStyle(document.querySelector('#proj .print')).transitionDuration,
+        transition: getComputedStyle(document.querySelector('#proj .print__frame')).transitionDuration,
         imgTransition: getComputedStyle(document.querySelector('#proj .print__img')).transitionDuration,
       }));
       expect(cs.transition.split(',').every((d) => parseFloat(d) === 0), 'no dim spring').toBe(true);
@@ -497,14 +531,20 @@ test.describe('A13 calm, no WebGL, no JS', () => {
       await page.waitForTimeout(300);
       await centrePrint(page, 3);
       await page.waitForFunction(() => document.querySelector('#proj .roll')?.dataset.focus === '3', null, { timeout: 3000 });
-      const jump = await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => {
-        const a = document.querySelector('#proj .roll__af').getBoundingClientRect(), f = document.querySelector('#print-03').getBoundingClientRect();
-        r(Math.abs(a.top - f.top) + Math.abs(a.width - f.width));
-      })));
-      expect(jump, 'the brackets jump').toBeLessThanOrEqual(2);
+      if (profile === PHONE) {
+        const af = await page.evaluate(() => { const a = document.querySelector('#proj .roll__af'); return [a.classList.contains('on'), getComputedStyle(a).opacity]; });
+        expect(af, 'a coarse pointer: no brackets').toEqual([false, '0']);
+      } else {
+        const jump = await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => {
+          const a = document.querySelector('#proj .roll__af').getBoundingClientRect(), f = document.querySelector('#print-03').getBoundingClientRect();
+          r(Math.abs(a.top - f.top) + Math.abs(a.width - f.width));
+        })));
+        expect(jump, 'the brackets jump').toBeLessThanOrEqual(2);
+      }
       const filters = await page.evaluate(() => [...document.querySelectorAll('#proj .print.is-exp .print__frame')].map((f) => getComputedStyle(f).filter));
+      expect(filters.length, 'exposed prints').toBeGreaterThan(0);
       expect(filters.every((f) => f === 'none'), 'opacity-only expose').toBe(true);
-      await page.locator('#print-03 [data-print-open]').click();
+      if (profile.hasTouch) await page.locator('#print-03 [data-print-open]').tap(); else await page.locator('#print-03 [data-print-open]').click();
       await expect.poll(async () => (await pb(page))?.open).toBe(true);
       const tr = await page.evaluate(() => new Promise((r) => { const out = []; const f = document.querySelector('.pb__frame'); const t0 = performance.now(); const s = () => { out.push(getComputedStyle(f).transform); if (performance.now() - t0 < 300) setTimeout(s, 10); else r(out); }; s(); }));
       expect(tr.every((t) => t === 'none' || t === 'matrix(1, 0, 0, 1, 0, 0)'), 'a crossfade, no Flip').toBe(true);
@@ -554,5 +594,516 @@ test.describe('A13 calm, no WebGL, no JS', () => {
         await ctx.close();
       }
     });
+  }
+});
+
+// fix-pass B4
+test.describe('A2 / A10 history over playback: traversals that cross the open', () => {
+  const where6 = (page) => page.evaluate(() => [window.__vf.state(), location.pathname, location.hash]);
+  /** Esc closes playback onto /work/project-06/; a second Esc lands on frame 6 at /#work-06, and it stays there. */
+  const lands6 = async (page) => {
+    await page.keyboard.press('Escape');
+    await expect.poll(async () => (await pb(page)).open, { message: 'the first Esc closes playback' }).toBe(false);
+    await expect.poll(() => where6(page)).toEqual(['open', '/work/project-06/', '']);
+    await page.keyboard.press('Escape');
+    await untilState(page, 'evf', 5);
+    await expect.poll(() => page.evaluate(() => `${location.pathname}${location.hash}`), { message: 'the second Esc lands on the frame' }).toBe('/#work-06');
+    await page.waitForTimeout(400);
+    expect(await page.evaluate(() => window.__vf.state()), 'and stays there: no stale entry reopens a project').toBe('evf');
+  };
+
+  // f07: Next's replaceState leaves 06's #print-01 entry forward of 07's; Forward onto it swaps in app, never reloads
+  test(`Forward onto another project's #print entry after Next: no reload; Esc, Esc: that frame`, async ({ browser, browserName }) => {
+    const ctx = await context(browser, browserName, DESK);
+    const page = await ctx.newPage();
+    try {
+      await home(page);
+      await toFrame(page, 5);
+      await page.keyboard.press('Enter');
+      await untilState(page, 'open', 5);
+      await page.locator('#print-01 [data-print-open]').click();
+      await expect.poll(async () => (await pb(page))?.hash).toBe('#print-01');
+      await page.waitForTimeout(700);
+      await page.keyboard.press('Escape');
+      await expect.poll(() => page.evaluate(() => [document.querySelector('dialog.pb')?.open, location.hash])).toEqual([false, '']);
+      await page.locator('#proj .pj__nav a[rel="next"]').click();
+      await page.waitForFunction(() => document.querySelector('#proj-title')?.textContent.trim() === 'Project 07', null, { timeout: 10000 });
+      await page.evaluate(() => { window.__live = 1; });
+      await page.goForward();
+      // a reload would destroy the context mid-poll: read through it, and let __live tell
+      await expect.poll(() => page.evaluate(() => window.__vf && [window.__vf.state(), window.__vf.pos(), location.pathname, location.hash]).catch(() => null)).toEqual(['open', 5, '/work/project-06/', '#print-01']);
+      expect(await page.evaluate(() => window.__live ?? null), 'the same document: no reload').toBe(1);
+      await expect.poll(async () => (await pb(page))?.open, { message: 'playback follows the entry' }).toBe(true);
+      await lands6(page);
+    } finally {
+      await ctx.close();
+    }
+  });
+
+  /** Frame 6 in the EVF with project 06's /work/ and #print-01 entries forward of it. */
+  const forwardOf6 = async (page) => {
+    await home(page);
+    await toFrame(page, 5);
+    await page.keyboard.press('Enter');
+    await untilState(page, 'open', 5);
+    await page.locator('#print-01 [data-print-open]').click();
+    await expect.poll(async () => (await pb(page))?.hash).toBe('#print-01');
+    await page.goBack();
+    await expect.poll(async () => (await pb(page)).open).toBe(false);
+    await page.goBack();
+    await untilState(page, 'evf', 5);
+  };
+
+  // f05 (a): the second Forward lands inside the 0.4 s open (onPop has started it before this listener runs)
+  test('two Forwards inside the open: playback follows #print-01, then Esc, Esc: the frame', async ({ browser, browserName }) => {
+    const ctx = await context(browser, browserName, DESK);
+    const page = await ctx.newPage();
+    try {
+      await forwardOf6(page);
+      const at = await page.evaluate(() => new Promise((r) => {
+        addEventListener('popstate', () => setTimeout(() => { const s = window.__vf.state(); history.forward(); r(s); }, 30), { once: true });
+        history.forward();
+      }));
+      expect(at, 'the second Forward is sent while the project opens').toBe('opening');
+      await expect.poll(async () => [await page.evaluate(() => window.__vf.state()), (await pb(page))?.open, await page.evaluate(() => location.hash)], { message: 'playback follows #print-01' }).toEqual(['open', true, '#print-01']);
+      await lands6(page);
+    } finally {
+      await ctx.close();
+    }
+  });
+
+  // f05 (b): Esc mid-zoom on a #print entry steps back over both entries, so no stale project entry is left behind
+  test('Esc mid-zoom after history.go(2) onto #print-NN: the frame, and the next project\'s close does not reopen it', async ({ browser, browserName }) => {
+    const ctx = await context(browser, browserName, DESK);
+    const page = await ctx.newPage();
+    try {
+      await forwardOf6(page);
+      const at = await page.evaluate(() => new Promise((r) => {
+        addEventListener('popstate', () => setTimeout(() => { const s = window.__vf.state(); dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); r(s); }, 50), { once: true });
+        history.go(2);
+      }));
+      expect(at, 'Esc is sent while the project opens').toBe('opening');
+      await expect.poll(() => page.evaluate(() => [window.__vf.state(), `${location.pathname}${location.hash}`]), { message: 'Esc mid-zoom lands on the frame' }).toEqual(['evf', '/#work-06']);
+      for (let i = 4; i >= 1; i--) {
+        await page.keyboard.press('ArrowLeft');
+        await untilState(page, 'evf', i);
+      }
+      await page.keyboard.press('Enter');
+      await untilState(page, 'open', 1);
+      await page.keyboard.press('Escape');
+      await expect.poll(() => page.evaluate(() => [window.__vf.state(), window.__vf.pos()]), { message: 'the close lands on frame 2' }).toEqual(['evf', 1]);
+      await expect.poll(() => page.evaluate(() => `${location.pathname}${location.hash}`)).toBe('/#work-02');
+      await page.waitForTimeout(400);
+      expect(await page.evaluate(() => [window.__vf.state(), window.__vf.pos()]), 'project 06 never reopens').toEqual(['evf', 1]);
+    } finally {
+      await ctx.close();
+    }
+  });
+
+  // wv1-typed-hash-history: a typed #print-NN pushes an entry the app did not make; Close must not land on one of them
+  for (const typed of [['#print-02'], ['#print-02', '#print-06']]) {
+    test(`typed ${typed.join(' then ')} while the project is open in the Viewfinder, then Esc, Esc: the frame (/#work-06)`, async ({ browser, browserName }) => {
+      const ctx = await context(browser, browserName, DESK);
+      const page = await ctx.newPage();
+      try {
+        await home(page);
+        await toFrame(page, 5);
+        await page.keyboard.press('Enter');
+        await untilState(page, 'open', 5);
+        for (const h of typed) {
+          await page.evaluate((x) => { location.hash = x; }, h);
+          await expect.poll(async () => (await pb(page))?.count, { message: `${h} shows in playback` }).toBe(`${h.slice(-2)} / 12`);
+        }
+        await page.waitForTimeout(700);
+        await lands6(page);
+      } finally {
+        await ctx.close();
+      }
+    });
+  }
+});
+
+// f27: playback's open leaves the history entry on 'manual' scroll restoration; every cold load starts from 'auto', so a
+// reload (or a Back from another page) puts the visitor back where they were
+test('A10 a reload after playback keeps the roll where the visitor was', async ({ browser, browserName }) => {
+  const ctx = await context(browser, browserName, DESK);
+  const page = await ctx.newPage();
+  try {
+    await cold(page, 'project-06');
+    await centrePrint(page, 6);
+    await page.waitForTimeout(300);
+    await page.locator('#print-06 [data-print-open]').click();
+    await expect.poll(async () => (await pb(page))?.hash).toBe('#print-06');
+    await page.waitForTimeout(700);
+    await page.keyboard.press('Escape');
+    await expect.poll(() => page.evaluate(() => [document.querySelector('dialog.pb')?.open, location.hash])).toEqual([false, '']);
+    const y0 = await page.evaluate(() => scrollY);
+    expect(y0, 'down in the roll').toBeGreaterThan(200);
+    await page.reload({ waitUntil: 'load' });
+    await page.waitForTimeout(400);
+    expect(await page.evaluate(() => history.scrollRestoration), 'the reloaded page restores its scroll').toBe('auto');
+    const y = await page.evaluate(() => scrollY);
+    expect(Math.abs(y - y0), `back where the visitor was (${y} against ${y0})`).toBeLessThanOrEqual(48);
+  } finally {
+    await ctx.close();
+  }
+});
+
+// fix-pass B2
+for (const [label, profile] of [['1440', DESK], ['390', PHONE]]) {
+  test(`no JS: /work/project-01/ is whole at ${label}: the header is a plain page header, no frame gap above it`, async ({ browser, browserName }) => {
+    const ctx = await context(browser, browserName, profile, { js: false });
+    const page = await ctx.newPage();
+    try {
+      await page.goto(`${base()}/work/project-01/`, { waitUntil: 'load' });
+      await expect(page.locator('h1')).toHaveText('Project 01');
+      const head = await page.evaluate(() => {
+        const h = document.querySelector('.pj__head');
+        return { js: document.documentElement.classList.contains('pj-js'), pad: parseFloat(getComputedStyle(h).paddingTop), h1: document.querySelector('h1').getBoundingClientRect().top, vh: innerHeight };
+      });
+      expect(head.js, 'no JS: the page never gains pj-js').toBe(false);
+      expect(head.pad, `the header's top padding (${head.pad} px) is the page's 8vh, not the frame gap`).toBeLessThanOrEqual(head.vh * 0.1 + 1);
+      expect(head.h1, `the h1 sits in the first third of the view (${head.h1} of ${head.vh})`).toBeLessThan(head.vh * 0.35);
+    } finally {
+      await ctx.close();
+    }
+  });
+}
+
+// fix-pass B3
+// f10: a clip in playback is paused at the close request (WCAG 1.4.2), not left playing in the hidden dialog. The stub
+// logs each play and pause with where it ran and, for a pause, whether the dialog was still open: a pause logged while
+// open is the close's own, not the detach of a later fill or of the Flip's end.
+const MEDIA_LOG = `(() => {
+  window.__media = [];
+  const at = (v) => (v.closest('.pb__frame') ? 'pb' : v.closest('.print')?.id);
+  HTMLMediaElement.prototype.play = function () { window.__media.push(['play', at(this)]); this.dispatchEvent(new Event('playing')); return Promise.resolve(); };
+  HTMLMediaElement.prototype.pause = function () { window.__media.push(['pause', at(this), !!this.closest('dialog')?.open]); };
+})();`;
+test('A10 / A11 a clip in playback is paused when playback closes, by Esc, Close or Back', async ({ browser, browserName }) => {
+  const ctx = await context(browser, browserName, DESK, { init: [MEDIA_LOG] });
+  try {
+    for (const closer of ['Esc', 'Close', 'Back']) {
+      const page = await ctx.newPage();
+      await cold(page, 'project-06');
+      await centrePrint(page, 5);
+      await page.locator('#print-05 [data-print-open]').click();
+      await expect.poll(async () => (await pb(page))?.open).toBe(true);
+      await expect.poll(async () => (await pb(page)).media).toBe('VIDEO');
+      await page.evaluate(() => { document.querySelector('.pb__frame video').play(); window.__media = []; });
+      if (closer === 'Esc') await page.keyboard.press('Escape');
+      else if (closer === 'Close') await page.locator('dialog.pb [data-pb-close]').click();
+      else await page.goBack();
+      await expect.poll(async () => (await pb(page)).open).toBe(false);
+      const calls = await page.evaluate(() => window.__media);
+      expect(calls.filter((c) => c[0] === 'pause' && c[1] === 'pb'), `${closer}: the playback clip is paused once, at the close request (log: ${JSON.stringify(calls)})`).toEqual([['pause', 'pb', true]]);
+      await page.close();
+    }
+  } finally {
+    await ctx.close();
+  }
+});
+
+// f09: a clip's own controls keep their keys and drags: an arrow on the clip is not cancelled (it seeks) and does not
+// page, and a horizontal drag that starts on the clip (its scrubber) does not page; the same drag on the bar does. The
+// fixture clips have no file, so print 05 is given one (an address that answers 404: the clip still has its controls).
+/** A drag 150 px to the left, as pointer events on `sel` (every field set: a pointerup without clientY reads as 300 px up). */
+const swipeOn = (page, sel) => page.evaluate((s) => {
+  const t = document.querySelector(s);
+  t.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 9, clientX: 300, clientY: 300, bubbles: true }));
+  t.dispatchEvent(new PointerEvent('pointerup', { pointerId: 9, clientX: 150, clientY: 300, bubbles: true }));
+}, sel);
+for (const [label, profile] of [['1440', DESK], ['390', PHONE]]) {
+  test(`A10 / A11 at ${label}: a clip in playback keeps its own arrow keys and drags`, async ({ browser, browserName }) => {
+    const ctx = await context(browser, browserName, profile);
+    const page = await ctx.newPage();
+    await page.route(/\/b3-clip\.mp4$/, (r) => r.fulfill({ status: 404, body: '' }));
+    const open5 = async () => {
+      await page.locator('#print-05 [data-print-open]').focus();
+      await page.keyboard.press('Enter');
+      await expect.poll(async () => (await pb(page))?.open).toBe(true);
+      await expect.poll(async () => (await pb(page)).hash).toBe('#print-05');
+    };
+    const on5 = async (why) => {
+      const s = await pb(page);
+      expect([s.hash, s.ro[0], s.media], why).toEqual(['#print-05', '05', 'VIDEO']);
+    };
+    try {
+      await cold(page, 'project-06');
+      await centrePrint(page, 5);
+      await page.evaluate(() => { document.querySelector('#print-05 video').dataset.src = '/media/b3-clip.mp4'; });
+      await open5();
+      await expect.poll(async () => (await pb(page)).media).toBe('VIDEO');
+      expect(await page.evaluate(() => document.querySelector('.pb__frame video').controls), 'the clip has its controls').toBe(true);
+      expect(await flipLanded(page)).toMatch(/^(none|matrix\(1, 0, 0, 1, 0, 0\))$/);
+      // the arrows on the clip: not cancelled (the native seek runs), no paging
+      for (const key of ['ArrowRight', 'ArrowLeft']) {
+        const prevented = await page.evaluate((k) => { const e = new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true }); document.querySelector('.pb__frame video').dispatchEvent(e); return e.defaultPrevented; }, key);
+        expect(prevented, `${key} on the clip is not cancelled`).toBe(false);
+        await page.waitForTimeout(200);
+        await on5(`${key} on the clip does not page`);
+      }
+      const focused = await page.evaluate(() => { document.querySelector('.pb__frame video').focus(); return document.activeElement?.tagName; });
+      if (browserName === 'chromium') expect(focused, 'the clip takes focus').toBe('VIDEO');
+      if (focused === 'VIDEO') {
+        await page.keyboard.press('ArrowRight');
+        await page.waitForTimeout(200);
+        await on5('a real ArrowRight on the focused clip does not page');
+      }
+      // a drag that starts on the clip (its scrubber) does not page
+      await swipeOn(page, '.pb__frame video');
+      await page.waitForTimeout(300);
+      await on5('a drag that starts on the clip does not page');
+      if (!profile.hasTouch) {
+        const r = await page.locator('.pb__frame video').boundingBox();
+        await page.mouse.move(r.x + r.width / 2, r.y + r.height / 2);
+        await page.mouse.down();
+        await page.mouse.move(r.x + r.width / 2 - 80, r.y + r.height / 2, { steps: 4 });
+        await page.mouse.move(r.x + r.width / 2 - 160, r.y + r.height / 2, { steps: 4 });
+        await page.mouse.up();
+        await page.waitForTimeout(300);
+        await on5('a mouse drag across the clip does not page');
+      }
+      // Esc from the clip still closes
+      if (focused === 'VIDEO') await page.evaluate(() => document.querySelector('.pb__frame video').focus());
+      await page.keyboard.press('Escape');
+      await expect.poll(async () => (await pb(page)).open).toBe(false);
+      await expect.poll(() => page.evaluate(() => location.hash)).toBe('');
+      expect((await pb(page)).focus, 'focus returns to the print').toBe('print-05');
+      // the control: the same drag on the bar pages, and the arrows page from Close
+      await open5();
+      await swipeOn(page, '.pb__bar');
+      await expect.poll(async () => (await pb(page)).hash, { message: 'a drag on the bar pages', timeout: 1000 }).toBe('#print-06');
+      await page.locator('dialog.pb [data-pb-close]').focus();
+      await pages(page, 'ArrowLeft', '#print-05');
+      await pages(page, 'ArrowRight', '#print-06');
+    } finally {
+      await ctx.close();
+    }
+  });
+}
+
+// f13: a print past the LQIP set (01 to 03 carry one) flew as a flat panel (the roll's copy is concealed for the Flip)
+// while the clone's rung loaded, and the clone asked for a rung sized by a 92vw literal (1920 for a 528 px frame). Every
+// media request after the click is held, so the Flip shows only what the frame already has: the roll's own loaded image
+// under the clone. The rung asked for is read from the held request (Chromium sets currentSrc only once it answers).
+for (const [n, dpr] of [[6, 1], [6, 2], [4, 1]]) {
+  test(`J4 the Flip never flies an empty panel: print ${String(n).padStart(2, '0')}, past the LQIP set, at DPR ${dpr} opens over the roll's own image and asks for the frame's width`, async ({ browser, browserName }) => {
+    const ctx = await context(browser, browserName, { ...DESK, deviceScaleFactor: dpr });
+    const page = await ctx.newPage();
+    const id = `#print-${String(n).padStart(2, '0')}`;
+    let release = () => {};
+    try {
+      await cold(page, 'project-06');
+      const box = n === 4;
+      expect(await page.locator(id).getAttribute('data-letterbox'), `${id} is ${box ? '' : 'not '}a letterbox print`).toBe(box ? '' : null);
+      await centrePrint(page, n);
+      await page.waitForFunction((s) => { const i = document.querySelector(`${s} img.print__img`); return i?.complete && i.naturalWidth > 0; }, id, { timeout: 8000 });
+      const held = await page.evaluate((s) => new URL(document.querySelector(`${s} img.print__img`).currentSrc).pathname, id);
+      const asked = [];
+      const gate = new Promise((r) => { release = r; });
+      await page.route(/\/media\//, async (r) => { asked.push(new URL(r.request().url()).pathname); await gate; await r.continue().catch(() => {}); });
+      // sampled from the click itself (right after playback's own handler), every frame and every 8 ms, for 600 ms
+      await page.evaluate(() => { window.__bgs = new Promise((resolve) => document.addEventListener('click', () => {
+        const out = [];
+        const t0 = performance.now();
+        const read = () => { const f = document.querySelector('dialog.pb .pb__frame'); if (f) out.push(getComputedStyle(f).backgroundImage); };
+        const frame = () => { read(); if (performance.now() - t0 < 600) requestAnimationFrame(frame); };
+        const timer = setInterval(() => { read(); if (performance.now() - t0 >= 600) { clearInterval(timer); resolve(out); } }, 8);
+        read();
+        requestAnimationFrame(frame);
+      }, { once: true })); });
+      await page.locator(`${id} [data-print-open]`).click();
+      const bgs = await page.evaluate(() => window.__bgs);
+      expect(bgs.length, 'sampled').toBeGreaterThan(1);
+      const empty = bgs.filter((b) => !b.includes(held));
+      expect(empty.length, `every sample in the Flip shows the roll's own image ${held} under the clone (${empty.length} of ${bgs.length} without it: ${[...new Set(empty)].join(' ').slice(0, 200)})`).toBe(0);
+      const s = await page.evaluate(() => {
+        const f = document.querySelector('dialog.pb .pb__frame');
+        return { w: f.offsetWidth, sizes: [...f.querySelectorAll('source, img')].map((x) => x.getAttribute('sizes')), fit: getComputedStyle(f).backgroundSize, srcset: f.querySelector('source[type="image/avif"]')?.getAttribute('srcset') ?? '' };
+      });
+      expect(s.sizes.every((v) => v === `${s.w}px`), `the clone's sizes is the frame's width, ${s.w}px (${s.sizes.join(' | ')})`).toBe(true);
+      if (box) expect(s.fit, 'a letterbox print shows the held image whole').toBe('contain');
+      if (browserName === 'chromium') {
+        // the smallest rung at least the frame's device width, else the largest
+        const rungs = s.srcset.split(',').map((x) => Number(/(\d+)w$/.exec(x.trim())?.[1])).filter(Boolean).sort((a, b) => a - b);
+        const want = rungs.find((r) => r >= s.w * dpr) ?? rungs.at(-1);
+        // the held image is asked for again under the clone (a routed page has no cache): it is the clone's rung only
+        // when nothing else is asked for
+        const rungOf = (p) => Number(new RegExp(`/${String(n).padStart(2, '0')}-[a-z]+-(\\d+)\\.avif$`).exec(p)?.[1]);
+        const clone = () => { const own = asked.filter((p) => p !== held); return [...new Set((own.length ? own : asked).map(rungOf).filter(Boolean))]; };
+        await expect.poll(clone, { message: `the clone asks for the ${want} rung (asked: ${asked.join(' ')})`, timeout: 3000 }).toEqual([want]);
+      }
+    } finally {
+      release();
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+      await ctx.close();
+    }
+  });
+}
+
+// f17: a phone on its side (under 760 px wide, 520 px or less tall) matched the phone block as well, whose frame width
+// (100svh - top - 190px) and stacked foot left a portrait print a 121 px sliver over an empty stage.
+const sideways = async (page, why) => {
+  expect(await flipLanded(page)).toMatch(/^(none|matrix\(1, 0, 0, 1, 0, 0\))$/);
+  const s = await page.evaluate(() => {
+    const r = (sel) => document.querySelector(`dialog.pb ${sel}`).getBoundingClientRect();
+    const [f, stage, foot, bar, nav, strip] = ['.pb__frame', '.pb__stage', '.pb__foot', '.pb__bar', '.pb__nav', '.pb__strip'].map(r);
+    const targets = [...document.querySelectorAll('dialog.pb .pb__nav button, dialog.pb .pb__close')].map((b) => { const x = b.getBoundingClientRect(); return Math.min(x.width, x.height); });
+    return { f: { w: f.width, h: f.height, top: f.top, bottom: f.bottom }, stageH: stage.height, footTop: foot.top, barBottom: bar.bottom, navRight: nav.right, navTop: nav.top, stripLeft: strip.left, stripTop: strip.top, stripBottom: strip.bottom, targets };
+  });
+  const at = `${why}: frame ${Math.round(s.f.w)} x ${Math.round(s.f.h)}, stage ${Math.round(s.stageH)}`;
+  // (a) the print has the height
+  expect(s.f.h, `${at}: the frame is at least 180 px tall`).toBeGreaterThanOrEqual(180);
+  expect(s.f.h, `${at}: the frame fills at least 0.8 of the stage`).toBeGreaterThanOrEqual(0.8 * (s.stageH - 16));
+  // (b) clear of the bar and of the foot
+  expect(s.f.top, `${at}: clear of the bar`).toBeGreaterThanOrEqual(s.barBottom - 0.5);
+  expect(s.f.bottom, `${at}: clear of the foot (${Math.round(s.footTop)})`).toBeLessThanOrEqual(s.footTop + 0.5);
+  // (c) the 44 px targets (A12)
+  expect(Math.min(...s.targets), `${at}: Close, Prev and Next keep 44 px targets`).toBeGreaterThanOrEqual(44);
+  // (d) one foot row: the nav beside the strip
+  expect(s.stripLeft >= s.navRight - 0.5 && s.navTop < s.stripBottom, `${at}: the nav sits beside the strip, on one row`).toBe(true);
+};
+test('A10 a phone on its side (667 x 375): playback gives a portrait print the height', async ({ browser, browserName }) => {
+  const ctx = await context(browser, browserName, { ...PHONE, viewport: { width: 667, height: 375 } });
+  const page = await ctx.newPage();
+  try {
+    await cold(page, 'project-06');
+    const n = await page.evaluate(() => Number([...document.querySelectorAll('.print')].find((p) => Number(p.dataset.ar) < 1).dataset.print));
+    const sel = `#print-${String(n).padStart(2, '0')} [data-print-open]`;
+    await centrePrint(page, n);
+    await page.locator(sel).tap();
+    await expect.poll(async () => (await pb(page))?.open).toBe(true);
+    await sideways(page, 'opened at 667 x 375');
+  } finally {
+    await ctx.close();
+  }
+});
+test('A10 a phone on its side, turned while playback is open (390 x 844 to 667 x 375): playback gives a portrait print the height', async ({ browser, browserName }) => {
+  const ctx = await context(browser, browserName, PHONE);
+  const page = await ctx.newPage();
+  try {
+    await cold(page, 'project-06');
+    const n = await page.evaluate(() => Number([...document.querySelectorAll('.print')].find((p) => Number(p.dataset.ar) < 1).dataset.print));
+    await centrePrint(page, n);
+    await page.locator(`#print-${String(n).padStart(2, '0')} [data-print-open]`).tap();
+    await expect.poll(async () => (await pb(page))?.open).toBe(true);
+    await page.setViewportSize({ width: 667, height: 375 });
+    await frames(page);
+    await sideways(page, 'turned to 667 x 375');
+  } finally {
+    await ctx.close();
+  }
+});
+
+// wv1-loop-clip-empty-controls: a clip with no file opened in playback as its poster under an empty native control bar.
+// Controls come only with a file; a clip with none is its poster: no stop for Tab, and a drag on it pages.
+test('A10 / A11 a clip opens in playback with controls only when it has a file', async ({ browser, browserName }) => {
+  const ctx = await context(browser, browserName, DESK);
+  const page = await ctx.newPage();
+  await page.route(/\/b3-clip\.mp4$/, (r) => r.fulfill({ status: 404, body: '' }));
+  const open5 = async () => {
+    await centrePrint(page, 5);
+    await page.locator('#print-05 [data-print-open]').click();
+    await expect.poll(async () => (await pb(page))?.hash).toBe('#print-05');
+    await expect.poll(async () => (await pb(page)).media).toBe('VIDEO');
+  };
+  const clip = () => page.evaluate(() => {
+    const v = document.querySelector('.pb__frame video');
+    v.focus();
+    return { controls: v.controls, poster: !!v.poster, focused: document.activeElement === v };
+  });
+  try {
+    await cold(page, 'project-06');
+    await open5();
+    expect(await clip(), 'no file: the poster, with no controls and no focus').toEqual({ controls: false, poster: true, focused: false });
+    await swipeOn(page, '.pb__frame video');
+    await expect.poll(async () => (await pb(page)).hash, { message: 'a drag on a clip with no file pages', timeout: 1000 }).toBe('#print-06');
+    await page.keyboard.press('Escape');
+    await expect.poll(async () => (await pb(page)).open).toBe(false);
+    await page.evaluate(() => { document.querySelector('#print-05 video').dataset.src = '/media/b3-clip.mp4'; });
+    await open5();
+    expect((await clip()).controls, 'a file: the clip has its controls').toBe(true);
+  } finally {
+    await ctx.close();
+  }
+});
+
+// ruling 2 on #114 (ruling-one-clip-tab): on a one-clip roll (project-02) Prev and Next were both disabled, so the clip
+// was the last Tab stop, and Tab from it fell to BODY (for under a frame) until keepFocus put it back on Close. The clip
+// is given a file so it has its controls (a clip with none is no Tab stop). Every focusout that leaves the dialog, and
+// focus sampled every frame, are logged.
+test('A10 a one-clip roll (project-02): Tab and Shift+Tab from the clip never leave playback, not for a frame', async ({ browser, browserName }) => {
+  const ctx = await context(browser, browserName, DESK);
+  const page = await ctx.newPage();
+  await page.route(/\/b3-clip\.mp4$/, (r) => r.fulfill({ status: 404, body: '' }));
+  try {
+    await cold(page, 'project-02');
+    await page.evaluate(() => { document.querySelector('#print-01 video').dataset.src = '/media/b3-clip.mp4'; });
+    await page.locator('#print-01 [data-print-open]').click();
+    await expect.poll(async () => (await pb(page))?.open).toBe(true);
+    await expect.poll(async () => (await pb(page)).media).toBe('VIDEO');
+    await page.evaluate(() => {
+      window.__out = [];
+      const d = document.querySelector('dialog.pb');
+      d.addEventListener('focusout', (e) => { if (!d.contains(e.relatedTarget)) window.__out.push(`focusout ${e.target.tagName} -> ${e.relatedTarget?.tagName ?? 'nothing'}`); });
+      const f = () => { const a = document.activeElement; if (!a || a === d || !d.contains(a)) window.__out.push(`frame: ${a?.tagName}`); requestAnimationFrame(f); };
+      requestAnimationFrame(f);
+    });
+    const onClip = async () => (await page.evaluate(() => { document.querySelector('.pb__frame video').focus(); return document.activeElement?.tagName; })) === 'VIDEO';
+    expect(await onClip(), 'the clip takes focus').toBe(true);
+    for (const key of ['Tab', 'Tab', 'Tab', 'Tab', 'Tab', 'Tab']) { await page.keyboard.press(key); await page.waitForTimeout(80); }
+    await onClip();
+    for (const key of ['Shift+Tab', 'Shift+Tab', 'Shift+Tab', 'Shift+Tab', 'Shift+Tab', 'Shift+Tab']) { await page.keyboard.press(key); await page.waitForTimeout(80); }
+    await page.waitForTimeout(100);
+    expect(await page.evaluate(() => window.__out), 'focus never leaves playback').toEqual([]);
+  } finally {
+    await ctx.close();
+  }
+});
+
+// fix-pass B5
+// f12: a clip's captions file reaches playback. The build sets data-captions on the grid's video only for a confirmed
+// clip with audio and a .vtt (prints.ts); fill() turns it into a default captions <track> in the dialog's video, and only
+// there (the grid's muted, aria-hidden preview never gets one). No content has such a clip yet, so the row plants the
+// attribute on print 05 (a loop clip); the planted URL's 404 is harmless here (no console gate in this file). The live
+// frame only: a page's outgoing ghost (a still clone of the old frame) fades out beside it.
+test('A10 f12: a clip with captions plays with one default captions track in playback; other prints have none', async ({ browser, browserName }) => {
+  const ctx = await context(browser, browserName, DESK);
+  const page = await ctx.newPage();
+  const tracks = () => page.evaluate(() => [...document.querySelectorAll('.pb__frame:not(.pb__ghost) video track')].map((t) => ({ kind: t.kind, src: t.getAttribute('src'), def: t.hasAttribute('default'), lang: t.srclang })));
+  const to = async (hash) => expect.poll(async () => (await pb(page))?.hash).toBe(hash);
+  try {
+    await cold(page, 'project-06');
+    await centrePrint(page, 5);
+    await page.evaluate(() => { document.querySelector('#print-05 video').dataset.captions = '/media/fixtures/x.vtt'; });
+    await page.locator('#print-05 [data-print-open]').click();
+    await expect.poll(async () => (await pb(page))?.open).toBe(true);
+    await to('#print-05');
+    expect((await pb(page)).media).toBe('VIDEO');
+    const t = await tracks();
+    expect(t.length, 'one track on the clip with captions').toBe(1);
+    expect(t[0].kind).toBe('captions');
+    expect(t[0].src.endsWith('/media/fixtures/x.vtt'), t[0].src).toBe(true);
+    expect(t[0].def, 'shown by default').toBe(true);
+    expect(t[0].lang.length > 0, 'srclang set').toBe(true);
+    expect(await page.locator('#print-05 video track').count(), 'no track in the grid preview').toBe(0);
+    await page.keyboard.press('ArrowLeft');
+    await to('#print-04');
+    expect(await page.locator('.pb__frame:not(.pb__ghost) track').count(), 'paging to an image drops the track').toBe(0);
+    await page.keyboard.press('ArrowRight');
+    await to('#print-05');
+    expect((await tracks()).length, 'back on the clip: exactly one track').toBe(1);
+    for (const h of ['#print-06', '#print-07', '#print-08', '#print-09']) { await page.keyboard.press('ArrowRight'); await to(h); }
+    expect((await pb(page)).media).toBe('VIDEO');
+    expect(await page.locator('.pb__frame:not(.pb__ghost) track').count(), 'a clip without captions has no track').toBe(0);
+    await page.keyboard.press('Escape');
+    await expect.poll(async () => (await pb(page)).open).toBe(false);
+    await centrePrint(page, 5);
+    await page.locator('#print-05 [data-print-open]').click();
+    await to('#print-05');
+    expect((await tracks()).length, 'reopened: one track, not two').toBe(1);
+  } finally {
+    await ctx.close();
   }
 });

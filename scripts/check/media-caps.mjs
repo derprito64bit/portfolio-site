@@ -2,8 +2,10 @@
 // media-caps (W-V0a, budgets-v2 "Media"): the byte caps on the images in dist/, read from the json budgets block
 // (site.media.capBytes), never from a literal.
 //   - Page images are AVIF or WebP only (no JPEG, PNG or GIF), outside the site icons at the root of dist/.
-//   - A file's class comes from a "-<class>-" token in its name (small, mid, large, first, extreme, poster), the way
-//     scripts/build/images.mjs names the ladder. A file without a class token is held to the large cap, the loosest.
+//   - A file's class comes from the "-<class>-<rung>.avif|webp" tail scripts/build/images.mjs writes (small, mid, large,
+//     first, extreme, poster), so a token in the original's stem never wins; else from the first "-<class>-" token in
+//     its name. A file without a class token is held to the large cap, the loosest. images.mjs fits each file to the
+//     same caps (capsOf) when it writes it.
 //   - LQIP placeholders (the lqip fields of the generated manifests, and inline data:image URIs in built pages) decode
 //     to the lqip cap at most.
 // It passes when dist/ holds no media. Usage: node scripts/check/media-caps.mjs [--dist dist] [--json report.json]
@@ -18,12 +20,19 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 
 const IMAGE = /\.(avif|webp|jpe?g|png|gif)$/i;
 const OK_FORMAT = /\.(avif|webp)$/i;
-const CLASSES = { small: 'small', mid: 'mid', large: 'large', first: 'firstPrint', extreme: 'extreme', poster: 'poster' };
+/** Each class token and its key under site.media.capBytes. */
+export const CLASSES = { small: 'small', mid: 'mid', large: 'large', first: 'firstPrint', extreme: 'extreme', poster: 'poster' };
+/** A class's byte cap from the budgets. */
+export const capFor = (cls, b = readBudgets()) => budget(`site.media.capBytes.${CLASSES[cls]}`, b);
+/** Every class's byte cap, reading the budgets once. */
+export const capsOf = (b = readBudgets()) => Object.fromEntries(Object.keys(CLASSES).map((c) => [c, capFor(c, b)]));
 const walk = (d) => (existsSync(d) ? readdirSync(d).flatMap((f) => (statSync(join(d, f)).isDirectory() ? walk(join(d, f)) : [join(d, f)])) : []);
 
-/** The class of an image file by its name, or null. */
+/** The class of an image file by its name, or null: the writer's class tail first, else the first class token. */
 export function classOf(file) {
-  const m = /[-_.](small|mid|large|first|extreme|poster)[-_.]/i.exec(file.replaceAll('\\', '/').split('/').pop());
+  const name = file.replaceAll('\\', '/').split('/').pop();
+  const m = /-(small|mid|large|first|extreme|poster)-\d+\.(avif|webp)$/i.exec(name)
+    ?? /[-_.](small|mid|large|first|extreme|poster)[-_.]/i.exec(name);
   return m ? m[1].toLowerCase() : null;
 }
 
@@ -35,7 +44,7 @@ const dataBytes = (uri) => Buffer.from(uri.slice(uri.indexOf(',') + 1), 'base64'
  * @returns {{ problems: string[], images: number, lqips: number }}
  */
 export function checkMedia({ dist, manifests = [], budgets = readBudgets() }) {
-  const caps = Object.fromEntries(Object.keys(CLASSES).map((c) => [c, budget(`site.media.capBytes.${CLASSES[c]}`, budgets)]));
+  const caps = capsOf(budgets);
   const lqipCap = budget('site.media.capBytes.lqip', budgets);
   const problems = [];
   let images = 0;

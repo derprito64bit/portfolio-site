@@ -141,3 +141,111 @@ test('A2 / A13 a resize or rotate while open: no marks over the page, the cover 
     await ctx.close();
   }
 });
+
+// fix-pass B4
+/** The state at the first resize after __rzState is armed (set to null). */
+const RZ_STATE = `addEventListener('resize', () => { if (window.__rzState === null) window.__rzState = window.__vf && window.__vf.state(); });`;
+
+// f06: a resize that lands inside the 0.4 s open ('opening'): once the open lands, the flat cover fills the new view
+test('A2 / A13 a resize or rotate during the open: the cover fills the new view once it lands', async ({ browser, browserName }) => {
+  const ctx = await context(browser, browserName, DESK, { init: [RZ_STATE] });
+  const page = await ctx.newPage();
+  const read = () => page.evaluate(() => {
+    const f = document.querySelector('[data-frame]').getBoundingClientRect();
+    return {
+      frame: [f.left, f.top, f.width, f.height].map(Math.round),
+      marks: [...document.querySelectorAll('[data-frame] .mk')].map((m) => getComputedStyle(m).visibility),
+      box: ['--fx', '--fy', '--fw', '--fh'].map((k) => Math.round(parseFloat(document.documentElement.style.getPropertyValue(k)))),
+    };
+  });
+  try {
+    await home(page);
+    await toFrame(page, 1);
+    await page.evaluate(() => { window.__rzState = null; });
+    // open() runs in the keydown, so the state is 'opening' when the press returns
+    await page.keyboard.press('Enter');
+    await page.setViewportSize({ width: 390, height: 844 });
+    await untilState(page, 'open', 1);
+    expect(await page.evaluate(() => window.__rzState), 'the resize landed during the open').toBe('opening');
+    await page.waitForTimeout(300);
+    const s = await read();
+    expect(s.frame, 'the flat cover fills the new view').toEqual([0, 0, 390, 844]);
+    expect(s.marks, 'the marks stay hidden while open').toEqual(['hidden', 'hidden', 'hidden', 'hidden']);
+    await page.keyboard.press('Escape');
+    await untilState(page, 'evf', 1);
+    const h = await read();
+    expect(h.frame, 'home: the frame sits in its box').toEqual(h.box);
+  } finally {
+    await ctx.close();
+  }
+});
+
+// fix-pass B2
+import { base as coldBase } from './lib.mjs';
+
+// f11: on the cold page the document scrolls under a fixed 64 px bar. A print link reached by keyboard lands clear of the
+// bar going back, and clear of the bottom edge going on, so its whole ring (4 px offset, 2 px outline, 8 px band) shows.
+// WebKit's Tab skips links by default (view.ts), so there the link takes focus() with no preventScroll: the same scroll.
+for (const [label, profile] of [['1440', DESK], ['390', PHONE]]) test(`A2 / budgets focus ring: a print reached by keyboard on the cold page clears the fixed bar at ${label}`, async ({ browser, browserName }) => {
+  const ctx = await context(browser, browserName, profile);
+  const page = await ctx.newPage();
+  const step = async (key, to) => {
+    if (browserName === 'chromium') await page.keyboard.press(key);
+    else await page.evaluate((k) => document.querySelectorAll('.print__a')[k].focus(), to);
+    // WebKit can land the focus scroll a frame later: read after two frames
+    await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+  };
+  const link = (k) => page.evaluate((i) => {
+    const a = [...document.querySelectorAll('.print__a')];
+    const r = a[i].getBoundingClientRect();
+    return { active: a.indexOf(document.activeElement), top: r.top, bottom: r.bottom, bar: document.querySelector('.pj-bar').getBoundingClientRect().bottom, vh: innerHeight };
+  }, k);
+  try {
+    await page.goto(`${coldBase()}/work/project-01/?vf-test`, { waitUntil: 'load' });
+    // back: the third link holds focus, print 2's top 100 px above the view; Shift+Tab
+    await page.evaluate(() => {
+      document.querySelectorAll('.print__a')[2].focus({ preventScroll: true });
+      window.scrollBy(0, document.querySelectorAll('.print')[1].getBoundingClientRect().top + 100);
+    });
+    await step('Shift+Tab', 1);
+    const b = await link(1);
+    expect(b.active, 'Shift+Tab reached the second print').toBe(1);
+    expect(b.top - 8, `the ring's top band (${(b.top - 8).toFixed(1)}) clears the bar (${b.bar})`).toBeGreaterThanOrEqual(b.bar - 0.5);
+    // on: the second link holds focus, print 3's top 100 px above the bottom edge; Tab
+    await page.evaluate(() => {
+      document.querySelectorAll('.print__a')[1].focus({ preventScroll: true });
+      window.scrollBy(0, document.querySelectorAll('.print')[2].getBoundingClientRect().top - (innerHeight - 100));
+    });
+    await step('Tab', 2);
+    const f = await link(2);
+    expect(f.active, 'Tab reached the third print').toBe(2);
+    expect(f.bottom + 8, `the ring's bottom band (${(f.bottom + 8).toFixed(1)}) stays in the view (${f.vh})`).toBeLessThanOrEqual(f.vh + 0.5);
+  } finally {
+    await ctx.close();
+  }
+});
+
+// wv1-skip-link-44 (#106): the skip link, once focused, is a 44 px target on / and on /work/<slug>/.
+for (const [label, profile] of [['1440', DESK], ['390', PHONE]]) test(`A12 / budgets the skip link is a 44 px target on / and /work/<slug>/ at ${label}`, async ({ browser, browserName }) => {
+  const ctx = await context(browser, browserName, profile);
+  const page = await ctx.newPage();
+  const skip = () => page.evaluate(() => {
+    const s = document.querySelector('.skip');
+    s.focus();
+    const r = s.getBoundingClientRect();
+    return { focused: document.activeElement === s, w: r.width, h: r.height, top: r.top };
+  });
+  try {
+    await page.goto(`${coldBase()}/work/project-01/?vf-test`, { waitUntil: 'load' });
+    const cold = await skip();
+    await home(page);
+    const evf = await skip();
+    for (const [where, s] of [['/work/project-01/', cold], ['/', evf]]) {
+      expect(s.focused, `${where}: the skip link takes focus`).toBe(true);
+      expect(s.h, `${where}: the skip link is 44 px tall or more (${s.h.toFixed(1)})`).toBeGreaterThanOrEqual(44);
+      expect(s.w, `${where}: and 44 px wide or more`).toBeGreaterThanOrEqual(44);
+    }
+  } finally {
+    await ctx.close();
+  }
+});

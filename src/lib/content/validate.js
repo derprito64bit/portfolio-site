@@ -62,8 +62,8 @@ export const CLASSES = {
 
 /**
  * Validate the four content files plus the film-look ids from tokens. `media` is the generated manifest
- * (src/lib/content/media.json, scripts/build/images.mjs): with it, a non-placeholder media entry (and a video's poster)
- * must have its derived files there (D-042); without it only the src itself is required.
+ * (src/lib/content/media.json, scripts/build/images.mjs): with it, a non-placeholder media entry (and a video's or
+ * model's poster) must have its derived files there (D-042); without it only the src itself is required.
  * @param {{ projects: any, honours: any, profile: any, lookIds: string[], media?: { media: Record<string, any> } }} input
  * @returns {{ errors: string[], warnings: string[] }}
  */
@@ -199,6 +199,8 @@ export function validateContent({ projects, honours, profile, lookIds, media = u
       if (m.type !== 'image' && m.src && !m.poster) err('projects.json', mat, `a ${m.type} needs a poster image (static tier)`);
       if (m.type === 'video' && m.audio && !/\.vtt$/i.test(m.captions || '')) err('projects.json', `${mat}.captions`, 'a video with audio:true needs captions (a .vtt path)');
       if (m.type !== 'video' && (m.audio || m.captions)) err('projects.json', mat, 'audio and captions apply to video only');
+      if (m.captions && !m.captions.startsWith(`media/${p.slug}/`)) err('projects.json', `${mat}.captions`, `media/${p.slug}/<file>.vtt`);
+      if (m.type === 'video' && m.placeholder === false && m.captions && !hasFile(m.captions)) err('projects.json', `${mat}.captions`, 'D-042: the captions file has no file (run scripts/build/images.mjs)');
       if (!m.src && p.placeholder === false) err('projects.json', mat, 'empty src on a confirmed project');
       // content model v3 (D-042)
       for (const k of ['w', 'h']) if (typeof m[k] === 'number' && !(Number.isInteger(m[k]) && m[k] >= 0)) err('projects.json', `${mat}.${k}`, 'source pixels: a whole number, 0 when unknown');
@@ -208,8 +210,8 @@ export function validateContent({ projects, honours, profile, lookIds, media = u
       if (m.loop && m.audio) err('projects.json', `${mat}.loop`, 'a loop clip has no audio track (budgets-v2)');
       if (m.src && !m.src.startsWith(`media/${p.slug}/`)) err('projects.json', `${mat}.src`, `media/${p.slug}/<file> (the original's path under MEDIA_SRC)`);
       if (m.placeholder === false && !hasFile(m.src)) err('projects.json', mat, 'D-042: a non-placeholder media without a file (run scripts/build/images.mjs with MEDIA_SRC)');
-      if (m.type === 'video' && m.placeholder === false && !m.poster) err('projects.json', `${mat}.poster`, 'D-042: a video without a poster');
-      if (m.type === 'video' && m.placeholder === false && m.poster && !hasFile(m.poster)) err('projects.json', `${mat}.poster`, 'D-042: the poster has no file (run scripts/build/images.mjs)');
+      if (m.type !== 'image' && m.placeholder === false && !m.poster) err('projects.json', `${mat}.poster`, `D-042: a ${m.type} without a poster`);
+      if (m.type !== 'image' && m.placeholder === false && m.poster && !hasFile(m.poster)) err('projects.json', `${mat}.poster`, 'D-042: the poster has no file (run scripts/build/images.mjs)');
       if (m.placeholder === true && m.src) err('projects.json', mat, 'a placeholder media has no src (it renders a test chart at w x h)');
     });
     if (p.featured) featured++;
