@@ -611,7 +611,6 @@ test.describe('A9 focus (fix-pass B1)', () => {
   test('the brackets glide through the scroll events that follow a focus change (A9 0.24 s, J3)', async ({ own: browser, browserName }) => {
     const ctx = await context(browser, browserName, DESK);
     const page = await ctx.newPage();
-    const gap = () => page.evaluate(() => Math.abs(document.querySelector('.roll__af').getBoundingClientRect().top - document.querySelector('#print-04').getBoundingClientRect().top));
     try {
       await cold(page, 'project-06');
       await centrePrint(page, 3);
@@ -639,7 +638,23 @@ test.describe('A9 focus (fix-pass B1)', () => {
       expect(s.start, 'the brackets start a print away').toBeGreaterThan(20);
       expect(Math.abs(s.pre - s.start), `the change starts a glide, not a jump (${s.start.toFixed(1)} px away, ${s.pre.toFixed(1)} after the change)`).toBeLessThan(0.5);
       expect(Math.abs(s.post - s.pre), `the next scroll event leaves the glide be (${s.pre.toFixed(1)} px to go before it, ${s.post.toFixed(1)} after)`).toBeLessThan(0.5);
-      await expect.poll(gap, { message: 'the glide lands', timeout: 1000, intervals: [50] }).toBeLessThanOrEqual(2);
+      // it lands: checked each frame, and given up only after 60 frames and 2 s both. Not a wall-clock window alone: once
+      // frames run over 500 ms GSAP's lag smoothing moves a tween 33 ms a frame, so on a starved runner the 0.24 s glide
+      // takes seconds (CI's WebKit held it at 273 px through a 1 s poll); not a frame count alone either: headless
+      // Chromium ran 45 frames in 190 ms here. The 0.24 s itself is the gate's frame capture, not this row's.
+      const land = await page.evaluate(() => new Promise((done) => {
+        const af = document.querySelector('.roll__af'), p4 = document.querySelector('#print-04');
+        const t0 = performance.now();
+        const d = () => Math.abs(af.getBoundingClientRect().top - p4.getBoundingClientRect().top);
+        let n = 0;
+        const f = () => {
+          const g = d(), ms = performance.now() - t0;
+          if (g <= 2 || (++n >= 60 && ms >= 2000)) done({ g, n, ms: Math.round(ms) }); else requestAnimationFrame(f);
+        };
+        requestAnimationFrame(f);
+        setTimeout(() => done({ g: d(), n, ms: Math.round(performance.now() - t0) }), 60000); // no frames at all
+      }));
+      expect(land.g, `the glide lands (${land.g.toFixed(1)} px to go after ${land.n} frames, ${land.ms} ms)`).toBeLessThanOrEqual(2);
     } finally {
       await ctx.close();
     }
